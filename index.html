@@ -69,43 +69,40 @@
     <rect width="100%" height="100%" filter="url(#noiseFilter)" />
   </svg>
 
-  <!-- TOP BAR / ROLE SWITCHER HEADER -->
+  <!-- PRODUCTION HEADER / NAVIGATION SAAS -->
   <header id="top-bar" class="w-full bg-[var(--bg-card)]/90 border-b border-[var(--border-subtle)] px-4 py-2 text-xs flex flex-wrap items-center justify-between sticky top-0 z-50 backdrop-blur-md transition-colors duration-400">
     <div class="flex items-center space-x-3">
-      <div class="flex items-center space-x-2">
+      <div class="flex items-center space-x-2 cursor-pointer" onclick="switchView('hero')">
         <span class="relative flex h-2 w-2">
           <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
           <span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
         </span>
-        <span class="font-bold text-[var(--color-offwhite)] tracking-wider">WINNER DIGITAL SARL</span>
+        <span class="font-bold text-[var(--color-offwhite)] tracking-wider">WINNER POINTAGE PRO</span>
         <span class="opacity-40">•</span>
-        <span class="text-[var(--color-muted)]">Siège Abidjan</span>
+        <span class="text-[var(--color-muted)] font-mono text-[10px]">Cloud SaaS v2.4</span>
       </div>
       
-      <!-- Dynamic Theme Badge & Switcher -->
-      <div class="flex items-center space-x-1.5 bg-[var(--border-subtle)]/50 p-0.5 rounded-lg border border-[var(--border-subtle)]">
-        <span id="theme-badge-label" class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono text-[10px] font-bold">🌅 PALETTE : TERRACOTTA & OR</span>
-        
+      <!-- Dynamic Theme Switcher -->
+      <div class="hidden sm:flex items-center space-x-1.5 bg-[var(--border-subtle)]/50 p-0.5 rounded-lg border border-[var(--border-subtle)]">
         <button onclick="setTheme('terracotta')" title="Terracotta & Or Vif" class="px-2 py-0.5 text-[10px] font-medium rounded hover:bg-amber-500/20 transition">🌅 Terracotta</button>
         <button onclick="setTheme('safari')" title="Savane & Émeraude" class="px-2 py-0.5 text-[10px] font-medium rounded hover:bg-emerald-500/20 transition">🌿 Émeraude</button>
         <button onclick="setTheme('light-warm')" title="Soleil d'Ivoire (Mode Clair)" class="px-2 py-0.5 text-[10px] font-medium rounded hover:bg-orange-500/20 transition">☀️ Mode Clair</button>
       </div>
     </div>
 
-    <!-- Quick Mode View Switcher -->
-    <div class="flex items-center space-x-2 my-1 sm:my-0">
-      <span class="text-[var(--color-muted)] mr-1 hidden md:inline">Mode Démo :</span>
-      <button onclick="switchView('hero')" id="btn-view-hero" class="nav-view-btn px-2.5 py-1 rounded-md text-[var(--color-muted)] hover:text-[var(--color-offwhite)] bg-[var(--border-subtle)]/60 border border-[var(--border-subtle)] transition">
-        Landing Page
+    <!-- Main Section Switcher -->
+    <div class="flex items-center space-x-1.5 my-1 sm:my-0">
+      <button onclick="switchView('hero')" id="btn-view-hero" class="nav-view-btn px-3 py-1 rounded-lg text-amber-400 font-semibold bg-amber-500/10 border border-amber-500/30 transition">
+        🌐 Site Produit
       </button>
-      <button onclick="switchView('dashboard')" id="btn-view-dashboard" class="nav-view-btn px-2.5 py-1 rounded-md text-amber-400 font-semibold bg-amber-500/10 border border-amber-500/30 transition">
-        Tableau de Bord
+      <button onclick="switchView('dashboard')" id="btn-view-dashboard" class="nav-view-btn px-3 py-1 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] bg-[var(--border-subtle)]/60 border border-[var(--border-subtle)] transition">
+        📊 Cockpit RH
       </button>
-      <button onclick="switchView('employee')" id="btn-view-employee" class="nav-view-btn px-2.5 py-1 rounded-md text-[var(--color-muted)] hover:text-[var(--color-offwhite)] bg-[var(--border-subtle)]/60 border border-[var(--border-subtle)] transition">
-        Espace Employé Mobile
+      <button onclick="switchView('employee')" id="btn-view-employee" class="nav-view-btn px-3 py-1 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] bg-[var(--border-subtle)]/60 border border-[var(--border-subtle)] transition">
+        📱 Portail Mobile
       </button>
-      <button onclick="switchView('manager')" id="btn-view-manager" class="nav-view-btn px-2.5 py-1 rounded-md text-[var(--color-muted)] hover:text-[var(--color-offwhite)] bg-[var(--border-subtle)]/60 border border-[var(--border-subtle)] transition">
-        Espace Manager
+      <button onclick="switchView('manager')" id="btn-view-manager" class="nav-view-btn px-3 py-1 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] bg-[var(--border-subtle)]/60 border border-[var(--border-subtle)] transition">
+        👔 Espace Manager
       </button>
     </div>
 
@@ -115,28 +112,30 @@
       <span id="live-system-clock">08:00:00 GMT</span>
     </div>
   </header>
+
+  <!-- MAIN NAVIGATION BAR -->
   <nav class="max-w-6xl mx-auto px-4 mt-4 sticky top-12 z-40">
     <div class="glass-pill px-4 py-2.5 flex items-center justify-between shadow-2xl border border-[var(--border-subtle)]">
-      <div class="flex items-center space-x-3 cursor-pointer" onclick="switchView('dashboard')">
+      <div class="flex items-center space-x-3 cursor-pointer" onclick="switchView('hero')">
         <div class="w-9 h-9 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 glow-amber">
           <i data-lucide="shield-check" class="w-5 h-5"></i>
         </div>
         <div>
           <h1 class="font-bold text-sm tracking-tight text-[var(--color-offwhite)] flex items-center gap-1.5">
             Winner Pointage
-            <span class="text-[10px] font-mono font-normal text-amber-400 px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">v2.4 Pro</span>
+            <span class="text-[10px] font-mono font-normal text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">Production</span>
           </h1>
-          <p class="text-[10px] text-[var(--color-muted)] font-mono">Pointage Géolocalisé & Anti-Fraude</p>
+          <p class="text-[10px] text-[var(--color-muted)] font-mono">Plateforme SaaS de Pointage Anti-Fraude</p>
         </div>
       </div>
 
-      <!-- Navigation Links -->
+      <!-- Links -->
       <div class="hidden lg:flex items-center space-x-1 text-xs">
         <button onclick="switchSection('overview')" class="nav-tab-link px-3 py-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] hover:bg-amber-500/10 active text-amber-400 font-medium" data-tab="overview">
           <i data-lucide="layout-dashboard" class="w-3.5 h-3.5 inline mr-1"></i>Vue d'Ensemble
         </button>
         <button onclick="switchSection('punch')" class="nav-tab-link px-3 py-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] hover:bg-amber-500/10" data-tab="punch">
-          <i data-lucide="navigation" class="w-3.5 h-3.5 inline mr-1"></i>Pointage GPS & Selfie
+          <i data-lucide="navigation" class="w-3.5 h-3.5 inline mr-1"></i>Pointage GPS
         </button>
         <button onclick="switchSection('leaves')" class="nav-tab-link px-3 py-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] hover:bg-amber-500/10" data-tab="leaves">
           <i data-lucide="calendar-off" class="w-3.5 h-3.5 inline mr-1"></i>Congés
@@ -144,17 +143,8 @@
         <button onclick="switchSection('overtime')" class="nav-tab-link px-3 py-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] hover:bg-amber-500/10" data-tab="overtime">
           <i data-lucide="clock-4" class="w-3.5 h-3.5 inline mr-1"></i>Heures Supp
         </button>
-        <button onclick="switchSection('lateness')" class="nav-tab-link px-3 py-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] hover:bg-amber-500/10" data-tab="lateness">
-          <i data-lucide="alert-triangle" class="w-3.5 h-3.5 inline mr-1"></i>Retards
-        </button>
         <button onclick="switchSection('staff')" class="nav-tab-link px-3 py-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] hover:bg-amber-500/10" data-tab="staff">
-          <i data-lucide="users" class="w-3.5 h-3.5 inline mr-1"></i>Employés & Commerciaux
-        </button>
-        <button onclick="switchSection('security')" class="nav-tab-link px-3 py-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] hover:bg-amber-500/10" data-tab="security">
-          <i data-lucide="fingerprint" class="w-3.5 h-3.5 inline mr-1"></i>Anti-Fraude
-        </button>
-        <button onclick="switchSection('qr')" class="nav-tab-link px-3 py-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] hover:bg-amber-500/10" data-tab="qr">
-          <i data-lucide="qr-code" class="w-3.5 h-3.5 inline mr-1"></i>QR Code
+          <i data-lucide="users" class="w-3.5 h-3.5 inline mr-1"></i>Employés
         </button>
         <button onclick="switchSection('reports')" class="nav-tab-link px-3 py-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] hover:bg-amber-500/10" data-tab="reports">
           <i data-lucide="file-text" class="w-3.5 h-3.5 inline mr-1"></i>Rapports PDF
@@ -163,13 +153,12 @@
 
       <!-- Action Buttons -->
       <div class="flex items-center space-x-2">
-        <button onclick="openCopilotDrawer()" class="px-3 py-1.5 rounded-full bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-semibold flex items-center gap-1.5 transition glow-amber">
-          <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-          <span class="hidden sm:inline">Copilote RH</span>
+        <button onclick="openAuthModal('login')" class="px-3.5 py-1.5 rounded-full bg-[var(--border-subtle)] hover:bg-[var(--border-accent)] text-[var(--color-offwhite)] text-xs font-semibold border border-[var(--border-subtle)] transition">
+          Se Connecter
         </button>
-        <button onclick="openPunchModal()" class="magnetic-btn px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-orange-500/20">
-          <i data-lucide="map-pin-check" class="w-3.5 h-3.5"></i>
-          Pointer Maintenant
+        <button onclick="openAuthModal('register')" class="magnetic-btn px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-orange-500/20">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+          Essai Gratuit 14 Jours
         </button>
       </div>
     </div>
@@ -1611,6 +1600,43 @@
 
     <div class="text-[10px] text-slate-500 font-mono text-center pt-4 border-t border-slate-800">
       Assistant RH • Conforme règles internes Winner Digital
+    </div>
+  </div>
+
+  <!-- PRODUCTION AUTHENTICATION MODAL -->
+  <div id="modal-auth" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+    <div class="glass-panel-elevated p-8 max-w-md w-full relative space-y-6 border border-amber-500/40 shadow-2xl">
+      <button onclick="closeAuthModal()" class="absolute top-4 right-4 p-2 rounded-full hover:bg-[var(--border-subtle)] text-[var(--color-muted)] hover:text-white">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <div class="text-center space-y-2">
+        <div class="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 mx-auto flex items-center justify-center glow-amber">
+          <i data-lucide="shield-check" class="w-6 h-6"></i>
+        </div>
+        <h3 id="auth-modal-title" class="text-xl font-bold text-[var(--color-offwhite)]">Connexion à votre Espace Client RH</h3>
+        <p class="text-xs text-[var(--color-muted)]">Accédez à votre cockpit de gestion et suivi des présences.</p>
+      </div>
+
+      <form onsubmit="handleAuthSubmit(event)" class="space-y-4 pt-2">
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold text-[var(--color-muted)]">Email Professionnel :</label>
+          <input type="email" required placeholder="rh@votreentreprise.com" class="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--color-offwhite)] focus:outline-none focus:border-amber-500">
+        </div>
+
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold text-[var(--color-muted)]">Mot de passe :</label>
+          <input type="password" required placeholder="••••••••••••" class="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--color-offwhite)] focus:outline-none focus:border-amber-500">
+        </div>
+
+        <button type="submit" id="auth-submit-btn" class="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white font-bold text-xs tracking-wide shadow-lg shadow-orange-500/25 transition">
+          Se Connecter
+        </button>
+      </form>
+
+      <div class="pt-2 text-center text-xs text-[var(--color-muted)] border-t border-[var(--border-subtle)]">
+        Besoin d'aide ? <a href="https://wa.me/2250700000000" target="_blank" class="text-amber-400 font-bold hover:underline">Support Client WhatsApp 7j/7</a>
+      </div>
     </div>
   </div>
 

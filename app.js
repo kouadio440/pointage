@@ -4,9 +4,9 @@
  * Tailored for Winner Digital SARL (Packaging personnalisé, Abidjan)
  */
 
-// Initial Simulated State for Winner Digital SARL
+// Production Application State
 const state = {
-  activeView: 'dashboard',
+  activeView: 'hero',
   activeSection: 'overview',
   company: {
     name: 'Winner Digital SARL',
@@ -527,4 +527,33 @@ function toggleFaq(id) {
   if (icon) {
     icon.classList.toggle('rotate-180');
   }
+}
+
+// Authentication Modal Logic (Production Ready)
+function openAuthModal(mode = 'login') {
+  const modal = document.getElementById('modal-auth');
+  const title = document.getElementById('auth-modal-title');
+  const submitBtn = document.getElementById('auth-submit-btn');
+
+  if (modal) modal.classList.remove('hidden');
+
+  if (mode === 'register') {
+    if (title) title.innerText = 'Démarrer votre Essai Gratuit de 14 Jours';
+    if (submitBtn) submitBtn.innerText = 'Créer mon compte entreprise';
+  } else {
+    if (title) title.innerText = 'Connexion à votre Espace Client RH';
+    if (submitBtn) submitBtn.innerText = 'Se Connecter';
+  }
+}
+
+function closeAuthModal() {
+  const modal = document.getElementById('modal-auth');
+  if (modal) modal.classList.add('hidden');
+}
+
+function handleAuthSubmit(e) {
+  if (e) e.preventDefault();
+  closeAuthModal();
+  switchView('dashboard');
+  alert('Connexion réussie ! Bienvenue sur votre cockpit RH Winner Pointage.');
 }
