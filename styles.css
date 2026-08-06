@@ -1,0 +1,196 @@
+/* Preset B — Sécurité Nocturne Design System */
+:root {
+  --bg-dark: #0F1117;
+  --bg-card: #151922;
+  --bg-card-hover: #1C2433;
+  --bg-card-elevated: #1F283A;
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-accent: rgba(34, 197, 94, 0.25);
+  
+  --color-green: #22C55E;
+  --color-green-glow: rgba(34, 197, 94, 0.2);
+  --color-steel: #252A34;
+  --color-offwhite: #F5F7FA;
+  --color-muted: #94A3B8;
+  --color-orange: #F97316;
+  --color-red: #EF4444;
+  --color-cyan: #0EA5E9;
+  
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-serif: 'Playfair Display', Georgia, serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg-dark);
+  color: var(--color-offwhite);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* SVG Noise Overlay */
+.noise-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.035;
+}
+
+/* Typography Classes */
+.font-sans { font-family: var(--font-sans); }
+.font-serif { font-family: var(--font-serif); }
+.font-mono { font-family: var(--font-mono); }
+
+/* Glassmorphism & Depth */
+.glass-panel {
+  background: rgba(21, 25, 34, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-subtle);
+  border-radius: 1.25rem;
+}
+
+.glass-panel-elevated {
+  background: rgba(28, 37, 51, 0.85);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1.75rem;
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
+}
+
+.glass-pill {
+  background: rgba(21, 25, 34, 0.8);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+}
+
+/* Green Security Glows */
+.glow-green {
+  box-shadow: 0 0 25px -5px rgba(34, 197, 94, 0.4);
+}
+
+.glow-green-sm {
+  box-shadow: 0 0 12px 0 rgba(34, 197, 94, 0.3);
+}
+
+.glow-orange {
+  box-shadow: 0 0 25px -5px rgba(249, 115, 22, 0.4);
+}
+
+.glow-red {
+  box-shadow: 0 0 25px -5px rgba(239, 68, 68, 0.4);
+}
+
+/* Animations & Transitions */
+.magnetic-btn {
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.magnetic-btn:hover {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 10px 25px -5px rgba(34, 197, 94, 0.4);
+}
+
+.interactive-card {
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.interactive-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(34, 197, 94, 0.35);
+  box-shadow: 0 15px 30px -10px rgba(0, 0, 0, 0.6);
+}
+
+/* Radar & Scanner Pulse */
+@keyframes radar-sweep {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.radar-line {
+  animation: radar-sweep 4s linear infinite;
+  transform-origin: center center;
+}
+
+@keyframes scan-beam {
+  0% { top: 0%; opacity: 0.8; }
+  50% { top: 100%; opacity: 1; }
+  100% { top: 0%; opacity: 0.8; }
+}
+
+.scan-beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #22C55E, transparent);
+  box-shadow: 0 0 15px #22C55E;
+  animation: scan-beam 2.5s ease-in-out infinite;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.08); opacity: 0.4; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+.pulse-ring {
+  animation: pulse-ring 2s ease-in-out infinite;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0F1117;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1C2433;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #22C55E;
+}
+
+/* Badge Styles */
+.badge-verified {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22C55E;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.badge-alert {
+  background: rgba(249, 115, 22, 0.15);
+  color: #F97316;
+  border: 1px solid rgba(249, 115, 22, 0.3);
+}
+
+.badge-danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #EF4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.badge-info {
+  background: rgba(14, 165, 233, 0.15);
+  color: #0EA5E9;
+  border: 1px solid rgba(14, 165, 233, 0.3);
+}

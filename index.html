@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="fr" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Winner Pointage — SaaS de Pointage Géolocalisé & Sécurisé | Winner Digital SARL</title>
+  <meta name="description" content="Plateforme SaaS de pointage géolocalisé, anti-fraude, selfie IA et gestion du temps de travail pour Winner Digital SARL." />
+
+  <!-- Google Fonts: Inter (headings), Playfair Display (dramatic titles), JetBrains Mono (data) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,500;1,600;1,700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN v3 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              dark: '#0F1117',
+              card: '#151922',
+              cardHover: '#1C2433',
+              cardElevated: '#1F283A',
+              green: '#22C55E',
+              steel: '#252A34',
+              offwhite: '#F5F7FA',
+              muted: '#94A3B8',
+              orange: '#F97316',
+              red: '#EF4444',
+              cyan: '#0EA5E9'
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            serif: ['Playfair Display', 'serif'],
+            mono: ['JetBrains Mono', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- GSAP Animation Library CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+
+  <!-- Application Custom Styles -->
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="bg-[#0F1117] text-[#F5F7FA] min-h-screen relative antialiased selection:bg-emerald-500 selection:text-black">
+
+  <!-- SVG Noise Filter Overlay -->
+  <svg class="noise-overlay">
+    <filter id="noiseFilter">
+      <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" stitchTiles="stitch" />
+    </filter>
+    <rect width="100%" height="100%" filter="url(#noiseFilter)" />
+  </svg>
+
+  <!-- TOP BAR / ROLE SWITCHER HEADER -->
+  <header id="top-bar" class="w-full bg-[#151922]/90 border-b border-slate-800/80 px-4 py-2 text-xs flex flex-wrap items-center justify-between sticky top-0 z-50 backdrop-blur-md">
+    <div class="flex items-center space-x-3">
+      <div class="flex items-center space-x-2">
+        <span class="relative flex h-2 w-2">
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+        </span>
+        <span class="font-bold text-slate-200 tracking-wider">WINNER DIGITAL SARL</span>
+        <span class="text-slate-500">•</span>
+        <span class="text-slate-400">Siège Abidjan</span>
+      </div>
+      <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono text-[10px]">PRESET B — SÉCURITÉ NOCTURNE</span>
+    </div>
+
+    <!-- Quick Mode View Switcher -->
+    <div class="flex items-center space-x-2 my-1 sm:my-0">
+      <span class="text-slate-400 mr-1 hidden md:inline">Mode Démo :</span>
+      <button onclick="switchView('hero')" id="btn-view-hero" class="nav-view-btn px-2.5 py-1 rounded-md text-slate-300 hover:text-white bg-slate-800/60 border border-slate-700/50 transition">
+        Landing Page
+      </button>
+      <button onclick="switchView('dashboard')" id="btn-view-dashboard" class="nav-view-btn px-2.5 py-1 rounded-md text-emerald-400 font-semibold bg-emerald-500/10 border border-emerald-500/30 transition">
+        Tableau de Bord
+      </button>
+      <button onclick="switchView('employee')" id="btn-view-employee" class="nav-view-btn px-2.5 py-1 rounded-md text-slate-300 hover:text-white bg-slate-800/60 border border-slate-700/50 transition">
+        Espace Employé Mobile
+      </button>
+      <button onclick="switchView('manager')" id="btn-view-manager" class="nav-view-btn px-2.5 py-1 rounded-md text-slate-300 hover:text-white bg-slate-800/60 border border-slate-700/50 transition">
+        Espace Manager
+      </button>
+    </div>
+
+    <!-- Live System Clock -->
+    <div class="flex items-center space-x-2 font-mono text-emerald-400">
+      <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+      <span id="live-system-clock">08:00:00 GMT</span>
+    </div>
+  </header>
+
+  <!-- MAIN NAVIGATION PILL -->
+  <nav class="max-w-6xl mx-auto px-4 mt-4 sticky top-12 z-40">
+    <div class="glass-pill px-4 py-2.5 flex items-center justify-between shadow-2xl border border-white/10">
+      <div class="flex items-center space-x-3 cursor-pointer" onclick="switchView('dashboard')">
+        <div class="w-9 h-9 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 glow-green-sm">
+          <i data-lucide="shield-check" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-sm tracking-tight text-white flex items-center gap-1.5">
+            Winner Pointage
+            <span class="text-[10px] font-mono font-normal text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">v2.4 Pro</span>
+          </h1>
+          <p class="text-[10px] text-slate-400 font-mono">Pointage Géolocalisé & Anti-Fraude</p>
+        </div>
+      </div>
+
+      <!-- Navigation Links -->
+      <div class="hidden lg:flex items-center space-x-1 text-xs">
+        <button onclick="switchSection('overview')" class="nav-tab-link px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/50 active text-emerald-400 font-medium" data-tab="overview">
+          <i data-lucide="layout-dashboard" class="w-3.5 h-3.5 inline mr-1"></i>Vue d'Ensemble
+        </button>
+        <button onclick="switchSection('punch')" class="nav-tab-link px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/50" data-tab="punch">
+          <i data-lucide="navigation" class="w-3.5 h-3.5 inline mr-1"></i>Pointage GPS & Selfie
+        </button>
+        <button onclick="switchSection('leaves')" class="nav-tab-link px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/50" data-tab="leaves">
+          <i data-lucide="calendar-off" class="w-3.5 h-3.5 inline mr-1"></i>Congés
+        </button>
+        <button onclick="switchSection('overtime')" class="nav-tab-link px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/50" data-tab="overtime">
+          <i data-lucide="clock-4" class="w-3.5 h-3.5 inline mr-1"></i>Heures Supp
+        </button>
+        <button onclick="switchSection('lateness')" class="nav-tab-link px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/50" data-tab="lateness">
+          <i data-lucide="alert-triangle" class="w-3.5 h-3.5 inline mr-1"></i>Retards
+        </button>
+        <button onclick="switchSection('staff')" class="nav-tab-link px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/50" data-tab="staff">
+          <i data-lucide="users" class="w-3.5 h-3.5 inline mr-1"></i>Employés & Commerciaux
+        </button>
+        <button onclick="switchSection('security')" class="nav-tab-link px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/50" data-tab="security">
+          <i data-lucide="fingerprint" class="w-3.5 h-3.5 inline mr-1"></i>Anti-Fraude
+        </button>
+        <button onclick="switchSection('qr')" class="nav-tab-link px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/50" data-tab="qr">
+          <i data-lucide="qr-code" class="w-3.5 h-3.5 inline mr-1"></i>QR Code
+        </button>
+        <button onclick="switchSection('reports')" class="nav-tab-link px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/50" data-tab="reports">
+          <i data-lucide="file-text" class="w-3.5 h-3.5 inline mr-1"></i>Rapports PDF
+        </button>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex items-center space-x-2">
+        <button onclick="openCopilotDrawer()" class="px-3 py-1.5 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5 transition glow-green-sm">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+          <span class="hidden sm:inline">Copilote RH</span>
+        </button>
+        <button onclick="openPunchModal()" class="magnetic-btn px-4 py-1.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-500/20">
+          <i data-lucide="map-pin-check" class="w-3.5 h-3.5"></i>
+          Pointer Maintenant
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- CONTAINER MAIN CONTENT -->
+  <main class="max-w-7xl mx-auto px-4 py-6">
+
+    <!-- ==================== VIEW 1: HERO LANDING ==================== -->
+    <section id="view-hero" class="view-section hidden space-y-12 py-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+        
+        <!-- Left Hero Column -->
+        <div class="lg:col-span-7 space-y-6">
+          <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono">
+            <i data-lucide="shield-check" class="w-4 h-4"></i>
+            <span>Système Anti-Faux GPS & Biométrie Visuelle</span>
+          </div>
+
+          <h1 class="text-4xl md:text-6xl font-extrabold tracking-tight text-white leading-tight">
+            Le pointage qui <span class="font-serif italic text-emerald-400 font-normal">confirme réellement</span> la présence de vos employés.
+          </h1>
+
+          <p class="text-slate-300 text-base md:text-lg max-w-2xl leading-relaxed">
+            Spécialement configuré pour <strong class="text-white">Winner Digital SARL</strong> (Packaging personnalisé). Pointage GPS géofencé, reconnaissance faciale selfie IA, calcul automatique des retards, demandes de congé et suivi d'heures supplémentaires dans un cockpit sécurisé unique.
+          </p>
+
+          <!-- Key Metrics Pills -->
+          <div class="grid grid-cols-3 gap-4 pt-2 max-w-xl">
+            <div class="glass-panel p-3.5 text-center">
+              <div class="font-mono text-2xl font-bold text-emerald-400">100%</div>
+              <div class="text-[11px] text-slate-400">Périmètre GPS Vérifié</div>
+            </div>
+            <div class="glass-panel p-3.5 text-center">
+              <div class="font-mono text-2xl font-bold text-white">0.3s</div>
+              <div class="text-[11px] text-slate-400">Temps de Pointage</div>
+            </div>
+            <div class="glass-panel p-3.5 text-center">
+              <div class="font-mono text-2xl font-bold text-emerald-400">0%</div>
+              <div class="text-[11px] text-slate-400">Fraude Tolérée</div>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-4 pt-2">
+            <button onclick="openPunchModal()" class="magnetic-btn px-6 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-sm flex items-center gap-2 shadow-xl shadow-emerald-500/25">
+              <i data-lucide="play" class="w-4 h-4 fill-black"></i>
+              Tester le Pointage en Direct
+            </button>
+            <button onclick="switchView('dashboard')" class="px-6 py-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-white font-semibold text-sm border border-slate-700 flex items-center gap-2 transition">
+              <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+              Accéder au Tableau de Bord
+            </button>
+          </div>
+        </div>
+
+        <!-- Right Hero Interactive Punch Simulator -->
+        <div class="lg:col-span-5">
+          <div class="glass-panel-elevated p-6 relative overflow-hidden border border-emerald-500/30">
+            <div class="scan-beam"></div>
+
+            <div class="flex items-center justify-between mb-4 border-b border-slate-800 pb-3">
+              <div class="flex items-center space-x-2">
+                <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                <span class="font-mono text-xs text-slate-300">BORNE POINTAGE EN DIRECT</span>
+              </div>
+              <span class="text-xs text-emerald-400 font-mono">Abidjan HQ • Zone #1</span>
+            </div>
+
+            <!-- Radar GPS Display -->
+            <div class="relative w-full h-48 bg-slate-950/80 rounded-xl border border-slate-800 flex items-center justify-center overflow-hidden mb-4">
+              <!-- Grid Background -->
+              <div class="absolute inset-0 bg-[radial-gradient(#1c2533_1px,transparent_1px)] [background-size:16px_16px] opacity-40"></div>
+              
+              <!-- Geofence Circle -->
+              <div class="w-36 h-36 rounded-full border border-emerald-500/40 bg-emerald-500/5 flex items-center justify-center relative pulse-ring">
+                <div class="w-24 h-24 rounded-full border border-dashed border-emerald-400/60 flex items-center justify-center">
+                  <!-- Central HQ Pin -->
+                  <div class="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center glow-green-sm">
+                    <div class="w-1.5 h-1.5 rounded-full bg-black"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Scanner Line -->
+              <div class="absolute inset-0 radar-line opacity-30 bg-[conic-gradient(from_0deg,transparent_0_300deg,rgba(34,197,94,0.4)_360deg)] rounded-xl"></div>
+
+              <!-- Real-time Position Label -->
+              <div class="absolute bottom-2 left-2 right-2 bg-slate-900/90 backdrop-blur-md rounded-lg p-2 border border-slate-800 flex justify-between text-[11px] font-mono">
+                <span class="text-slate-400">Position : <strong class="text-emerald-400">5.3599° N, 4.0083° W</strong></span>
+                <span class="text-emerald-400">Rayon OK (12m)</span>
+              </div>
+            </div>
+
+            <!-- Live Status Badges -->
+            <div class="space-y-2 mb-4">
+              <div class="flex items-center justify-between p-2.5 rounded-lg bg-slate-900/60 border border-slate-800 text-xs">
+                <span class="text-slate-400 flex items-center gap-1.5">
+                  <i data-lucide="user-check" class="w-4 h-4 text-emerald-400"></i> Selfie IA Biométrique
+                </span>
+                <span class="text-emerald-400 font-mono font-bold">Vérifié (99.2%)</span>
+              </div>
+              <div class="flex items-center justify-between p-2.5 rounded-lg bg-slate-900/60 border border-slate-800 text-xs">
+                <span class="text-slate-400 flex items-center gap-1.5">
+                  <i data-lucide="shield-alert" class="w-4 h-4 text-emerald-400"></i> Détection Faux GPS
+                </span>
+                <span class="text-emerald-400 font-mono font-bold">Risque Nul (0/100)</span>
+              </div>
+            </div>
+
+            <!-- Punch Action Trigger -->
+            <button onclick="openPunchModal()" class="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-sm tracking-wide transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2">
+              <i data-lucide="fingerprint" class="w-5 h-5"></i>
+              SIMULER UN POINTAGE EN DÉMO
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+
+    <!-- ==================== VIEW 2: DASHBOARD MAIN ==================== -->
+    <section id="view-dashboard" class="view-section space-y-6">
+
+      <!-- Dashboard Header -->
+      <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+        <div>
+          <h2 class="text-2xl font-extrabold text-white flex items-center gap-2">
+            Cockpit de Présence en Temps Réel
+            <span class="text-xs font-mono font-normal text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">Winner Digital HQ</span>
+          </h2>
+          <p class="text-xs text-slate-400">Suivi direct de l'effectif, retards, congés et alertes anti-fraude.</p>
+        </div>
+
+        <!-- Filters & Timeframes -->
+        <div class="flex items-center space-x-2">
+          <select id="site-filter" onchange="renderDashboard()" class="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-emerald-500">
+            <option value="all">Tous les sites (1 Site actif)</option>
+            <option value="hq" selected>Siège Winner Digital — Zone Industrielle Yopougon</option>
+          </select>
+          <button onclick="triggerRefreshSimulatedData()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition" title="Actualiser le flux">
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- MAIN SECTION SWITCHER TABS -->
+      <div class="flex items-center space-x-2 border-b border-slate-800/60 pb-2 overflow-x-auto">
+        <button onclick="switchSection('overview')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold transition text-emerald-400 bg-emerald-500/10 border border-emerald-500/30" data-section="overview">
+          Vue d'Ensemble
+        </button>
+        <button onclick="switchSection('punch')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="punch">
+          Pointage GPS & Geofence
+        </button>
+        <button onclick="switchSection('leaves')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="leaves">
+          Demandes de Congé
+        </button>
+        <button onclick="switchSection('overtime')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="overtime">
+          Heures Supplémentaires
+        </button>
+        <button onclick="switchSection('lateness')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="lateness">
+          Calcul des Retards
+        </button>
+        <button onclick="switchSection('staff')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="staff">
+          Employés & Commerciaux
+        </button>
+        <button onclick="switchSection('security')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="security">
+          Sécurité & Faux GPS
+        </button>
+        <button onclick="switchSection('qr')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="qr">
+          QR Code Kiosque
+        </button>
+        <button onclick="switchSection('reports')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="reports">
+          Rapports PDF
+        </button>
+      </div>
+
+      <!-- SUB-SECTION 1: OVERVIEW -->
+      <div id="section-overview" class="sub-section space-y-6">
+        
+        <!-- KPI METRICS GRID -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          
+          <!-- KPI 1: Effectif -->
+          <div class="glass-panel p-4 interactive-card border-slate-800">
+            <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+              <span>Effectif Total</span>
+              <i data-lucide="users" class="w-4 h-4 text-slate-400"></i>
+            </div>
+            <div id="kpi-total" class="text-2xl font-bold font-mono text-white">10</div>
+            <div class="text-[10px] text-slate-500 mt-1">Winner Digital SARL</div>
+          </div>
+
+          <!-- KPI 2: Présents -->
+          <div class="glass-panel p-4 interactive-card border-emerald-500/20 bg-emerald-500/5">
+            <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+              <span>Présents</span>
+              <i data-lucide="user-check" class="w-4 h-4 text-emerald-400"></i>
+            </div>
+            <div id="kpi-presents" class="text-2xl font-bold font-mono text-emerald-400">8</div>
+            <div class="text-[10px] text-emerald-500/80 mt-1">Taux : 80.0%</div>
+          </div>
+
+          <!-- KPI 3: Retards -->
+          <div class="glass-panel p-4 interactive-card border-orange-500/20 bg-orange-500/5">
+            <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+              <span>Retards</span>
+              <i data-lucide="clock" class="w-4 h-4 text-orange-400"></i>
+            </div>
+            <div id="kpi-retards" class="text-2xl font-bold font-mono text-orange-400">1</div>
+            <div class="text-[10px] text-orange-400/80 mt-1">Total : 18 min</div>
+          </div>
+
+          <!-- KPI 4: Congés -->
+          <div class="glass-panel p-4 interactive-card border-cyan-500/20 bg-cyan-500/5">
+            <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+              <span>En Congé</span>
+              <i data-lucide="palmtree" class="w-4 h-4 text-cyan-400"></i>
+            </div>
+            <div id="kpi-conges" class="text-2xl font-bold font-mono text-cyan-400">1</div>
+            <div class="text-[10px] text-cyan-400/80 mt-1">Congé Annuel</div>
+          </div>
+
+          <!-- KPI 5: Heures Supp -->
+          <div class="glass-panel p-4 interactive-card border-emerald-500/20">
+            <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+              <span>Heures Supp.</span>
+              <i data-lucide="trending-up" class="w-4 h-4 text-emerald-400"></i>
+            </div>
+            <div id="kpi-heures-supp" class="text-2xl font-bold font-mono text-emerald-400">14.5 h</div>
+            <div class="text-[10px] text-slate-500 mt-1">Cumul du mois</div>
+          </div>
+
+          <!-- KPI 6: Alertes Fraude -->
+          <div class="glass-panel p-4 interactive-card border-red-500/20 bg-red-500/5">
+            <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+              <span>Alertes Fraude</span>
+              <i data-lucide="shield-alert" class="w-4 h-4 text-red-400"></i>
+            </div>
+            <div id="kpi-alertes" class="text-2xl font-bold font-mono text-red-400">0</div>
+            <div class="text-[10px] text-emerald-400 mt-1">0 Tentative Bloquée</div>
+          </div>
+
+        </div>
+
+        <!-- CHARTS & LIVE FEED ROW -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+          <!-- Left Column: Attendance Gauge & Arrivals Timeline -->
+          <div class="lg:col-span-5 glass-panel p-5 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                <i data-lucide="pie-chart" class="w-4 h-4 text-emerald-400"></i>
+                Jauge de Présence Globale
+              </h3>
+              <span class="text-xs font-mono text-emerald-400">80% Présents</span>
+            </div>
+
+            <!-- Radial Gauge -->
+            <div class="flex flex-col items-center justify-center py-2">
+              <div class="relative w-40 h-40 flex items-center justify-center">
+                <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                  <path class="text-slate-800" stroke-width="3.5" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                  <path class="text-emerald-500 stroke-current transition-all duration-1000 ease-out" stroke-dasharray="80, 100" stroke-width="3.5" stroke-linecap="round" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                </svg>
+                <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
+                  <span class="text-3xl font-extrabold font-mono text-white">8/10</span>
+                  <span class="text-[10px] text-slate-400 uppercase tracking-widest">Actifs</span>
+                </div>
+              </div>
+
+              <!-- Breakdown Bar -->
+              <div class="w-full space-y-2 mt-4 text-xs font-mono">
+                <div class="flex justify-between text-slate-300">
+                  <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>Présents à l'heure</span>
+                  <span>7 employés</span>
+                </div>
+                <div class="flex justify-between text-slate-300">
+                  <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-orange-500"></span>Retards</span>
+                  <span>1 employé</span>
+                </div>
+                <div class="flex justify-between text-slate-300">
+                  <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-cyan-500"></span>Congé</span>
+                  <span>1 employé</span>
+                </div>
+                <div class="flex justify-between text-slate-300">
+                  <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-red-500"></span>Absents</span>
+                  <span>1 employé</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column: Live Activity Feed -->
+          <div class="lg:col-span-7 glass-panel p-5 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 class="font-bold text-sm text-white flex items-center gap-2">
+                <i data-lucide="activity" class="w-4 h-4 text-emerald-400"></i>
+                Journal de Pointage en Direct
+              </h3>
+              <span class="text-xs text-slate-400 font-mono">Aujourd'hui • Winner HQ</span>
+            </div>
+
+            <!-- Feed Table -->
+            <div class="overflow-x-auto max-h-72 overflow-y-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-900/80 text-slate-400 font-mono uppercase text-[10px] sticky top-0">
+                  <tr>
+                    <th class="p-2.5">Employé</th>
+                    <th class="p-2.5">Heure</th>
+                    <th class="p-2.5">Méthode</th>
+                    <th class="p-2.5">Distance</th>
+                    <th class="p-2.5">Statut</th>
+                  </tr>
+                </thead>
+                <tbody id="live-punch-table" class="divide-y divide-slate-800/60 font-mono text-slate-300">
+                  <!-- Dynamically populated JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- SUB-SECTION 2: PUNCH GPS -->
+      <div id="section-punch" class="sub-section hidden space-y-6">
+        <div class="glass-panel p-6 space-y-6">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div>
+              <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                <i data-lucide="navigation" class="w-5 h-5 text-emerald-400"></i>
+                Pointage GPS & Géofencing Sécurisé
+              </h3>
+              <p class="text-xs text-slate-400">L'employé est localisé au mètre près avec calcul de distance et barrière géographique.</p>
+            </div>
+            <button onclick="openPunchModal()" class="px-4 py-2 rounded-xl bg-emerald-500 text-black font-bold text-xs hover:bg-emerald-400 transition flex items-center gap-1.5">
+              <i data-lucide="map-pin" class="w-4 h-4"></i> Lancer Simulateur Pointage
+            </button>
+          </div>
+
+          <!-- Geofence Interactive Config -->
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+            <!-- Map Visualization Mock -->
+            <div class="lg:col-span-7 bg-slate-950 rounded-2xl p-4 border border-slate-800 relative h-72 flex flex-col justify-between overflow-hidden">
+              <div class="absolute inset-0 opacity-20 bg-[radial-gradient(#22c55e_1px,transparent_1px)] [background-size:20px_20px]"></div>
+              
+              <div class="relative z-10 flex justify-between items-start text-xs font-mono">
+                <span class="px-2 py-1 bg-slate-900/90 rounded border border-slate-700 text-emerald-400">
+                  Zone 1 : Siège Winner Digital Yopougon
+                </span>
+                <span class="px-2 py-1 bg-slate-900/90 rounded border border-slate-700 text-slate-300">
+                  Rayon : <strong id="current-radius-label" class="text-emerald-400">150 m</strong>
+                </span>
+              </div>
+
+              <!-- Interactive Circle Center -->
+              <div class="relative z-10 flex items-center justify-center my-auto">
+                <div id="geofence-visual-circle" class="w-44 h-44 rounded-full border-2 border-emerald-500 bg-emerald-500/10 flex items-center justify-center relative transition-all duration-300">
+                  <div class="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-black font-bold shadow-lg shadow-emerald-500/50">
+                    <i data-lucide="building" class="w-4 h-4"></i>
+                  </div>
+                  <!-- Satellite Dot -->
+                  <div class="absolute top-4 right-6 w-3 h-3 rounded-full bg-emerald-400 glow-green animate-ping"></div>
+                </div>
+              </div>
+
+              <div class="relative z-10 flex justify-between text-[11px] font-mono text-slate-400">
+                <span>Lat: 5.359942° N | Long: -4.008311° W</span>
+                <span class="text-emerald-400">Précision GPS : ± 4m</span>
+              </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="lg:col-span-5 space-y-4">
+              <div class="space-y-2">
+                <label class="text-xs text-slate-300 font-semibold block">Ajuster le Rayon Autorisé (Mètres)</label>
+                <input type="range" id="radius-slider" min="50" max="500" value="150" oninput="updateGeofenceRadius(this.value)" class="w-full accent-emerald-500 bg-slate-800 rounded-lg cursor-pointer" />
+                <div class="flex justify-between text-[10px] font-mono text-slate-500">
+                  <span>50m (Strict)</span>
+                  <span>150m (Recommandé)</span>
+                  <span>500m (Large)</span>
+                </div>
+              </div>
+
+              <div class="p-3 rounded-xl bg-slate-900/60 border border-slate-800 text-xs space-y-2">
+                <div class="flex justify-between text-slate-300">
+                  <span>Tolérance GPS :</span>
+                  <span class="font-mono text-emerald-400">Haute Précision (Mobile)</span>
+                </div>
+                <div class="flex justify-between text-slate-300">
+                  <span>Statut Réseau :</span>
+                  <span class="font-mono text-emerald-400">Connexion Chiffrée TLS</span>
+                </div>
+                <div class="flex justify-between text-slate-300">
+                  <span>Pointages Hors Zone :</span>
+                  <span class="font-mono text-orange-400">Refus + Alerte Manager</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUB-SECTION 3: LEAVES (DEMANDES DE CONGÉ) -->
+      <div id="section-leaves" class="sub-section hidden space-y-6">
+        <div class="glass-panel p-6 space-y-6">
+          <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+            <div>
+              <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                <i data-lucide="calendar-off" class="w-5 h-5 text-cyan-400"></i>
+                Gestion des Demandes de Congé & Absences
+              </h3>
+              <p class="text-xs text-slate-400">Soumission mobile, soldes en temps réel et validation par la direction.</p>
+            </div>
+            <button onclick="openLeaveModal()" class="px-4 py-2 rounded-xl bg-cyan-500 text-black font-bold text-xs hover:bg-cyan-400 transition flex items-center gap-1.5">
+              <i data-lucide="plus-circle" class="w-4 h-4"></i> Nouvelle Demande de Congé
+            </button>
+          </div>
+
+          <!-- Employee Balances Grid -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="p-4 rounded-xl bg-slate-900/80 border border-cyan-500/20 space-y-1">
+              <span class="text-xs text-slate-400">Congé Payé Annuel</span>
+              <div class="text-2xl font-bold font-mono text-cyan-400">22 / 24 <span class="text-xs text-slate-400 font-sans">jours restants</span></div>
+              <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-2">
+                <div class="bg-cyan-400 h-full w-[91%]"></div>
+              </div>
+            </div>
+            <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
+              <span class="text-xs text-slate-400">Congé Maladie</span>
+              <div class="text-2xl font-bold font-mono text-white">5 / 5 <span class="text-xs text-slate-400 font-sans">jours restants</span></div>
+              <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-2">
+                <div class="bg-emerald-500 h-full w-[100%]"></div>
+              </div>
+            </div>
+            <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
+              <span class="text-xs text-slate-400">Permissions Exceptionnelles</span>
+              <div class="text-2xl font-bold font-mono text-white">2 / 3 <span class="text-xs text-slate-400 font-sans">jours restants</span></div>
+              <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-2">
+                <div class="bg-orange-400 h-full w-[66%]"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Leave Requests List -->
+          <div class="space-y-3">
+            <h4 class="text-xs font-mono font-bold uppercase text-slate-400">Historique des Demandes de l'Équipe</h4>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-900 text-slate-400 font-mono uppercase text-[10px]">
+                  <tr>
+                    <th class="p-3">Employé</th>
+                    <th class="p-3">Type</th>
+                    <th class="p-3">Période</th>
+                    <th class="p-3">Durée</th>
+                    <th class="p-3">Motif</th>
+                    <th class="p-3">Statut</th>
+                    <th class="p-3 text-right">Actions Manager</th>
+                  </tr>
+                </thead>
+                <tbody id="leave-requests-table" class="divide-y divide-slate-800/60 font-mono text-slate-300">
+                  <!-- Dynamically Rendered JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUB-SECTION 4: OVERTIME (HEURES SUPPLÉMENTAIRES) -->
+      <div id="section-overtime" class="sub-section hidden space-y-6">
+        <div class="glass-panel p-6 space-y-6">
+          <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+            <div>
+              <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                <i data-lucide="clock-4" class="w-5 h-5 text-emerald-400"></i>
+                Gestion des Heures Supplémentaires
+              </h3>
+              <p class="text-xs text-slate-400">Calcul automatique après 17h00, majoration taux +25%/+50% et plafonds mensuels.</p>
+            </div>
+            <button onclick="openOvertimeModal()" class="px-4 py-2 rounded-xl bg-emerald-500 text-black font-bold text-xs hover:bg-emerald-400 transition flex items-center gap-1.5">
+              <i data-lucide="plus-circle" class="w-4 h-4"></i> Déclarer Heures Supp.
+            </button>
+          </div>
+
+          <!-- Overtime Overview Stats -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="p-4 rounded-xl bg-slate-900/80 border border-emerald-500/20">
+              <span class="text-xs text-slate-400">Cumul du Mois (Équipe)</span>
+              <div class="text-2xl font-bold font-mono text-emerald-400">14.5 Heures</div>
+              <span class="text-[10px] text-slate-500">Plafond légal : 40h/mois</span>
+            </div>
+            <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800">
+              <span class="text-xs text-slate-400">Heures Validées</span>
+              <div class="text-2xl font-bold font-mono text-white">12.0 Heures</div>
+              <span class="text-[10px] text-emerald-400">Prêtes pour la Paie</span>
+            </div>
+            <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800">
+              <span class="text-xs text-slate-400">En Attente de Validation</span>
+              <div class="text-2xl font-bold font-mono text-orange-400">2.5 Heures</div>
+              <span class="text-[10px] text-slate-500">1 demande en attente</span>
+            </div>
+          </div>
+
+          <!-- Overtime Table -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-900 text-slate-400 font-mono uppercase text-[10px]">
+                <tr>
+                  <th class="p-3">Employé</th>
+                  <th class="p-3">Date</th>
+                  <th class="p-3">Créneau</th>
+                  <th class="p-3">Durée</th>
+                  <th class="p-3">Majoration</th>
+                  <th class="p-3">Motif</th>
+                  <th class="p-3">Statut</th>
+                  <th class="p-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody id="overtime-table" class="divide-y divide-slate-800/60 font-mono text-slate-300">
+                <!-- Dynamically Rendered JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUB-SECTION 5: LATENESS (CALCUL RETARDS) -->
+      <div id="section-lateness" class="sub-section hidden space-y-6">
+        <div class="glass-panel p-6 space-y-6">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div>
+              <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                <i data-lucide="alert-triangle" class="w-5 h-5 text-orange-400"></i>
+                Calcul Automatique des Retards
+              </h3>
+              <p class="text-xs text-slate-400">Comparaison automatique heure d'arrivée vs planning (8h00), tolérance 10 min, justifications.</p>
+            </div>
+            <span class="px-3 py-1 rounded-full bg-orange-500/10 border border-orange-500/30 text-orange-400 font-mono text-xs">
+              Tolérance Activée : 10 minutes
+            </span>
+          </div>
+
+          <!-- Retards Log Table -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-900 text-slate-400 font-mono uppercase text-[10px]">
+                <tr>
+                  <th class="p-3">Employé</th>
+                  <th class="p-3">Date</th>
+                  <th class="p-3">Prévu</th>
+                  <th class="p-3">Arrivée Réelle</th>
+                  <th class="p-3">Retard (Min)</th>
+                  <th class="p-3">Justification</th>
+                  <th class="p-3">Statut</th>
+                  <th class="p-3 text-right">Action Manager</th>
+                </tr>
+              </thead>
+              <tbody id="lateness-table" class="divide-y divide-slate-800/60 font-mono text-slate-300">
+                <!-- Dynamically Rendered JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUB-SECTION 6: STAFF & FIELD SALES -->
+      <div id="section-staff" class="sub-section hidden space-y-6">
+        <div class="glass-panel p-6 space-y-6">
+          <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+            <div>
+              <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                <i data-lucide="users" class="w-5 h-5 text-emerald-400"></i>
+                Registre des Employés & Commerciaux Terrain
+              </h3>
+              <p class="text-xs text-slate-400">Winner Digital SARL • Effectif 10 personnes, gestion multi-postes & missions terrain.</p>
+            </div>
+            <button onclick="alert('Ajout d\'employé réservé à l\'administrateur.')" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs border border-slate-700 transition flex items-center gap-1.5">
+              <i data-lucide="user-plus" class="w-4 h-4"></i> Ajouter un Employé
+            </button>
+          </div>
+
+          <!-- Staff Cards Grid -->
+          <div id="staff-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <!-- Rendered JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- SUB-SECTION 7: SECURITY & ANTI-SPOOF -->
+      <div id="section-security" class="sub-section hidden space-y-6">
+        <div class="glass-panel p-6 space-y-6 border border-red-500/20">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div>
+              <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                <i data-lucide="fingerprint" class="w-5 h-5 text-red-400"></i>
+                Bouclier Anti-Faux GPS & Audit Sécurité
+              </h3>
+              <p class="text-xs text-slate-400">Détection d'applications Fake GPS, Mode Développeur, sauts géographiques irréalistes.</p>
+            </div>
+            <span class="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono">
+              Protection Active (Niveau 4)
+            </span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
+              <span class="text-xs text-slate-400">Tentatives de Faux GPS</span>
+              <div class="text-2xl font-bold font-mono text-emerald-400">0 Détectées</div>
+              <span class="text-[10px] text-slate-500">Dernières 24h</span>
+            </div>
+            <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
+              <span class="text-xs text-slate-400">Intégrité des Selfies</span>
+              <div class="text-2xl font-bold font-mono text-emerald-400">100% Conformes</div>
+              <span class="text-[10px] text-slate-500">Liveness Test OK</span>
+            </div>
+            <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
+              <span class="text-xs text-slate-400">Score de Risque Moyen</span>
+              <div class="text-2xl font-bold font-mono text-emerald-400">2 / 100</div>
+              <span class="text-[10px] text-slate-500">Niveau de Risque Faible</span>
+            </div>
+          </div>
+
+          <!-- Security Audit Log -->
+          <div class="space-y-2">
+            <h4 class="text-xs font-mono font-bold text-slate-400 uppercase">Journal d'Audit des Signaux Suspects</h4>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs font-mono">
+                <thead class="bg-slate-900 text-slate-400 uppercase text-[10px]">
+                  <tr>
+                    <th class="p-2.5">Horodatage</th>
+                    <th class="p-2.5">Employé</th>
+                    <th class="p-2.5">Signal Analyse</th>
+                    <th class="p-2.5">Score Risque</th>
+                    <th class="p-2.5">Décision</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800 text-slate-300">
+                  <tr>
+                    <td class="p-2.5 text-slate-400">08:02:14 GMT</td>
+                    <td class="p-2.5 font-bold text-white">Marc KOUASSI</td>
+                    <td class="p-2.5">Signal GPS Standard • Precision 4m</td>
+                    <td class="p-2.5 text-emerald-400 font-bold">0 / 100</td>
+                    <td class="p-2.5"><span class="badge-verified px-2 py-0.5 rounded">Autorisé</span></td>
+                  </tr>
+                  <tr>
+                    <td class="p-2.5 text-slate-400">07:58:30 GMT</td>
+                    <td class="p-2.5 font-bold text-white">Awa KONE</td>
+                    <td class="p-2.5">Signal GPS Standard • Distance 12m</td>
+                    <td class="p-2.5 text-emerald-400 font-bold">0 / 100</td>
+                    <td class="p-2.5"><span class="badge-verified px-2 py-0.5 rounded">Autorisé</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUB-SECTION 8: QR CODE DYNAMIQUE -->
+      <div id="section-qr" class="sub-section hidden space-y-6">
+        <div class="glass-panel p-6 space-y-6 text-center max-w-xl mx-auto">
+          <div class="space-y-1">
+            <h3 class="text-lg font-bold text-white flex items-center justify-center gap-2">
+              <i data-lucide="qr-code" class="w-5 h-5 text-emerald-400"></i>
+              Borne QR Code Dynamique d'Entrée
+            </h3>
+            <p class="text-xs text-slate-400">Le QR code se régénère toutes les 30 secondes pour empêcher la capture d'écran frauduleuse.</p>
+          </div>
+
+          <!-- Dynamic QR Container -->
+          <div class="p-6 bg-white rounded-2xl inline-block shadow-2xl relative border-4 border-emerald-500/50">
+            <svg id="qr-code-svg" class="w-48 h-48 mx-auto text-black" viewBox="0 0 100 100">
+              <!-- Simple generated QR Pattern -->
+              <rect width="100" height="100" fill="white" />
+              <rect x="10" y="10" width="30" height="30" fill="black" />
+              <rect x="15" y="15" width="20" height="20" fill="white" />
+              <rect x="20" y="20" width="10" height="10" fill="black" />
+
+              <rect x="60" y="10" width="30" height="30" fill="black" />
+              <rect x="65" y="15" width="20" height="20" fill="white" />
+              <rect x="70" y="20" width="10" height="10" fill="black" />
+
+              <rect x="10" y="60" width="30" height="30" fill="black" />
+              <rect x="15" y="65" width="20" height="20" fill="white" />
+              <rect x="20" y="70" width="10" height="10" fill="black" />
+
+              <!-- Random Data Dots -->
+              <rect x="45" y="15" width="8" height="8" fill="black" />
+              <rect x="45" y="35" width="8" height="8" fill="black" />
+              <rect x="45" y="55" width="8" height="8" fill="black" />
+              <rect x="45" y="75" width="8" height="8" fill="black" />
+              <rect x="15" y="45" width="8" height="8" fill="black" />
+              <rect x="35" y="45" width="8" height="8" fill="black" />
+              <rect x="55" y="45" width="8" height="8" fill="black" />
+              <rect x="75" y="45" width="8" height="8" fill="black" />
+              <rect x="60" y="60" width="12" height="12" fill="black" />
+              <rect x="78" y="78" width="12" height="12" fill="black" />
+            </svg>
+          </div>
+
+          <!-- Countdown Progress -->
+          <div class="space-y-2">
+            <div class="flex justify-between text-xs font-mono text-slate-300 max-w-xs mx-auto">
+              <span>Prochain renouvellement :</span>
+              <span id="qr-timer" class="text-emerald-400 font-bold">28s</span>
+            </div>
+            <div class="w-full max-w-xs mx-auto bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div id="qr-progress-bar" class="bg-emerald-500 h-full w-[90%] transition-all duration-1000"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUB-SECTION 9: REPORTS PDF -->
+      <div id="section-reports" class="sub-section hidden space-y-6">
+        <div class="glass-panel p-6 space-y-6">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div>
+              <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                <i data-lucide="file-text" class="w-5 h-5 text-emerald-400"></i>
+                Générateur de Rapports PDF Officiels
+              </h3>
+              <p class="text-xs text-slate-400">Synthèse de présence, heures supplémentaires, retards et signatures RH pour Winner Digital SARL.</p>
+            </div>
+            <button onclick="openReportPreviewModal()" class="px-4 py-2 rounded-xl bg-emerald-500 text-black font-bold text-xs hover:bg-emerald-400 transition flex items-center gap-1.5 shadow-lg">
+              <i data-lucide="printer" class="w-4 h-4"></i> Générer / Imprimer Rapport PDF
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+              <span class="text-xs font-bold text-white">Rapport Hebdomadaire</span>
+              <p class="text-[11px] text-slate-400">Détail des 42 pointages de la semaine du 01 au 05 Août 2026.</p>
+              <button onclick="openReportPreviewModal()" class="w-full py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-mono font-bold transition">Aperçu PDF</button>
+            </div>
+            <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+              <span class="text-xs font-bold text-white">Bilan Mensuel des Retards</span>
+              <p class="text-[11px] text-slate-400">Récapitulatif des retards cumulés et justifications validées.</p>
+              <button onclick="openReportPreviewModal()" class="w-full py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-mono font-bold transition">Aperçu PDF</button>
+            </div>
+            <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+              <span class="text-xs font-bold text-white">Export Paie (Heures Supp)</span>
+              <p class="text-[11px] text-slate-400">Export certifié des heures supplémentaires à transmettre à la comptabilité.</p>
+              <button onclick="openReportPreviewModal()" class="w-full py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-mono font-bold transition">Aperçu PDF</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+
+  <!-- ==================== MODALS & DRAWERS ==================== -->
+
+  <!-- MODAL 1: PUNCH MODAL (GEOLOCATION & SELFIE SIMULATOR) -->
+  <div id="modal-punch" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="glass-panel-elevated max-w-lg w-full p-6 space-y-5 border border-emerald-500/40 relative">
+      <button onclick="closePunchModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white p-1">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <div class="space-y-1">
+        <h3 class="text-lg font-bold text-white flex items-center gap-2">
+          <i data-lucide="navigation" class="w-5 h-5 text-emerald-400"></i>
+          Pointage de Présence Sécurisé
+        </h3>
+        <p class="text-xs text-slate-400">Winner Digital SARL • Géolocalisation & Vérification Biométrique</p>
+      </div>
+
+      <!-- Employee Selector -->
+      <div>
+        <label class="text-xs text-slate-300 font-semibold mb-1 block">Sélectionner l'Employé :</label>
+        <select id="punch-employee-select" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-mono">
+          <option value="1">Marc KOUASSI (Chef d'Atelier Packaging)</option>
+          <option value="2">Awa KONE (Responsable Qualité)</option>
+          <option value="3">Jean-Luc BAMBA (Commercial Terrain)</option>
+        </select>
+      </div>
+
+      <!-- Live Camera Stream Simulation -->
+      <div class="relative w-full h-52 bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center">
+        <!-- Grid overlay -->
+        <div class="absolute inset-0 bg-[radial-gradient(#1c2533_1px,transparent_1px)] [background-size:12px_12px] opacity-40"></div>
+
+        <!-- Face Frame Box -->
+        <div class="w-36 h-44 rounded-2xl border-2 border-dashed border-emerald-400/80 flex flex-col items-center justify-between p-2 relative">
+          <span class="text-[9px] font-mono text-emerald-400 bg-black/60 px-1 rounded">Cadrer le Visage</span>
+          <div class="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-emerald-400">
+            <i data-lucide="user" class="w-8 h-8"></i>
+          </div>
+          <span id="selfie-match-badge" class="text-[9px] font-mono text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/40">Détection : 98.6%</span>
+        </div>
+
+        <div class="absolute bottom-2 left-2 right-2 flex justify-between text-[10px] font-mono text-slate-400 bg-slate-900/90 p-1.5 rounded border border-slate-800">
+          <span>Luminosité : OK</span>
+          <span class="text-emerald-400">Anti-Spoofing : Valide</span>
+        </div>
+      </div>
+
+      <!-- Location Verification status -->
+      <div class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1 text-xs font-mono">
+        <div class="flex justify-between">
+          <span class="text-slate-400">Coordonnées GPS :</span>
+          <span class="text-emerald-400">5.3599° N, 4.0083° W</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-slate-400">Distance au bureau :</span>
+          <span class="text-emerald-400">14 mètres (Dans le rayon)</span>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="grid grid-cols-2 gap-3 pt-2">
+        <button onclick="submitPunch('ENTRÉE')" class="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs tracking-wider transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-1.5">
+          <i data-lucide="log-in" class="w-4 h-4"></i> POINTER L'ARRIVÉE
+        </button>
+        <button onclick="submitPunch('SORTIE')" class="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs tracking-wider transition flex items-center justify-center gap-1.5">
+          <i data-lucide="log-out" class="w-4 h-4"></i> POINTER LA SORTIE
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- MODAL 2: LEAVE REQUEST FORM -->
+  <div id="modal-leave" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="glass-panel-elevated max-w-md w-full p-6 space-y-4 border border-cyan-500/40 relative">
+      <button onclick="closeLeaveModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white p-1">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <h3 class="text-lg font-bold text-white flex items-center gap-2">
+        <i data-lucide="calendar-plus" class="w-5 h-5 text-cyan-400"></i>
+        Nouvelle Demande de Congé
+      </h3>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="text-slate-300 font-semibold mb-1 block">Type de Congé :</label>
+          <select id="leave-type" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-cyan-500">
+            <option>Congé Payé Annuel</option>
+            <option>Congé Maladie (avec justificatif)</option>
+            <option>Permission Exceptionnelle</option>
+            <option>Télétravail Exceptionnel</option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-slate-300 font-semibold mb-1 block">Date de Début :</label>
+            <input type="date" id="leave-start" value="2026-08-10" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-cyan-500" />
+          </div>
+          <div>
+            <label class="text-slate-300 font-semibold mb-1 block">Date de Fin :</label>
+            <input type="date" id="leave-end" value="2026-08-14" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-cyan-500" />
+          </div>
+        </div>
+
+        <div>
+          <label class="text-slate-300 font-semibold mb-1 block">Motif / Commentaire :</label>
+          <textarea id="leave-reason" rows="3" placeholder="Précisez le motif de la demande..." class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200 focus:outline-none focus:border-cyan-500"></textarea>
+        </div>
+      </div>
+
+      <button onclick="submitLeaveRequest()" class="w-full py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs tracking-wider transition">
+        SOUMETTRE LA DEMANDE
+      </button>
+    </div>
+  </div>
+
+
+  <!-- MODAL 3: OVERTIME FORM -->
+  <div id="modal-overtime" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="glass-panel-elevated max-w-md w-full p-6 space-y-4 border border-emerald-500/40 relative">
+      <button onclick="closeOvertimeModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white p-1">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <h3 class="text-lg font-bold text-white flex items-center gap-2">
+        <i data-lucide="clock-4" class="w-5 h-5 text-emerald-400"></i>
+        Déclaration d'Heures Supplémentaires
+      </h3>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="text-slate-300 font-semibold mb-1 block">Employé Concerné :</label>
+          <select id="overtime-employee" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200">
+            <option>Marc KOUASSI (Chef d'Atelier)</option>
+            <option>Jean-Luc BAMBA (Commercial)</option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-slate-300 font-semibold mb-1 block">Heure de Début :</label>
+            <input type="time" value="17:00" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200" />
+          </div>
+          <div>
+            <label class="text-slate-300 font-semibold mb-1 block">Heure de Fin :</label>
+            <input type="time" value="19:30" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200" />
+          </div>
+        </div>
+
+        <div>
+          <label class="text-slate-300 font-semibold mb-1 block">Motif de la Mission Prolongée :</label>
+          <input type="text" value="Commandes urgentes étiquetage packaging" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200" />
+        </div>
+      </div>
+
+      <button onclick="submitOvertimeRequest()" class="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs tracking-wider transition">
+        VALIDER ET TRANSMETTRE
+      </button>
+    </div>
+  </div>
+
+
+  <!-- MODAL 4: REPORT PREVIEW (PDF MODAL) -->
+  <div id="modal-report-preview" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-md hidden items-center justify-center p-4">
+    <div class="bg-slate-950 text-slate-100 max-w-3xl w-full max-h-[90vh] rounded-2xl border border-slate-800 overflow-y-auto p-8 relative space-y-6 shadow-2xl">
+      <button onclick="closeReportPreviewModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white p-1">
+        <i data-lucide="x" class="w-6 h-6"></i>
+      </button>
+
+      <!-- PDF Document Header -->
+      <div class="border-b border-slate-800 pb-6 flex items-center justify-between">
+        <div>
+          <div class="text-xs font-mono font-bold text-emerald-400">WINNER DIGITAL SARL — PACKAGING PERSONNALISÉ</div>
+          <h2 class="text-xl font-extrabold text-white">RAPPORT DE PRÉSENCE & HEURES TRAVAILLÉES</h2>
+          <div class="text-xs text-slate-400 font-mono mt-1">Période : 01 Août 2026 au 06 Août 2026 • Réf: WPN-2026-08-001</div>
+        </div>
+        <div class="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold">
+          WD
+        </div>
+      </div>
+
+      <!-- KPI Summary Table -->
+      <div class="grid grid-cols-4 gap-4 p-4 rounded-xl bg-slate-900 border border-slate-800 text-center font-mono">
+        <div>
+          <span class="text-[10px] text-slate-400 uppercase">Taux Présence</span>
+          <div class="text-lg font-bold text-emerald-400">80.0%</div>
+        </div>
+        <div>
+          <span class="text-[10px] text-slate-400 uppercase">Total Retards</span>
+          <div class="text-lg font-bold text-orange-400">18 min</div>
+        </div>
+        <div>
+          <span class="text-[10px] text-slate-400 uppercase">Heures Supp</span>
+          <div class="text-lg font-bold text-emerald-400">14.5 h</div>
+        </div>
+        <div>
+          <span class="text-[10px] text-slate-400 uppercase">Fraud Alertes</span>
+          <div class="text-lg font-bold text-emerald-400">0</div>
+        </div>
+      </div>
+
+      <!-- Detailed Attendance List -->
+      <div class="space-y-2">
+        <h4 class="text-xs font-mono font-bold text-slate-400 uppercase">Registre Nominatif des Pointages</h4>
+        <table class="w-full text-left text-xs font-mono border-collapse">
+          <thead>
+            <tr class="border-b border-slate-800 text-slate-400">
+              <th class="py-2">Employé</th>
+              <th class="py-2">Date</th>
+              <th class="py-2">Entrée</th>
+              <th class="py-2">Sortie</th>
+              <th class="py-2">GPS Status</th>
+              <th class="py-2">Selfie</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/60 text-slate-300">
+            <tr>
+              <td class="py-2 font-bold text-white">Marc KOUASSI</td>
+              <td class="py-2">06/08/2026</td>
+              <td class="py-2 text-emerald-400">07:58 GMT</td>
+              <td class="py-2">17:00 GMT</td>
+              <td class="py-2">14m (Conforme)</td>
+              <td class="py-2 text-emerald-400">Vérifié (99%)</td>
+            </tr>
+            <tr>
+              <td class="py-2 font-bold text-white">Awa KONE</td>
+              <td class="py-2">06/08/2026</td>
+              <td class="py-2 text-emerald-400">08:02 GMT</td>
+              <td class="py-2">17:15 GMT</td>
+              <td class="py-2">12m (Conforme)</td>
+              <td class="py-2 text-emerald-400">Vérifié (98%)</td>
+            </tr>
+            <tr>
+              <td class="py-2 font-bold text-white">Jean-Luc BAMBA</td>
+              <td class="py-2">06/08/2026</td>
+              <td class="py-2 text-orange-400">08:18 GMT (Retard)</td>
+              <td class="py-2">18:00 GMT</td>
+              <td class="py-2">Client Plateau</td>
+              <td class="py-2 text-emerald-400">Vérifié (96%)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Signatures Footer -->
+      <div class="grid grid-cols-2 gap-8 border-t border-slate-800 pt-6 text-xs text-slate-400 font-mono">
+        <div>
+          <span>Visa de la Direction RH :</span>
+          <div class="mt-8 border-b border-slate-700 w-48"></div>
+        </div>
+        <div>
+          <span>Cachet Officiel Winner Digital SARL :</span>
+          <div class="mt-8 border-b border-slate-700 w-48"></div>
+        </div>
+      </div>
+
+      <div class="flex justify-end space-x-3 pt-4">
+        <button onclick="window.print()" class="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs flex items-center gap-2">
+          <i data-lucide="printer" class="w-4 h-4"></i> Imprimer / Télécharger le PDF
+        </button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- DRAWER: COPILOTE RH IA -->
+  <div id="drawer-copilot" class="fixed inset-y-0 right-0 z-50 w-full sm:w-96 bg-[#151922] border-l border-slate-800 shadow-2xl p-6 transform translate-x-full transition-transform duration-300 ease-in-out flex flex-col justify-between">
+    <div class="space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center space-x-2 text-emerald-400">
+          <i data-lucide="sparkles" class="w-5 h-5"></i>
+          <h3 class="font-bold text-sm text-white">Copilote RH Intelligent</h3>
+        </div>
+        <button onclick="closeCopilotDrawer()" class="text-slate-400 hover:text-white p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <p class="text-slate-300">
+          Bonjour ! Je suis le copilote d'analyse de présences pour <strong>Winner Digital SARL</strong>.
+        </p>
+
+        <div class="space-y-2">
+          <button onclick="askCopilot('synthèse')" class="w-full text-left p-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition">
+            💡 Générer la synthèse des présences du jour
+          </button>
+          <button onclick="askCopilot('retards')" class="w-full text-left p-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition">
+            ⚠️ Analyser les retards récents de l'équipe
+          </button>
+          <button onclick="askCopilot('fraude')" class="w-full text-left p-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition">
+            🛡️ Audit de sécurité et détection d'anomalies
+          </button>
+        </div>
+
+        <div id="copilot-response-box" class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[11px] leading-relaxed hidden">
+          <!-- Dynamically populated AI responses -->
+        </div>
+      </div>
+    </div>
+
+    <div class="text-[10px] text-slate-500 font-mono text-center pt-4 border-t border-slate-800">
+      Assistant RH • Conforme règles internes Winner Digital
+    </div>
+  </div>
+
+  <!-- JavaScript App Logic -->
+  <script src="app.js"></script>
+</body>
+</html>
