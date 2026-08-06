@@ -50,6 +50,7 @@ document.addEventListener('DOMContentLoaded', () => {
   renderDashboard();
   renderStaffGrid();
   setTheme('terracotta');
+  updateRoiCalculator();
 });
 
 // Dynamic Theme Switcher (Chaleur d'Afrique)
@@ -458,5 +459,72 @@ function askCopilot(topic) {
       <strong>🛡️ Rapport Sécurité & Intégrité :</strong><br/>
       Aucune tentative de Faux GPS ni d'usurpation de selfie détectée au cours des 48 dernières heures. 100% des pointages respectent la géobarrière de 150m autour du siège.
     `;
+  }
+}
+
+// SaaS Landing Page Interactive Features
+function updateRoiCalculator() {
+  const slider = document.getElementById('roi-employee-slider');
+  const salarySelect = document.getElementById('roi-salary-select');
+  const countEl = document.getElementById('roi-employee-count');
+  const fcfaSavedEl = document.getElementById('roi-fcfa-saved');
+  const fcfaAnnualEl = document.getElementById('roi-fcfa-annual');
+  const hoursSavedEl = document.getElementById('roi-hours-saved');
+  const roiPercentageEl = document.getElementById('roi-percentage');
+
+  if (!slider || !countEl) return;
+
+  const count = parseInt(slider.value, 10);
+  const avgSalary = salarySelect ? parseInt(salarySelect.value, 10) : 250000;
+
+  countEl.innerText = count;
+
+  // Real ROI calculation model:
+  // Average 11.5% lost productive time per month due to tardiness + fraudulent buddy punches
+  const lostTimePercentage = 0.115;
+  const monthlySavingsPerEmp = avgSalary * lostTimePercentage;
+  const totalMonthlySavings = Math.round(count * monthlySavingsPerEmp);
+  const totalAnnualSavings = totalMonthlySavings * 12;
+  const totalHoursSaved = Math.round(count * 6.5);
+
+  // Cost of SaaS plan estimated
+  const saasCostMonthly = count <= 15 ? 25000 : count <= 60 ? 65000 : 150000;
+  const netProfitMonthly = totalMonthlySavings - saasCostMonthly;
+  const roiMultiplier = Math.round((netProfitMonthly / saasCostMonthly) * 100);
+
+  if (fcfaSavedEl) fcfaSavedEl.innerText = `${totalMonthlySavings.toLocaleString('fr-FR')} FCFA`;
+  if (fcfaAnnualEl) fcfaAnnualEl.innerText = `${totalAnnualSavings.toLocaleString('fr-FR')} FCFA / an`;
+  if (hoursSavedEl) hoursSavedEl.innerText = `${totalHoursSaved} heures`;
+  if (roiPercentageEl) roiPercentageEl.innerText = `+${roiMultiplier}%`;
+}
+
+function togglePricingBilling(period) {
+  const btnMonthly = document.getElementById('btn-billing-monthly');
+  const btnAnnual = document.getElementById('btn-billing-annual');
+  const starterPrice = document.getElementById('price-starter');
+  const proPrice = document.getElementById('price-pro');
+
+  if (period === 'annual') {
+    if (btnAnnual) btnAnnual.className = 'px-4 py-1.5 rounded-full text-xs font-bold bg-amber-500 text-black shadow-md transition';
+    if (btnMonthly) btnMonthly.className = 'px-4 py-1.5 rounded-full text-xs font-medium text-[var(--color-muted)] hover:text-white transition';
+    if (starterPrice) starterPrice.innerText = '20.000 FCFA';
+    if (proPrice) proPrice.innerText = '52.000 FCFA';
+  } else {
+    if (btnMonthly) btnMonthly.className = 'px-4 py-1.5 rounded-full text-xs font-bold bg-amber-500 text-black shadow-md transition';
+    if (btnAnnual) btnAnnual.className = 'px-4 py-1.5 rounded-full text-xs font-medium text-[var(--color-muted)] hover:text-white transition';
+    if (starterPrice) starterPrice.innerText = '25.000 FCFA';
+    if (proPrice) proPrice.innerText = '65.000 FCFA';
+  }
+}
+
+function toggleFaq(id) {
+  const answer = document.getElementById(`faq-answer-${id}`);
+  const icon = document.getElementById(`faq-icon-${id}`);
+
+  if (answer) {
+    answer.classList.toggle('hidden');
+  }
+  if (icon) {
+    icon.classList.toggle('rotate-180');
   }
 }
