@@ -178,24 +178,42 @@
   <!-- CONTAINER MAIN CONTENT -->
   <main class="max-w-7xl mx-auto px-4 py-6">
 
-    <!-- ==================== VIEW 1: HERO LANDING ==================== -->
-    <section id="view-hero" class="view-section hidden space-y-12 py-6">
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+    <!-- ==================== VIEW 1: HERO LANDING PAGE SAAS ==================== -->
+    <section id="view-hero" class="view-section hidden space-y-16 py-6">
+      
+      <!-- HERO TOP ROW -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
         
         <!-- Left Hero Column -->
         <div class="lg:col-span-7 space-y-6">
-          <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-mono">
-            <i data-lucide="shield-check" class="w-4 h-4"></i>
-            <span>Système Anti-Faux GPS & Biométrie Visuelle</span>
+          <div class="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-mono glow-amber">
+            <i data-lucide="sparkles" class="w-4 h-4 text-amber-400"></i>
+            <span>N°1 du Pointage Anti-Fraude en Afrique de l'Ouest</span>
           </div>
 
-          <h1 class="text-4xl md:text-6xl font-extrabold tracking-tight text-[var(--color-offwhite)] leading-tight">
-            Le pointage qui <span class="font-serif italic bg-gradient-to-r from-amber-400 via-orange-400 to-emerald-400 bg-clip-text text-transparent font-normal">confirme réellement</span> la présence de vos employés.
+          <h1 class="text-4xl md:text-6xl font-extrabold tracking-tight text-[var(--color-offwhite)] leading-[1.15]">
+            Stoppez la fraude aux horaires. <span class="font-serif italic bg-gradient-to-r from-amber-400 via-orange-400 to-emerald-400 bg-clip-text text-transparent font-normal">Garantissez la présence</span> réelle sur vos chantiers et bureaux.
           </h1>
 
           <p class="text-[var(--color-muted)] text-base md:text-lg max-w-2xl leading-relaxed">
-            Spécialement configuré pour <strong class="text-[var(--color-offwhite)]">Winner Digital SARL</strong> (Packaging personnalisé). Pointage GPS géofencé, reconnaissance faciale selfie IA, calcul automatique des retards, demandes de congé et suivi d'heures supplémentaires dans un cockpit sécurisé unique.
+            La solution SaaS tout-en-un configurée pour <strong class="text-[var(--color-offwhite)]">Winner Digital SARL</strong> et les entreprises exigeantes. Géofencing GPS strict, reconnaissance faciale IA anti-usurpation, calcul des retards et heures supp en 1 clic.
           </p>
+
+          <!-- Social Proof Quick Badge -->
+          <div class="flex items-center space-x-4 pt-1">
+            <div class="flex -space-x-2.5">
+              <img class="inline-block h-8 w-8 rounded-full ring-2 ring-amber-500/40 object-cover" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&q=80" alt="Client 1">
+              <img class="inline-block h-8 w-8 rounded-full ring-2 ring-amber-500/40 object-cover" src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&q=80" alt="Client 2">
+              <img class="inline-block h-8 w-8 rounded-full ring-2 ring-amber-500/40 object-cover" src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&q=80" alt="Client 3">
+              <img class="inline-block h-8 w-8 rounded-full ring-2 ring-amber-500/40 object-cover" src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&q=80" alt="Client 4">
+            </div>
+            <div class="text-xs">
+              <div class="flex items-center text-amber-400 font-bold">
+                ★★★★★ <span class="ml-1.5 text-[var(--color-offwhite)]">4.9 / 5</span>
+              </div>
+              <p class="text-[var(--color-muted)] text-[11px]">+150 PME & usines utilisatrices à Abidjan & sous-région</p>
+            </div>
+          </div>
 
           <!-- Key Metrics Pills -->
           <div class="grid grid-cols-3 gap-4 pt-2 max-w-xl">
@@ -213,81 +231,418 @@
             </div>
           </div>
 
+          <!-- Action Buttons -->
           <div class="flex flex-wrap items-center gap-4 pt-2">
             <button onclick="openPunchModal()" class="magnetic-btn px-6 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white font-bold text-sm flex items-center gap-2 shadow-xl shadow-amber-500/25">
               <i data-lucide="play" class="w-4 h-4 fill-white"></i>
               Tester le Pointage en Direct
             </button>
-            <button onclick="switchView('dashboard')" class="px-6 py-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-white font-semibold text-sm border border-slate-700 flex items-center gap-2 transition">
+            <button onclick="switchView('dashboard')" class="px-6 py-3.5 rounded-xl bg-[var(--border-subtle)] hover:bg-[var(--border-accent)] text-[var(--color-offwhite)] font-semibold text-sm border border-[var(--border-subtle)] flex items-center gap-2 transition">
               <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
-              Accéder au Tableau de Bord
+              Voir le Cockpit RH
             </button>
           </div>
         </div>
 
-        <!-- Right Hero Interactive Punch Simulator -->
+        <!-- Right Hero Interactive Simulator -->
         <div class="lg:col-span-5">
-          <div class="glass-panel-elevated p-6 relative overflow-hidden border border-emerald-500/30">
+          <div class="glass-panel-elevated p-6 relative overflow-hidden border border-amber-500/40">
             <div class="scan-beam"></div>
 
-            <div class="flex items-center justify-between mb-4 border-b border-slate-800 pb-3">
+            <div class="flex items-center justify-between mb-4 border-b border-[var(--border-subtle)] pb-3">
               <div class="flex items-center space-x-2">
                 <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                <span class="font-mono text-xs text-slate-300">BORNE POINTAGE EN DIRECT</span>
+                <span class="font-mono text-xs text-[var(--color-offwhite)]">BORNE POINTAGE EN DIRECT</span>
               </div>
-              <span class="text-xs text-emerald-400 font-mono">Abidjan HQ • Zone #1</span>
+              <span class="text-xs text-amber-400 font-mono">Abidjan HQ • Zone Yopougon</span>
             </div>
 
             <!-- Radar GPS Display -->
-            <div class="relative w-full h-48 bg-slate-950/80 rounded-xl border border-slate-800 flex items-center justify-center overflow-hidden mb-4">
-              <!-- Grid Background -->
-              <div class="absolute inset-0 bg-[radial-gradient(#1c2533_1px,transparent_1px)] [background-size:16px_16px] opacity-40"></div>
+            <div class="relative w-full h-52 bg-black/40 rounded-xl border border-[var(--border-subtle)] flex items-center justify-center overflow-hidden mb-4">
+              <div class="absolute inset-0 bg-[radial-gradient(#f59e0b_1px,transparent_1px)] [background-size:16px_16px] opacity-20"></div>
               
               <!-- Geofence Circle -->
-              <div class="w-36 h-36 rounded-full border border-emerald-500/40 bg-emerald-500/5 flex items-center justify-center relative pulse-ring">
-                <div class="w-24 h-24 rounded-full border border-dashed border-emerald-400/60 flex items-center justify-center">
-                  <!-- Central HQ Pin -->
-                  <div class="w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center glow-green-sm">
+              <div class="w-36 h-36 rounded-full border border-amber-500/40 bg-amber-500/5 flex items-center justify-center relative pulse-ring">
+                <div class="w-24 h-24 rounded-full border border-dashed border-orange-400/60 flex items-center justify-center">
+                  <div class="w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center glow-amber">
                     <div class="w-1.5 h-1.5 rounded-full bg-black"></div>
                   </div>
                 </div>
               </div>
 
               <!-- Scanner Line -->
-              <div class="absolute inset-0 radar-line opacity-30 bg-[conic-gradient(from_0deg,transparent_0_300deg,rgba(34,197,94,0.4)_360deg)] rounded-xl"></div>
+              <div class="absolute inset-0 radar-line opacity-30 bg-[conic-gradient(from_0deg,transparent_0_300deg,rgba(245,158,11,0.5)_360deg)] rounded-xl"></div>
 
               <!-- Real-time Position Label -->
-              <div class="absolute bottom-2 left-2 right-2 bg-slate-900/90 backdrop-blur-md rounded-lg p-2 border border-slate-800 flex justify-between text-[11px] font-mono">
-                <span class="text-slate-400">Position : <strong class="text-emerald-400">5.3599° N, 4.0083° W</strong></span>
-                <span class="text-emerald-400">Rayon OK (12m)</span>
+              <div class="absolute bottom-2 left-2 right-2 bg-black/80 backdrop-blur-md rounded-lg p-2 border border-[var(--border-subtle)] flex justify-between text-[11px] font-mono">
+                <span class="text-[var(--color-muted)]">Position : <strong class="text-amber-400">5.3599° N, 4.0083° W</strong></span>
+                <span class="text-emerald-400 font-bold">Périmètre Valide (12m)</span>
               </div>
             </div>
 
             <!-- Live Status Badges -->
             <div class="space-y-2 mb-4">
-              <div class="flex items-center justify-between p-2.5 rounded-lg bg-slate-900/60 border border-slate-800 text-xs">
-                <span class="text-slate-400 flex items-center gap-1.5">
-                  <i data-lucide="user-check" class="w-4 h-4 text-emerald-400"></i> Selfie IA Biométrique
+              <div class="flex items-center justify-between p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs">
+                <span class="text-[var(--color-muted)] flex items-center gap-1.5">
+                  <i data-lucide="user-check" class="w-4 h-4 text-emerald-400"></i> Selfie Biométrique IA
                 </span>
                 <span class="text-emerald-400 font-mono font-bold">Vérifié (99.2%)</span>
               </div>
-              <div class="flex items-center justify-between p-2.5 rounded-lg bg-slate-900/60 border border-slate-800 text-xs">
-                <span class="text-slate-400 flex items-center gap-1.5">
-                  <i data-lucide="shield-alert" class="w-4 h-4 text-emerald-400"></i> Détection Faux GPS
+              <div class="flex items-center justify-between p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs">
+                <span class="text-[var(--color-muted)] flex items-center gap-1.5">
+                  <i data-lucide="shield-alert" class="w-4 h-4 text-amber-400"></i> Détection Faux GPS (Mock)
                 </span>
                 <span class="text-emerald-400 font-mono font-bold">Risque Nul (0/100)</span>
               </div>
             </div>
 
             <!-- Punch Action Trigger -->
-            <button onclick="openPunchModal()" class="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-sm tracking-wide transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2">
+            <button onclick="openPunchModal()" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white font-bold text-sm tracking-wide transition shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2">
               <i data-lucide="fingerprint" class="w-5 h-5"></i>
-              SIMULER UN POINTAGE EN DÉMO
+              LANCER LE POINTAGE TEST EN LIVE
             </button>
           </div>
         </div>
 
       </div>
+
+      <!-- TRUST LOGOS & SECTORS -->
+      <div class="pt-8 border-t border-[var(--border-subtle)] text-center space-y-4">
+        <p class="text-xs font-mono text-[var(--color-muted)] uppercase tracking-widest">
+          Adopté par les entreprises leaders en Côte d'Ivoire, Sénégal, Cameroun & Afrique de l'Ouest
+        </p>
+        <div class="flex flex-wrap items-center justify-center gap-8 md:gap-12 opacity-80 pt-2 text-xs font-bold text-[var(--color-muted)]">
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--border-subtle)]/40 border border-[var(--border-subtle)]">
+            <i data-lucide="package" class="w-4 h-4 text-amber-400"></i> PACKAGING & IMPRIMERIE
+          </div>
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--border-subtle)]/40 border border-[var(--border-subtle)]">
+            <i data-lucide="building-2" class="w-4 h-4 text-orange-400"></i> BTP & CHANTIERS
+          </div>
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--border-subtle)]/40 border border-[var(--border-subtle)]">
+            <i data-lucide="truck" class="w-4 h-4 text-emerald-400"></i> LOGISTIQUE & FLOTTE
+          </div>
+          <div class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--border-subtle)]/40 border border-[var(--border-subtle)]">
+            <i data-lucide="shopping-bag" class="w-4 h-4 text-cyan-400"></i> POINTS DE VENTE & DISTRIB
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION: FONCTIONNALITÉS CLÉS -->
+      <div class="space-y-8 pt-6">
+        <div class="text-center max-w-3xl mx-auto space-y-2">
+          <h2 class="text-3xl font-extrabold text-[var(--color-offwhite)]">
+            Pourquoi choisir <span class="bg-gradient-to-r from-amber-400 via-orange-400 to-emerald-400 bg-clip-text text-transparent">Winner Pointage</span> ?
+          </h2>
+          <p class="text-sm text-[var(--color-muted)]">Une suite d'outils pensée pour résoudre les défis réels du management de terrain en Afrique.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div class="glass-panel p-6 space-y-3 interactive-card border-t-2 border-t-amber-500">
+            <div class="w-12 h-12 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+              <i data-lucide="map-pin" class="w-6 h-6"></i>
+            </div>
+            <h3 class="font-bold text-base text-[var(--color-offwhite)]">Géofencing GPS Strict</h3>
+            <p class="text-xs text-[var(--color-muted)] leading-relaxed">
+              Définissez un rayon virtuel (ex: 150m) autour du siège ou d'un chantier. Le pointage est impossible en dehors de la zone autorisée.
+            </p>
+          </div>
+
+          <div class="glass-panel p-6 space-y-3 interactive-card border-t-2 border-t-orange-500">
+            <div class="w-12 h-12 rounded-xl bg-orange-500/20 text-orange-400 flex items-center justify-center">
+              <i data-lucide="camera" class="w-6 h-6"></i>
+            </div>
+            <h3 class="font-bold text-base text-[var(--color-offwhite)]">Selfie IA Biométrique</h3>
+            <p class="text-xs text-[var(--color-muted)] leading-relaxed">
+              L'employé prend une photo instantanée au pointage. L'IA compare la biométrie faciale et prévient tout remplacement d'un collègue.
+            </p>
+          </div>
+
+          <div class="glass-panel p-6 space-y-3 interactive-card border-t-2 border-t-emerald-500">
+            <div class="w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+              <i data-lucide="shield-ban" class="w-6 h-6"></i>
+            </div>
+            <h3 class="font-bold text-base text-[var(--color-offwhite)]">Anti-Faux GPS (Mock)</h3>
+            <p class="text-xs text-[var(--color-muted)] leading-relaxed">
+              Bloque automatiquement les applications de triche de localisation GPS installées sur Android ou iPhone. Risque zéro.
+            </p>
+          </div>
+
+          <div class="glass-panel p-6 space-y-3 interactive-card border-t-2 border-t-cyan-500">
+            <div class="w-12 h-12 rounded-xl bg-cyan-500/20 text-cyan-400 flex items-center justify-center">
+              <i data-lucide="calculator" class="w-6 h-6"></i>
+            </div>
+            <h3 class="font-bold text-base text-[var(--color-offwhite)]">Calcul Heures & Paie</h3>
+            <p class="text-xs text-[var(--color-muted)] leading-relaxed">
+              Calcul automatique des minutes de retard et des majorations d'heures supp (+25%, +50%) conforme au Code du Travail.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- CALCULATEUR DE ROI INTERACTIF -->
+      <div class="glass-panel-elevated p-8 border border-amber-500/30 space-y-6">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+          <div class="lg:col-span-6 space-y-4">
+            <span class="px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 font-mono text-xs font-bold">CALCULATEUR D'ÉCONOMIES</span>
+            <h3 class="text-2xl font-extrabold text-[var(--color-offwhite)]">
+              Combien pouvez-vous économiser chaque mois ?
+            </h3>
+            <p class="text-xs text-[var(--color-muted)] leading-relaxed">
+              Déplacez le curseur ci-dessous selon le nombre d'employés dans votre entreprise pour mesurer le gain immédiat de productivité.
+            </p>
+
+            <!-- Employee Slider -->
+            <div class="space-y-3 pt-2">
+              <div class="flex justify-between text-xs font-semibold">
+                <span class="text-[var(--color-muted)]">Nombre d'employés :</span>
+                <span id="roi-employee-count" class="text-amber-400 font-mono text-base font-bold">25</span>
+              </div>
+              <input id="roi-employee-slider" type="range" min="5" max="300" value="25" step="5" oninput="updateRoiCalculator()" class="w-full h-2 bg-[var(--border-subtle)] rounded-lg appearance-none cursor-pointer accent-amber-500">
+              <div class="flex justify-between text-[10px] text-[var(--color-muted)] font-mono">
+                <span>5 emp.</span>
+                <span>150 emp.</span>
+                <span>300 emp.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="lg:col-span-6 bg-[var(--bg-card)] p-6 rounded-2xl border border-[var(--border-subtle)] space-y-4 text-center">
+            <p class="text-xs text-[var(--color-muted)] uppercase tracking-wider font-mono">Économie mensuelle estimée</p>
+            <div id="roi-fcfa-saved" class="text-4xl font-extrabold bg-gradient-to-r from-amber-400 via-orange-400 to-emerald-400 bg-clip-text text-transparent font-mono">
+              437 500 FCFA
+            </div>
+            <p class="text-xs text-emerald-400 font-mono">
+              + environ <strong id="roi-hours-saved">163 heures</strong> d'absentéisme non justifié récupérées par mois.
+            </p>
+            <button onclick="openPunchModal()" class="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs transition">
+              Réserver mes économies maintenant
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION: AVIS & TÉMOIGNAGES CLIENTS -->
+      <div class="space-y-8 pt-4">
+        <div class="text-center max-w-2xl mx-auto space-y-2">
+          <h2 class="text-3xl font-extrabold text-[var(--color-offwhite)]">
+            Ce que disent nos <span class="text-amber-400">Dirigeants & DRH</span>
+          </h2>
+          <p class="text-xs text-[var(--color-muted)]">Des retours d'expérience authentiques d'entreprises à Abidjan et en Afrique de l'Ouest.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          
+          <!-- Testimonial 1 -->
+          <div class="glass-panel p-6 space-y-4 relative border-l-4 border-l-amber-500">
+            <div class="flex items-center space-x-3">
+              <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&q=80" alt="Avatar" class="w-12 h-12 rounded-full object-cover border-2 border-amber-500/40">
+              <div>
+                <h4 class="font-bold text-sm text-[var(--color-offwhite)]">Jean-Philippe KOBENAN</h4>
+                <p class="text-xs text-[var(--color-muted)]">Directeur Général • BTP & Construction (Abidjan)</p>
+                <div class="text-amber-400 text-xs">★★★★★</div>
+              </div>
+            </div>
+            <p class="text-xs text-[var(--color-muted)] italic leading-relaxed">
+              « Avant Winner Pointage, certains ouvriers pointaient à la place de leurs collègues absents sur nos chantiers de Cocody. Grâce au selfie IA et à la géolocalisation stricte, nous avons éliminé la fraude et gagné +35% de régularité ! »
+            </p>
+          </div>
+
+          <!-- Testimonial 2 -->
+          <div class="glass-panel p-6 space-y-4 relative border-l-4 border-l-orange-500">
+            <div class="flex items-center space-x-3">
+              <img src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&q=80" alt="Avatar" class="w-12 h-12 rounded-full object-cover border-2 border-orange-500/40">
+              <div>
+                <h4 class="font-bold text-sm text-[var(--color-offwhite)]">Mariam DIARRA</h4>
+                <p class="text-xs text-[var(--color-muted)]">Responsable RH • Usine Agro-alimentaire (San Pedro)</p>
+                <div class="text-amber-400 text-xs">★★★★★</div>
+              </div>
+            </div>
+            <p class="text-xs text-[var(--color-muted)] italic leading-relaxed">
+              « Le calcul automatique des heures supplémentaires et le traitement des congés nous font gagner un temps précieux en fin de mois. Les exports PDF sont parfaitement adaptés pour nos bulletins de paie. »
+            </p>
+          </div>
+
+          <!-- Testimonial 3 -->
+          <div class="glass-panel p-6 space-y-4 relative border-l-4 border-l-emerald-500">
+            <div class="flex items-center space-x-3">
+              <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&q=80" alt="Avatar" class="w-12 h-12 rounded-full object-cover border-2 border-emerald-500/40">
+              <div>
+                <h4 class="font-bold text-sm text-[var(--color-offwhite)]">Cheick Oumar TRAORÉ</h4>
+                <p class="text-xs text-[var(--color-muted)]">Chef de Flotte Commerciaux • Distrib (Dakar & Abidjan)</p>
+                <div class="text-amber-400 text-xs">★★★★★</div>
+              </div>
+            </div>
+            <p class="text-xs text-[var(--color-muted)] italic leading-relaxed">
+              « Nos commerciaux itinérants pointent directement lors de leurs rendez-vous clients. La vérification anti-faux GPS nous garantit qu'ils sont bien sur le terrain. L'application mobile PWA est rapide et très intuitive. »
+            </p>
+          </div>
+
+          <!-- Testimonial 4 -->
+          <div class="glass-panel p-6 space-y-4 relative border-l-4 border-l-cyan-500">
+            <div class="flex items-center space-x-3">
+              <img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&q=80" alt="Avatar" class="w-12 h-12 rounded-full object-cover border-2 border-cyan-500/40">
+              <div>
+                <h4 class="font-bold text-sm text-[var(--color-offwhite)]">Kouassi BROU</h4>
+                <p class="text-xs text-[var(--color-muted)]">Gérant Atelier Packaging • Winner Digital SARL (Yopougon)</p>
+                <div class="text-amber-400 text-xs">★★★★★</div>
+              </div>
+            </div>
+            <p class="text-xs text-[var(--color-muted)] italic leading-relaxed">
+              « La borne QR Code Kiosque installée sur la tablette à l'entrée de l'atelier permet un pointage fluide en 2 secondes sans embouteillage le matin à 08h00. Un outil moderne et indispensable ! »
+            </p>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- SECTION: GRILLE TARIFAIRE SAAS TRANSPARENTE -->
+      <div class="space-y-8 pt-6">
+        <div class="text-center max-w-3xl mx-auto space-y-3">
+          <span class="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 font-mono text-xs font-bold">TARIFICATION SAAS SIMPLE</span>
+          <h2 class="text-3xl font-extrabold text-[var(--color-offwhite)]">
+            Formules d'abonnement adaptées à votre taille
+          </h2>
+          <p class="text-xs text-[var(--color-muted)]">Aucun frais caché, activation immédiate sans engagement de durée.</p>
+
+          <!-- Billing Switcher -->
+          <div class="flex items-center justify-center space-x-3 pt-2">
+            <div class="bg-[var(--bg-card)] p-1 rounded-full border border-[var(--border-subtle)] flex items-center">
+              <button id="btn-billing-monthly" onclick="togglePricingBilling('monthly')" class="px-4 py-1.5 rounded-full text-xs font-bold bg-amber-500 text-black shadow-md">Mensuel</button>
+              <button id="btn-billing-annual" onclick="togglePricingBilling('annual')" class="px-4 py-1.5 rounded-full text-xs font-medium text-[var(--color-muted)] hover:text-white">Annuel (-20%)</button>
+            </div>
+            <span class="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold">2 MOIS OFFERTS EN ANNUEL</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+          
+          <!-- Plan Starter -->
+          <div class="glass-panel p-6 space-y-6 flex flex-col justify-between border-t-4 border-t-amber-500">
+            <div class="space-y-4">
+              <span class="px-2.5 py-1 rounded-md bg-amber-500/20 text-amber-400 text-xs font-mono font-bold">STARTER PME</span>
+              <h3 class="text-xl font-bold text-[var(--color-offwhite)]">Pour les petites équipes</h3>
+              <div class="font-mono">
+                <span id="price-starter" class="text-3xl font-extrabold text-[var(--color-offwhite)]">25.000 FCFA</span>
+                <span class="text-xs text-[var(--color-muted)]"> / mois</span>
+              </div>
+              <ul class="text-xs text-[var(--color-muted)] space-y-2.5 pt-2">
+                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-400"></i> Jusqu'à 15 employés inclus</li>
+                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-400"></i> Pointage GPS Géofencé</li>
+                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-400"></i> Selfie de vérification IA</li>
+                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-400"></i> Calcul des retards</li>
+              </ul>
+            </div>
+            <button onclick="openPunchModal()" class="w-full py-2.5 rounded-xl bg-[var(--border-subtle)] hover:bg-[var(--border-accent)] text-[var(--color-offwhite)] font-bold text-xs transition">
+              Choisir la formule Starter
+            </button>
+          </div>
+
+          <!-- Plan Business Pro (Recommandé ⭐) -->
+          <div class="glass-panel-elevated p-6 space-y-6 flex flex-col justify-between border-2 border-amber-500 relative transform md:-translate-y-2">
+            <div class="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-black font-bold text-[10px] uppercase tracking-wider shadow-md">
+              ⭐ PLUS POPULAIRE & RECOMMANDÉ
+            </div>
+            <div class="space-y-4 pt-2">
+              <span class="px-2.5 py-1 rounded-md bg-orange-500/20 text-orange-400 text-xs font-mono font-bold">BUSINESS PRO</span>
+              <h3 class="text-xl font-bold text-[var(--color-offwhite)]">Pour entreprises en croissance</h3>
+              <div class="font-mono">
+                <span id="price-pro" class="text-3xl font-extrabold text-amber-400">65.000 FCFA</span>
+                <span class="text-xs text-[var(--color-muted)]"> / mois</span>
+              </div>
+              <ul class="text-xs text-[var(--color-muted)] space-y-2.5 pt-2">
+                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-amber-400"></i> Jusqu'à 60 employés inclus</li>
+                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-amber-400"></i> Détection Faux GPS (Mock Location)</li>
+                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-amber-400"></i> Mode Kiosque QR Code Tablette</li>
+                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-amber-400"></i> Gestion des Congés & Majorations Heures Supp</li>
+                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-amber-400"></i> Support prioritaire WhatsApp RH 7j/7</li>
+              </ul>
+            </div>
+            <button onclick="openPunchModal()" class="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white font-bold text-xs shadow-lg shadow-orange-500/25 transition">
+              Activer l'Essai Gratuit 14 Jours
+            </button>
+          </div>
+
+          <!-- Plan Enterprise -->
+          <div class="glass-panel p-6 space-y-6 flex flex-col justify-between border-t-4 border-t-emerald-500">
+            <div class="space-y-4">
+              <span class="px-2.5 py-1 rounded-md bg-emerald-500/20 text-emerald-400 text-xs font-mono font-bold">ENTERPRISE</span>
+              <h3 class="text-xl font-bold text-[var(--color-offwhite)]">Grands comptes & usines</h3>
+              <div class="font-mono">
+                <span class="text-3xl font-extrabold text-[var(--color-offwhite)]">Sur Mesure</span>
+              </div>
+              <ul class="text-xs text-[var(--color-muted)] space-y-2.5 pt-2">
+                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-400"></i> Nombre d'employés illimité</li>
+                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-400"></i> Intégration API direct avec votre logiciel de Paie</li>
+                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-400"></i> Hébergement dédié privé (Souveraineté)</li>
+                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-400"></i> Account Manager dédié sur site</li>
+              </ul>
+            </div>
+            <button onclick="openPunchModal()" class="w-full py-2.5 rounded-xl bg-[var(--border-subtle)] hover:bg-[var(--border-accent)] text-[var(--color-offwhite)] font-bold text-xs transition">
+              Contacter le pôle Enterprise
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- FAQ ACCORDION -->
+      <div class="space-y-6 pt-4 max-w-4xl mx-auto">
+        <div class="text-center space-y-2">
+          <h2 class="text-2xl font-extrabold text-[var(--color-offwhite)]">Questions Fréquentes</h2>
+          <p class="text-xs text-[var(--color-muted)]">Tout ce que vous devez savoir pour démarrer sereinement.</p>
+        </div>
+
+        <div class="space-y-3">
+          
+          <div class="glass-panel p-4 rounded-xl border border-[var(--border-subtle)] cursor-pointer" onclick="toggleFaq(1)">
+            <div class="flex justify-between items-center text-sm font-bold text-[var(--color-offwhite)]">
+              <span>Comment le système empêche-t-il la triche par faux GPS (Mock Location) ?</span>
+              <i id="faq-icon-1" data-lucide="chevron-down" class="w-4 h-4 transition-transform"></i>
+            </div>
+            <p id="faq-answer-1" class="text-xs text-[var(--color-muted)] pt-3 leading-relaxed hidden">
+              Winner Pointage utilise un algorithme de vérification multi-couches qui analyse les données brutes des capteurs matériels du téléphone. Si une application de simulation de position est détectée, le pointage est instantanément bloqué et une alerte est envoyée au manager.
+            </p>
+          </div>
+
+          <div class="glass-panel p-4 rounded-xl border border-[var(--border-subtle)] cursor-pointer" onclick="toggleFaq(2)">
+            <div class="flex justify-between items-center text-sm font-bold text-[var(--color-offwhite)]">
+              <span>Que se passe-t-il si la connexion internet est coupée sur le site ?</span>
+              <i id="faq-icon-2" data-lucide="chevron-down" class="w-4 h-4 transition-transform"></i>
+            </div>
+            <p id="faq-answer-2" class="text-xs text-[var(--color-muted)] pt-3 leading-relaxed hidden">
+              L'application enregistre les pointages en local de manière chiffrée avec horodatage sécurisé. Dès que le réseau est rétabli, les données se synchronisent automatiquement sans aucune perte.
+            </p>
+          </div>
+
+          <div class="glass-panel p-4 rounded-xl border border-[var(--border-subtle)] cursor-pointer" onclick="toggleFaq(3)">
+            <div class="flex justify-between items-center text-sm font-bold text-[var(--color-offwhite)]">
+              <span>Quel est le délai de déploiement dans notre entreprise ?</span>
+              <i id="faq-icon-3" data-lucide="chevron-down" class="w-4 h-4 transition-transform"></i>
+            </div>
+            <p id="faq-answer-3" class="text-xs text-[var(--color-muted)] pt-3 leading-relaxed hidden">
+              Moins de 24 heures ! Il vous suffit d'importer la liste de vos employés via un fichier Excel ou CSV, de configurer les coordonnées GPS de vos sites, et vos équipes peuvent commencer à pointer immédiatement.
+            </p>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- FINAL CTA BANNER -->
+      <div class="glass-panel-elevated p-8 rounded-3xl border border-amber-500/40 text-center space-y-6 bg-gradient-to-r from-amber-950/40 via-[var(--bg-card)] to-orange-950/40">
+        <h2 class="text-3xl md:text-4xl font-extrabold text-[var(--color-offwhite)]">
+          Prêt à maîtriser le temps de travail de vos équipes ?
+        </h2>
+        <p class="text-xs md:text-sm text-[var(--color-muted)] max-w-xl mx-auto">
+          Rejoignez des centaines d'entreprises qui ont déjà fait le choix de la transparence, de la sécurité et de la rentabilité.
+        </p>
+        <div class="flex flex-wrap items-center justify-center gap-4 pt-2">
+          <button onclick="openPunchModal()" class="magnetic-btn px-8 py-4 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white font-extrabold text-sm shadow-2xl shadow-orange-500/30 flex items-center gap-2">
+            <i data-lucide="rocket" class="w-5 h-5"></i>
+            DÉMARRER MON ESSAI GRATUIT DE 14 JOURS
+          </button>
+        </div>
+      </div>
+
     </section>
 
 
