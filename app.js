@@ -49,7 +49,21 @@ document.addEventListener('DOMContentLoaded', () => {
   startQRCountdown();
   renderDashboard();
   renderStaffGrid();
+  setTheme('terracotta');
 });
+
+// Dynamic Theme Switcher (Chaleur d'Afrique)
+function setTheme(themeName) {
+  state.currentTheme = themeName;
+  document.documentElement.setAttribute('data-theme', themeName);
+  
+  const badgeEl = document.getElementById('theme-badge-label');
+  if (badgeEl) {
+    if (themeName === 'terracotta') badgeEl.innerText = '🌅 PALETTE : TERRACOTTA & OR';
+    else if (themeName === 'safari') badgeEl.innerText = '🌿 PALETTE : SAVANE & ÉMERAUDE';
+    else if (themeName === 'light-warm') badgeEl.innerText = '☀️ PALETTE : SOLEIL D\'IVOIRE (CLAIR)';
+  }
+}
 
 function initIcons() {
   if (window.lucide) {

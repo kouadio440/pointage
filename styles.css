@@ -1,24 +1,68 @@
-/* Preset B — Sécurité Nocturne Design System */
-:root {
-  --bg-dark: #0F1117;
-  --bg-card: #151922;
-  --bg-card-hover: #1C2433;
-  --bg-card-elevated: #1F283A;
-  --border-subtle: rgba(255, 255, 255, 0.07);
-  --border-accent: rgba(34, 197, 94, 0.25);
+/* Winner Pointage — Chaleur d'Afrique Design System */
+:root, [data-theme="terracotta"] {
+  --bg-dark: #181310;
+  --bg-card: rgba(36, 28, 23, 0.88);
+  --bg-card-hover: rgba(48, 38, 31, 0.92);
+  --bg-card-elevated: rgba(58, 45, 37, 0.95);
+  --border-subtle: rgba(245, 158, 11, 0.15);
+  --border-accent: rgba(234, 88, 12, 0.35);
   
-  --color-green: #22C55E;
-  --color-green-glow: rgba(34, 197, 94, 0.2);
-  --color-steel: #252A34;
-  --color-offwhite: #F5F7FA;
-  --color-muted: #94A3B8;
-  --color-orange: #F97316;
-  --color-red: #EF4444;
-  --color-cyan: #0EA5E9;
+  --color-green: #10B981;
+  --color-green-glow: rgba(16, 185, 129, 0.25);
+  --color-gold: #F59E0B;
+  --color-gold-glow: rgba(245, 158, 11, 0.3);
+  --color-orange: #EA580C;
+  --color-steel: #2A2019;
+  --color-offwhite: #FFFBF5;
+  --color-muted: #D5C4B5;
+  --color-red: #F43F5E;
+  --color-cyan: #06B6D4;
   
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-serif: 'Playfair Display', Georgia, serif;
   --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* Theme 2: Savane & Émeraude */
+[data-theme="safari"] {
+  --bg-dark: #0D1612;
+  --bg-card: rgba(20, 34, 28, 0.88);
+  --bg-card-hover: rgba(28, 45, 38, 0.92);
+  --bg-card-elevated: rgba(35, 57, 48, 0.95);
+  --border-subtle: rgba(16, 185, 129, 0.18);
+  --border-accent: rgba(245, 158, 11, 0.4);
+  
+  --color-green: #10B981;
+  --color-green-glow: rgba(16, 185, 129, 0.35);
+  --color-gold: #EAB308;
+  --color-gold-glow: rgba(234, 179, 8, 0.3);
+  --color-orange: #F97316;
+  --color-steel: #182B22;
+  --color-offwhite: #F2FAF5;
+  --color-muted: #A8C4B5;
+  --color-red: #EF4444;
+  --color-cyan: #0EA5E9;
+}
+
+/* Theme 3: Soleil d'Ivoire — Mode Clair Chaleureux */
+[data-theme="light-warm"] {
+  --bg-dark: #FDF8F2;
+  --bg-card: rgba(255, 255, 255, 0.92);
+  --bg-card-hover: rgba(255, 244, 229, 0.95);
+  --bg-card-elevated: #FFF4E5;
+  --border-subtle: rgba(217, 119, 6, 0.2);
+  --border-accent: rgba(234, 88, 12, 0.4);
+  
+  --color-green: #059669;
+  --color-green-glow: rgba(5, 150, 105, 0.2);
+  --color-gold: #D97706;
+  --color-gold-glow: rgba(217, 119, 6, 0.2);
+  --color-orange: #C2410C;
+  --color-steel: #F5E8D8;
+  --color-offwhite: #292524;
+  --color-muted: #78716C;
+  --color-red: #DC2626;
+  --color-cyan: #0284C7;
 }
 
 * {
@@ -34,6 +78,7 @@ body {
   overflow-x: hidden;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.4s ease, color 0.4s ease;
 }
 
 /* SVG Noise Overlay */
@@ -45,7 +90,7 @@ body {
   height: 100vh;
   pointer-events: none;
   z-index: 9999;
-  opacity: 0.035;
+  opacity: 0.025;
 }
 
 /* Typography Classes */
@@ -55,43 +100,49 @@ body {
 
 /* Glassmorphism & Depth */
 .glass-panel {
-  background: rgba(21, 25, 34, 0.75);
+  background: var(--bg-card);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border-subtle);
   border-radius: 1.25rem;
+  box-shadow: 0 12px 32px -10px rgba(0, 0, 0, 0.35);
 }
 
 .glass-panel-elevated {
-  background: rgba(28, 37, 51, 0.85);
+  background: var(--bg-card-elevated);
   backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-accent);
   border-radius: 1.75rem;
-  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 20px 45px -15px rgba(245, 158, 11, 0.15);
 }
 
 .glass-pill {
-  background: rgba(21, 25, 34, 0.8);
+  background: var(--bg-card);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-subtle);
   border-radius: 9999px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.25);
 }
 
-/* Green Security Glows */
+/* Warm Glows */
+.glow-amber {
+  box-shadow: 0 0 25px -5px rgba(245, 158, 11, 0.4);
+}
+
 .glow-green {
-  box-shadow: 0 0 25px -5px rgba(34, 197, 94, 0.4);
+  box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.4);
 }
 
 .glow-green-sm {
-  box-shadow: 0 0 12px 0 rgba(34, 197, 94, 0.3);
+  box-shadow: 0 0 12px 0 rgba(16, 185, 129, 0.3);
 }
 
 .glow-orange {
-  box-shadow: 0 0 25px -5px rgba(249, 115, 22, 0.4);
+  box-shadow: 0 0 25px -5px rgba(234, 88, 12, 0.4);
 }
 
 .glow-red {
-  box-shadow: 0 0 25px -5px rgba(239, 68, 68, 0.4);
+  box-shadow: 0 0 25px -5px rgba(244, 63, 94, 0.4);
 }
 
 /* Animations & Transitions */
@@ -101,7 +152,7 @@ body {
 
 .magnetic-btn:hover {
   transform: translateY(-2px) scale(1.03);
-  box-shadow: 0 10px 25px -5px rgba(34, 197, 94, 0.4);
+  box-shadow: 0 12px 28px -5px rgba(245, 158, 11, 0.45);
 }
 
 .interactive-card {
@@ -110,8 +161,8 @@ body {
 
 .interactive-card:hover {
   transform: translateY(-3px);
-  border-color: rgba(34, 197, 94, 0.35);
-  box-shadow: 0 15px 30px -10px rgba(0, 0, 0, 0.6);
+  border-color: rgba(245, 158, 11, 0.45);
+  box-shadow: 0 15px 35px -10px rgba(234, 88, 12, 0.25);
 }
 
 /* Radar & Scanner Pulse */
@@ -136,8 +187,8 @@ body {
   left: 0;
   right: 0;
   height: 3px;
-  background: linear-gradient(90deg, transparent, #22C55E, transparent);
-  box-shadow: 0 0 15px #22C55E;
+  background: linear-gradient(90deg, transparent, var(--color-gold), transparent);
+  box-shadow: 0 0 15px var(--color-gold);
   animation: scan-beam 2.5s ease-in-out infinite;
 }
 
@@ -153,44 +204,44 @@ body {
 
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0F1117;
+  background: var(--bg-dark);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #1C2433;
-  border-radius: 3px;
+  background: var(--border-accent);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #22C55E;
+  background: var(--color-gold);
 }
 
 /* Badge Styles */
 .badge-verified {
-  background: rgba(34, 197, 94, 0.15);
-  color: #22C55E;
-  border: 1px solid rgba(34, 197, 94, 0.3);
+  background: rgba(16, 185, 129, 0.15);
+  color: #10B981;
+  border: 1px solid rgba(16, 185, 129, 0.35);
 }
 
 .badge-alert {
-  background: rgba(249, 115, 22, 0.15);
-  color: #F97316;
-  border: 1px solid rgba(249, 115, 22, 0.3);
+  background: rgba(245, 158, 11, 0.18);
+  color: #F59E0B;
+  border: 1px solid rgba(245, 158, 11, 0.4);
 }
 
 .badge-danger {
-  background: rgba(239, 68, 68, 0.15);
-  color: #EF4444;
-  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: rgba(244, 63, 94, 0.15);
+  color: #F43F5E;
+  border: 1px solid rgba(244, 63, 94, 0.35);
 }
 
 .badge-info {
-  background: rgba(14, 165, 233, 0.15);
-  color: #0EA5E9;
-  border: 1px solid rgba(14, 165, 233, 0.3);
+  background: rgba(6, 182, 212, 0.15);
+  color: #06B6D4;
+  border: 1px solid rgba(6, 182, 212, 0.35);
 }

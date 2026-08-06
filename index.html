@@ -52,7 +52,14 @@
   <!-- Application Custom Styles -->
   <link rel="stylesheet" href="styles.css" />
 </head>
-<body class="bg-[#0F1117] text-[#F5F7FA] min-h-screen relative antialiased selection:bg-emerald-500 selection:text-black">
+<body class="bg-[var(--bg-dark)] text-[var(--color-offwhite)] min-h-screen relative antialiased selection:bg-amber-500 selection:text-black transition-colors duration-500">
+
+  <!-- Warm Ambient Background Glows -->
+  <div class="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+    <div class="absolute -top-32 -left-32 w-[30rem] h-[30rem] bg-amber-600/15 rounded-full blur-3xl"></div>
+    <div class="absolute top-1/3 -right-32 w-[32rem] h-[32rem] bg-orange-600/15 rounded-full blur-3xl"></div>
+    <div class="absolute bottom-10 left-1/4 w-[36rem] h-[36rem] bg-emerald-600/10 rounded-full blur-3xl"></div>
+  </div>
 
   <!-- SVG Noise Filter Overlay -->
   <svg class="noise-overlay">
@@ -63,98 +70,102 @@
   </svg>
 
   <!-- TOP BAR / ROLE SWITCHER HEADER -->
-  <header id="top-bar" class="w-full bg-[#151922]/90 border-b border-slate-800/80 px-4 py-2 text-xs flex flex-wrap items-center justify-between sticky top-0 z-50 backdrop-blur-md">
+  <header id="top-bar" class="w-full bg-[var(--bg-card)]/90 border-b border-[var(--border-subtle)] px-4 py-2 text-xs flex flex-wrap items-center justify-between sticky top-0 z-50 backdrop-blur-md transition-colors duration-400">
     <div class="flex items-center space-x-3">
       <div class="flex items-center space-x-2">
         <span class="relative flex h-2 w-2">
-          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-          <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+          <span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
         </span>
-        <span class="font-bold text-slate-200 tracking-wider">WINNER DIGITAL SARL</span>
-        <span class="text-slate-500">•</span>
-        <span class="text-slate-400">Siège Abidjan</span>
+        <span class="font-bold text-[var(--color-offwhite)] tracking-wider">WINNER DIGITAL SARL</span>
+        <span class="opacity-40">•</span>
+        <span class="text-[var(--color-muted)]">Siège Abidjan</span>
       </div>
-      <span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono text-[10px]">PRESET B — SÉCURITÉ NOCTURNE</span>
+      
+      <!-- Dynamic Theme Badge & Switcher -->
+      <div class="flex items-center space-x-1.5 bg-[var(--border-subtle)]/50 p-0.5 rounded-lg border border-[var(--border-subtle)]">
+        <span id="theme-badge-label" class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono text-[10px] font-bold">🌅 PALETTE : TERRACOTTA & OR</span>
+        
+        <button onclick="setTheme('terracotta')" title="Terracotta & Or Vif" class="px-2 py-0.5 text-[10px] font-medium rounded hover:bg-amber-500/20 transition">🌅 Terracotta</button>
+        <button onclick="setTheme('safari')" title="Savane & Émeraude" class="px-2 py-0.5 text-[10px] font-medium rounded hover:bg-emerald-500/20 transition">🌿 Émeraude</button>
+        <button onclick="setTheme('light-warm')" title="Soleil d'Ivoire (Mode Clair)" class="px-2 py-0.5 text-[10px] font-medium rounded hover:bg-orange-500/20 transition">☀️ Mode Clair</button>
+      </div>
     </div>
 
     <!-- Quick Mode View Switcher -->
     <div class="flex items-center space-x-2 my-1 sm:my-0">
-      <span class="text-slate-400 mr-1 hidden md:inline">Mode Démo :</span>
-      <button onclick="switchView('hero')" id="btn-view-hero" class="nav-view-btn px-2.5 py-1 rounded-md text-slate-300 hover:text-white bg-slate-800/60 border border-slate-700/50 transition">
+      <span class="text-[var(--color-muted)] mr-1 hidden md:inline">Mode Démo :</span>
+      <button onclick="switchView('hero')" id="btn-view-hero" class="nav-view-btn px-2.5 py-1 rounded-md text-[var(--color-muted)] hover:text-[var(--color-offwhite)] bg-[var(--border-subtle)]/60 border border-[var(--border-subtle)] transition">
         Landing Page
       </button>
-      <button onclick="switchView('dashboard')" id="btn-view-dashboard" class="nav-view-btn px-2.5 py-1 rounded-md text-emerald-400 font-semibold bg-emerald-500/10 border border-emerald-500/30 transition">
+      <button onclick="switchView('dashboard')" id="btn-view-dashboard" class="nav-view-btn px-2.5 py-1 rounded-md text-amber-400 font-semibold bg-amber-500/10 border border-amber-500/30 transition">
         Tableau de Bord
       </button>
-      <button onclick="switchView('employee')" id="btn-view-employee" class="nav-view-btn px-2.5 py-1 rounded-md text-slate-300 hover:text-white bg-slate-800/60 border border-slate-700/50 transition">
+      <button onclick="switchView('employee')" id="btn-view-employee" class="nav-view-btn px-2.5 py-1 rounded-md text-[var(--color-muted)] hover:text-[var(--color-offwhite)] bg-[var(--border-subtle)]/60 border border-[var(--border-subtle)] transition">
         Espace Employé Mobile
       </button>
-      <button onclick="switchView('manager')" id="btn-view-manager" class="nav-view-btn px-2.5 py-1 rounded-md text-slate-300 hover:text-white bg-slate-800/60 border border-slate-700/50 transition">
+      <button onclick="switchView('manager')" id="btn-view-manager" class="nav-view-btn px-2.5 py-1 rounded-md text-[var(--color-muted)] hover:text-[var(--color-offwhite)] bg-[var(--border-subtle)]/60 border border-[var(--border-subtle)] transition">
         Espace Manager
       </button>
     </div>
 
     <!-- Live System Clock -->
-    <div class="flex items-center space-x-2 font-mono text-emerald-400">
+    <div class="flex items-center space-x-2 font-mono text-amber-400">
       <i data-lucide="clock" class="w-3.5 h-3.5"></i>
-      <span id="live-system-clock">08:00:00 GMT</span>
-    </div>
-  </header>
-
-  <!-- MAIN NAVIGATION PILL -->
+      <span id="live-system-clock">08:00:00 GMT</sp  <!-- MAIN NAVIGATION PILL -->
   <nav class="max-w-6xl mx-auto px-4 mt-4 sticky top-12 z-40">
-    <div class="glass-pill px-4 py-2.5 flex items-center justify-between shadow-2xl border border-white/10">
+    <div class="glass-pill px-4 py-2.5 flex items-center justify-between shadow-2xl border border-[var(--border-subtle)]">
       <div class="flex items-center space-x-3 cursor-pointer" onclick="switchView('dashboard')">
-        <div class="w-9 h-9 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 glow-green-sm">
+        <div class="w-9 h-9 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 glow-amber">
           <i data-lucide="shield-check" class="w-5 h-5"></i>
         </div>
         <div>
-          <h1 class="font-bold text-sm tracking-tight text-white flex items-center gap-1.5">
+          <h1 class="font-bold text-sm tracking-tight text-[var(--color-offwhite)] flex items-center gap-1.5">
             Winner Pointage
-            <span class="text-[10px] font-mono font-normal text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">v2.4 Pro</span>
+            <span class="text-[10px] font-mono font-normal text-amber-400 px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">v2.4 Pro</span>
           </h1>
-          <p class="text-[10px] text-slate-400 font-mono">Pointage Géolocalisé & Anti-Fraude</p>
+          <p class="text-[10px] text-[var(--color-muted)] font-mono">Pointage Géolocalisé & Anti-Fraude</p>
         </div>
       </div>
 
       <!-- Navigation Links -->
       <div class="hidden lg:flex items-center space-x-1 text-xs">
-        <button onclick="switchSection('overview')" class="nav-tab-link px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/50 active text-emerald-400 font-medium" data-tab="overview">
+        <button onclick="switchSection('overview')" class="nav-tab-link px-3 py-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] hover:bg-amber-500/10 active text-amber-400 font-medium" data-tab="overview">
           <i data-lucide="layout-dashboard" class="w-3.5 h-3.5 inline mr-1"></i>Vue d'Ensemble
         </button>
-        <button onclick="switchSection('punch')" class="nav-tab-link px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/50" data-tab="punch">
+        <button onclick="switchSection('punch')" class="nav-tab-link px-3 py-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] hover:bg-amber-500/10" data-tab="punch">
           <i data-lucide="navigation" class="w-3.5 h-3.5 inline mr-1"></i>Pointage GPS & Selfie
         </button>
-        <button onclick="switchSection('leaves')" class="nav-tab-link px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/50" data-tab="leaves">
+        <button onclick="switchSection('leaves')" class="nav-tab-link px-3 py-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] hover:bg-amber-500/10" data-tab="leaves">
           <i data-lucide="calendar-off" class="w-3.5 h-3.5 inline mr-1"></i>Congés
         </button>
-        <button onclick="switchSection('overtime')" class="nav-tab-link px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/50" data-tab="overtime">
+        <button onclick="switchSection('overtime')" class="nav-tab-link px-3 py-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] hover:bg-amber-500/10" data-tab="overtime">
           <i data-lucide="clock-4" class="w-3.5 h-3.5 inline mr-1"></i>Heures Supp
         </button>
-        <button onclick="switchSection('lateness')" class="nav-tab-link px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/50" data-tab="lateness">
+        <button onclick="switchSection('lateness')" class="nav-tab-link px-3 py-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] hover:bg-amber-500/10" data-tab="lateness">
           <i data-lucide="alert-triangle" class="w-3.5 h-3.5 inline mr-1"></i>Retards
         </button>
-        <button onclick="switchSection('staff')" class="nav-tab-link px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/50" data-tab="staff">
+        <button onclick="switchSection('staff')" class="nav-tab-link px-3 py-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] hover:bg-amber-500/10" data-tab="staff">
           <i data-lucide="users" class="w-3.5 h-3.5 inline mr-1"></i>Employés & Commerciaux
         </button>
-        <button onclick="switchSection('security')" class="nav-tab-link px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/50" data-tab="security">
+        <button onclick="switchSection('security')" class="nav-tab-link px-3 py-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] hover:bg-amber-500/10" data-tab="security">
           <i data-lucide="fingerprint" class="w-3.5 h-3.5 inline mr-1"></i>Anti-Fraude
         </button>
-        <button onclick="switchSection('qr')" class="nav-tab-link px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/50" data-tab="qr">
+        <button onclick="switchSection('qr')" class="nav-tab-link px-3 py-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] hover:bg-amber-500/10" data-tab="qr">
           <i data-lucide="qr-code" class="w-3.5 h-3.5 inline mr-1"></i>QR Code
         </button>
-        <button onclick="switchSection('reports')" class="nav-tab-link px-3 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/50" data-tab="reports">
+        <button onclick="switchSection('reports')" class="nav-tab-link px-3 py-1.5 rounded-lg text-[var(--color-muted)] hover:text-[var(--color-offwhite)] hover:bg-amber-500/10" data-tab="reports">
           <i data-lucide="file-text" class="w-3.5 h-3.5 inline mr-1"></i>Rapports PDF
         </button>
       </div>
 
       <!-- Action Buttons -->
       <div class="flex items-center space-x-2">
-        <button onclick="openCopilotDrawer()" class="px-3 py-1.5 rounded-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1.5 transition glow-green-sm">
+        <button onclick="openCopilotDrawer()" class="px-3 py-1.5 rounded-full bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-semibold flex items-center gap-1.5 transition glow-amber">
           <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
           <span class="hidden sm:inline">Copilote RH</span>
         </button>
-        <button onclick="openPunchModal()" class="magnetic-btn px-4 py-1.5 rounded-full bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-500/20">
+        <button onclick="openPunchModal()" class="magnetic-btn px-4 py-1.5 rounded-full bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-orange-500/20">
           <i data-lucide="map-pin-check" class="w-3.5 h-3.5"></i>
           Pointer Maintenant
         </button>
@@ -171,38 +182,38 @@
         
         <!-- Left Hero Column -->
         <div class="lg:col-span-7 space-y-6">
-          <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono">
+          <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-mono">
             <i data-lucide="shield-check" class="w-4 h-4"></i>
             <span>Système Anti-Faux GPS & Biométrie Visuelle</span>
           </div>
 
-          <h1 class="text-4xl md:text-6xl font-extrabold tracking-tight text-white leading-tight">
-            Le pointage qui <span class="font-serif italic text-emerald-400 font-normal">confirme réellement</span> la présence de vos employés.
+          <h1 class="text-4xl md:text-6xl font-extrabold tracking-tight text-[var(--color-offwhite)] leading-tight">
+            Le pointage qui <span class="font-serif italic bg-gradient-to-r from-amber-400 via-orange-400 to-emerald-400 bg-clip-text text-transparent font-normal">confirme réellement</span> la présence de vos employés.
           </h1>
 
-          <p class="text-slate-300 text-base md:text-lg max-w-2xl leading-relaxed">
-            Spécialement configuré pour <strong class="text-white">Winner Digital SARL</strong> (Packaging personnalisé). Pointage GPS géofencé, reconnaissance faciale selfie IA, calcul automatique des retards, demandes de congé et suivi d'heures supplémentaires dans un cockpit sécurisé unique.
+          <p class="text-[var(--color-muted)] text-base md:text-lg max-w-2xl leading-relaxed">
+            Spécialement configuré pour <strong class="text-[var(--color-offwhite)]">Winner Digital SARL</strong> (Packaging personnalisé). Pointage GPS géofencé, reconnaissance faciale selfie IA, calcul automatique des retards, demandes de congé et suivi d'heures supplémentaires dans un cockpit sécurisé unique.
           </p>
 
           <!-- Key Metrics Pills -->
           <div class="grid grid-cols-3 gap-4 pt-2 max-w-xl">
-            <div class="glass-panel p-3.5 text-center">
-              <div class="font-mono text-2xl font-bold text-emerald-400">100%</div>
-              <div class="text-[11px] text-slate-400">Périmètre GPS Vérifié</div>
+            <div class="glass-panel p-3.5 text-center border-t-2 border-t-amber-500">
+              <div class="font-mono text-2xl font-bold text-amber-400">100%</div>
+              <div class="text-[11px] text-[var(--color-muted)]">Périmètre GPS Vérifié</div>
             </div>
-            <div class="glass-panel p-3.5 text-center">
-              <div class="font-mono text-2xl font-bold text-white">0.3s</div>
-              <div class="text-[11px] text-slate-400">Temps de Pointage</div>
+            <div class="glass-panel p-3.5 text-center border-t-2 border-t-orange-500">
+              <div class="font-mono text-2xl font-bold text-orange-400">0.3s</div>
+              <div class="text-[11px] text-[var(--color-muted)]">Temps de Pointage</div>
             </div>
-            <div class="glass-panel p-3.5 text-center">
+            <div class="glass-panel p-3.5 text-center border-t-2 border-t-emerald-500">
               <div class="font-mono text-2xl font-bold text-emerald-400">0%</div>
-              <div class="text-[11px] text-slate-400">Fraude Tolérée</div>
+              <div class="text-[11px] text-[var(--color-muted)]">Fraude Tolérée</div>
             </div>
           </div>
 
           <div class="flex flex-wrap items-center gap-4 pt-2">
-            <button onclick="openPunchModal()" class="magnetic-btn px-6 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-sm flex items-center gap-2 shadow-xl shadow-emerald-500/25">
-              <i data-lucide="play" class="w-4 h-4 fill-black"></i>
+            <button onclick="openPunchModal()" class="magnetic-btn px-6 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white font-bold text-sm flex items-center gap-2 shadow-xl shadow-amber-500/25">
+              <i data-lucide="play" class="w-4 h-4 fill-white"></i>i data-lucide="play" class="w-4 h-4 fill-black"></i>
               Tester le Pointage en Direct
             </button>
             <button onclick="switchView('dashboard')" class="px-6 py-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-white font-semibold text-sm border border-slate-700 flex items-center gap-2 transition">
