@@ -754,8 +754,8 @@ function openAuthModal(mode = 'login') {
   if (modal) modal.classList.remove('hidden');
 
   if (mode === 'register') {
-    if (title) title.innerText = 'Démarrer votre Essai Gratuit de 14 Jours';
-    if (submitBtn) submitBtn.innerText = 'Créer mon compte entreprise';
+    if (title) title.innerText = 'Souscrire un Abonnement Entreprise';
+    if (submitBtn) submitBtn.innerText = 'Valider mon abonnement';
   } else {
     if (title) title.innerText = 'Connexion à votre Espace Client RH';
     if (submitBtn) submitBtn.innerText = 'Se Connecter';
