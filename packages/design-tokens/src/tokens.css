@@ -1,0 +1,107 @@
+/**
+ * Winner Pointage - Tokens du design system "Chaleur d'Afrique"
+ *
+ * SOURCE UNIQUE. Ces valeurs sont identiques a celles de apps/web/styles.css
+ * (le site vitrine, volontairement fige). La parite est verifiee mecaniquement
+ * par `pnpm check:tokens` - toute divergence casse la CI.
+ *
+ * Ne jamais coder une couleur en dur dans apps/app : le lint `no-raw-tailwind-colors`
+ * l'interdit. C'est ce qui garantit que les 3 themes fonctionnent partout, alors
+ * que la maquette actuelle du dashboard casse le theme clair en codant slate-* en dur.
+ */
+
+:root,
+[data-theme='terracotta'] {
+  --bg-dark: #181310;
+  --bg-card: rgba(36, 28, 23, 0.88);
+  --bg-card-hover: rgba(48, 38, 31, 0.92);
+  --bg-card-elevated: rgba(58, 45, 37, 0.95);
+  --border-subtle: rgba(245, 158, 11, 0.15);
+  --border-accent: rgba(234, 88, 12, 0.35);
+
+  --color-green: #10b981;
+  --color-green-glow: rgba(16, 185, 129, 0.25);
+  --color-gold: #f59e0b;
+  --color-gold-glow: rgba(245, 158, 11, 0.3);
+  --color-orange: #ea580c;
+  --color-steel: #2a2019;
+  --color-offwhite: #fffbf5;
+  --color-muted: #d5c4b5;
+  --color-red: #f43f5e;
+  --color-cyan: #06b6d4;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-serif: 'Playfair Display', Georgia, serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* Theme 2 : Savane & Emeraude */
+[data-theme='safari'] {
+  --bg-dark: #0d1612;
+  --bg-card: rgba(20, 34, 28, 0.88);
+  --bg-card-hover: rgba(28, 45, 38, 0.92);
+  --bg-card-elevated: rgba(35, 57, 48, 0.95);
+  --border-subtle: rgba(16, 185, 129, 0.18);
+  --border-accent: rgba(245, 158, 11, 0.4);
+
+  --color-green: #10b981;
+  --color-green-glow: rgba(16, 185, 129, 0.35);
+  --color-gold: #eab308;
+  --color-gold-glow: rgba(234, 179, 8, 0.3);
+  --color-orange: #f97316;
+  --color-steel: #182b22;
+  --color-offwhite: #f2faf5;
+  --color-muted: #a8c4b5;
+  --color-red: #ef4444;
+  --color-cyan: #0ea5e9;
+}
+
+/* Theme 3 : Soleil d'Ivoire - mode clair chaleureux */
+[data-theme='light-warm'] {
+  --bg-dark: #fdf8f2;
+  --bg-card: rgba(255, 255, 255, 0.92);
+  --bg-card-hover: rgba(255, 244, 229, 0.95);
+  --bg-card-elevated: #fff4e5;
+  --border-subtle: rgba(217, 119, 6, 0.2);
+  --border-accent: rgba(234, 88, 12, 0.4);
+
+  --color-green: #059669;
+  --color-green-glow: rgba(5, 150, 105, 0.2);
+  --color-gold: #d97706;
+  --color-gold-glow: rgba(217, 119, 6, 0.2);
+  --color-orange: #c2410c;
+  --color-steel: #f5e8d8;
+  --color-offwhite: #292524;
+  --color-muted: #78716c;
+  --color-red: #dc2626;
+  --color-cyan: #0284c7;
+}
+
+/* ------------------------------------------------------------------ */
+/* Tokens ajoutes pour l'application (absents du site vitrine).         */
+/* Ils ne participent PAS au controle de parite : ce sont des ajouts,   */
+/* pas des divergences. Voir scripts/check-token-parity.mjs.            */
+/* ------------------------------------------------------------------ */
+:root {
+  /* Etats semantiques du pointage - utilises par les badges et les KPI */
+  --state-present: var(--color-green);
+  --state-late: var(--color-gold);
+  --state-absent: var(--color-red);
+  --state-leave: var(--color-cyan);
+  --state-mission: var(--color-orange);
+  --state-pending: var(--color-muted);
+
+  /* Echelle de rayons - figee d'apres les classes existantes */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-panel: 1.25rem;
+  --radius-panel-elevated: 1.75rem;
+  --radius-pill: 9999px;
+
+  /* Cible tactile minimale (accessibilite mobile - cf. cahier des charges) */
+  --tap-target-min: 44px;
+
+  /* Courbe de mouvement unique, reprise de .magnetic-btn */
+  --ease-brand: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}

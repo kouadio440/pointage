@@ -1,0 +1,233 @@
+/**
+ * Winner Pointage — Primitives visuelles partagees.
+ *
+ * Portage a l'identique des classes de apps/web/styles.css, pour que
+ * l'application authentifiee et le site vitrine soient visuellement le meme produit.
+ * Toute valeur ici doit passer par un token : aucune couleur en dur.
+ */
+
+/* --- Surfaces ---------------------------------------------------- */
+
+.glass-panel {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+  box-shadow: 0 12px 32px -10px rgba(0, 0, 0, 0.35);
+}
+
+.glass-panel-elevated {
+  background: var(--bg-card-elevated);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-panel-elevated);
+  box-shadow: 0 20px 45px -15px var(--color-gold-glow);
+}
+
+.glass-pill {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.25);
+}
+
+/* --- Halos ------------------------------------------------------- */
+
+.glow-amber {
+  box-shadow: 0 0 25px -5px var(--color-gold-glow);
+}
+.glow-green {
+  box-shadow: 0 0 25px -5px var(--color-green-glow);
+}
+.glow-green-sm {
+  box-shadow: 0 0 12px 0 var(--color-green-glow);
+}
+.glow-orange {
+  box-shadow: 0 0 25px -5px rgba(234, 88, 12, 0.4);
+}
+.glow-red {
+  box-shadow: 0 0 25px -5px rgba(244, 63, 94, 0.4);
+}
+
+/* --- Interactions ------------------------------------------------ */
+
+.magnetic-btn {
+  transition: all 0.3s var(--ease-brand);
+}
+
+.magnetic-btn:hover {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 12px 28px -5px rgba(245, 158, 11, 0.45);
+}
+
+.interactive-card {
+  transition: all 0.3s var(--ease-brand);
+}
+
+.interactive-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(245, 158, 11, 0.45);
+  box-shadow: 0 15px 35px -10px rgba(234, 88, 12, 0.25);
+}
+
+/* --- Badges d'etat ----------------------------------------------- */
+
+.badge-verified {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--color-green);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.badge-alert {
+  background: rgba(245, 158, 11, 0.18);
+  color: var(--color-gold);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.badge-danger {
+  background: rgba(244, 63, 94, 0.15);
+  color: var(--color-red);
+  border: 1px solid rgba(244, 63, 94, 0.35);
+}
+
+.badge-info {
+  background: rgba(6, 182, 212, 0.15);
+  color: var(--color-cyan);
+  border: 1px solid rgba(6, 182, 212, 0.35);
+}
+
+/* --- Animations --------------------------------------------------- */
+
+@keyframes radar-sweep {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.radar-line {
+  animation: radar-sweep 4s linear infinite;
+  transform-origin: center center;
+}
+
+@keyframes scan-beam {
+  0% {
+    top: 0%;
+    opacity: 0.8;
+  }
+  50% {
+    top: 100%;
+    opacity: 1;
+  }
+  100% {
+    top: 0%;
+    opacity: 0.8;
+  }
+}
+
+.scan-beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--color-gold), transparent);
+  box-shadow: 0 0 15px var(--color-gold);
+  animation: scan-beam 2.5s ease-in-out infinite;
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0.8;
+  }
+}
+
+.pulse-ring {
+  animation: pulse-ring 2s ease-in-out infinite;
+}
+
+@keyframes scan-laser {
+  0% {
+    top: 6%;
+    opacity: 0.3;
+  }
+  50% {
+    top: 88%;
+    opacity: 1;
+  }
+  100% {
+    top: 6%;
+    opacity: 0.3;
+  }
+}
+
+.animate-scan-laser {
+  animation: scan-laser 1.8s ease-in-out infinite;
+}
+
+/* Respect de prefers-reduced-motion : le cahier des charges impose
+   l'accessibilite, et une animation permanente de radar est un declencheur connu. */
+@media (prefers-reduced-motion: reduce) {
+  .radar-line,
+  .scan-beam,
+  .pulse-ring,
+  .animate-scan-laser {
+    animation: none;
+  }
+  .magnetic-btn,
+  .interactive-card {
+    transition: none;
+  }
+  .magnetic-btn:hover,
+  .interactive-card:hover {
+    transform: none;
+  }
+}
+
+/* --- Barre de defilement ------------------------------------------ */
+
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-dark);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-accent);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-gold);
+}
+
+/* --- Accessibilite ------------------------------------------------ */
+
+/* Anneau de focus visible sur tout element interactif — absent du prototype. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Cible tactile minimale sur mobile (44x44 px). */
+@media (pointer: coarse) {
+  :where(button, a[role='button'], [role='tab']) {
+    min-height: var(--tap-target-min);
+    min-width: var(--tap-target-min);
+  }
+}

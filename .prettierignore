@@ -1,0 +1,10 @@
+# Le site vitrine est fige : on ne le reformate pas (voir docs/ARCHITECTURE.md).
+apps/web/
+
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+pnpm-lock.yaml
+apps/api/prisma/generated/

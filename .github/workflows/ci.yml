@@ -1,0 +1,149 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '24'
+  PNPM_VERSION: '11.20.0'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  #  Garde-fous structurels.
+  #
+  #  Volontairement en PREMIER et sans dependance : ils sont instantanes et
+  #  detectent des defauts (fuite entre entreprises, surveillance permanente,
+  #  derive du design) qu'aucun test unitaire ne rattraperait.
+  # ---------------------------------------------------------------------------
+  garde-fous:
+    name: Garde-fous structurels
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Parite des tokens de design (vitrine vs application)
+        run: node scripts/check-token-parity.mjs
+
+      - name: Isolation multi-entreprises (schema Prisma)
+        run: node scripts/check-tenant-scoping.mjs
+
+      - name: Le garde-fou d'isolation detecte bien les violations
+        # Un controle de securite qui ne peut pas echouer n'apporte aucune garantie.
+        run: |
+          if node scripts/check-tenant-scoping.mjs scripts/fixtures/tenant-violations.prisma; then
+            echo "::error::Le controle d'isolation n'a PAS detecte les violations de la fixture."
+            exit 1
+          fi
+          echo "Le garde-fou echoue bien sur la fixture de violations."
+
+      - name: Aucune geolocalisation en arriere-plan
+        run: node scripts/check-no-background-geolocation.mjs
+
+  qualite:
+    name: Types, lint et tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Installation (lockfile fige)
+        run: pnpm install --frozen-lockfile
+
+      - name: Client Prisma
+        run: pnpm --filter @pointage/api exec prisma generate
+
+      - name: Verification des types
+        run: pnpm turbo run typecheck
+
+      - name: Format
+        run: pnpm format:check
+
+      - name: Tests unitaires
+        run: pnpm turbo run test
+
+  securite:
+    name: Analyse de securite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Historique complet : gitleaks doit pouvoir remonter les commits.
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Installation (lockfile fige)
+        run: pnpm install --frozen-lockfile
+
+      - name: Vulnerabilites connues des dependances
+        run: pnpm audit --audit-level=high
+
+      - name: Recherche de secrets committes
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---------------------------------------------------------------------------
+  #  Tests d'integration et de securite applicative.
+  #
+  #  Activés en phase 1, quand l'authentification et le cloisonnement existent :
+  #  c'est la que la suite d'isolation generee (une assertion par route) et la
+  #  matrice RBAC deviennent bloquantes.
+  # ---------------------------------------------------------------------------
+  integration:
+    name: Integration et securite applicative
+    runs-on: ubuntu-latest
+    if: false # active en phase 1
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: pointage
+          POSTGRES_PASSWORD: pointage
+          POSTGRES_DB: pointage_test
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 20
+        ports: ['5432:5432']
+      redis:
+        image: redis:8-alpine
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+        ports: ['6379:6379']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @pointage/api exec prisma migrate deploy
+      - run: pnpm turbo run test:integration
+      - run: pnpm turbo run test:security

@@ -1,4 +1,42 @@
+# --- Secrets (ne JAMAIS committer) ---
 .env
-.env*.local
+.env.*
+!.env.example
+
+# --- Dependances ---
 node_modules/
+.pnpm-store/
+
+# --- Build / cache ---
+dist/
+build/
+coverage/
+.turbo/
+.vite/
+*.tsbuildinfo
+
+# --- Prisma ---
+apps/api/prisma/generated/
+
+# --- Python (services/face) ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# --- Donnees locales de la stack Docker ---
+.docker-data/
+
+# --- Tests ---
+playwright-report/
+test-results/
+blob-report/
+
+# --- OS / editeurs ---
 .DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json

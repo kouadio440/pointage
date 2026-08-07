@@ -1,0 +1,39 @@
+{
+  "name": "pointage",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plateforme SaaS de pointage et de gestion du temps pour les entreprises d'Afrique de l'Ouest",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=11.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:integration": "turbo run test:integration",
+    "test:security": "turbo run test:security",
+    "check:tokens": "node scripts/check-token-parity.mjs",
+    "check:tenant": "node scripts/check-tenant-scoping.mjs",
+    "check:no-bg-geo": "node scripts/check-no-background-geolocation.mjs",
+    "check:all": "pnpm check:tokens && pnpm check:tenant && pnpm check:no-bg-geo",
+    "db:migrate": "pnpm --filter @pointage/api db:migrate",
+    "db:seed": "pnpm --filter @pointage/api db:seed",
+    "db:studio": "pnpm --filter @pointage/api db:studio",
+    "stack:up": "docker compose up -d",
+    "stack:down": "docker compose down",
+    "stack:logs": "docker compose logs -f",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,css,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,css,yml,yaml}\""
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "prettier": "^3.6.2",
+    "turbo": "^2.5.8",
+    "typescript": "^5.9.3"
+  }
+}

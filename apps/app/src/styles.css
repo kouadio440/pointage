@@ -1,0 +1,39 @@
+/* Tokens partages avec le site vitrine - parite verifiee par `pnpm check:tokens`. */
+@import '@pointage/design-tokens/tokens.css';
+@import '@pointage/design-tokens/components.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    background-color: var(--bg-dark);
+    color: var(--color-offwhite);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    transition:
+      background-color 0.4s ease,
+      color 0.4s ease;
+  }
+
+  /* Les chiffres (heures, montants, distances) sont toujours en mono :
+     c'est ce qui les rend alignables et comparables dans un tableau. */
+  .tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Un montant ne doit jamais se couper en fin de ligne. */
+  .amount {
+    white-space: nowrap;
+  }
+}

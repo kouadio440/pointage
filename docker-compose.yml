@@ -1,0 +1,148 @@
+# =============================================================================
+#  Winner Pointage - stack de developpement
+#
+#  Demarrage :  pnpm stack:up      (equivaut a docker compose up -d)
+#  Arret     :  pnpm stack:down
+#  Journaux  :  pnpm stack:logs
+#
+#  Volontairement 12-factor et sans dependance cloud proprietaire : la meme
+#  composition tourne sur un VPS, chez un hebergeur manage ou en local. Le choix
+#  d'hebergement peut donc etre pris plus tard sans rien reecrire.
+#
+#  Les services lourds (reconnaissance faciale, antivirus) sont derriere des
+#  profils : `docker compose --profile face up -d` pour les activer.
+# =============================================================================
+
+name: pointage
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pointage}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-in-production}
+      POSTGRES_DB: ${POSTGRES_DB:-pointage}
+      # Fuseau du conteneur en UTC : le fuseau metier est porte par
+      # l'application (Africa/Abidjan par defaut), jamais par la base.
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      - '5432:5432'
+    volumes:
+      - ./.docker-data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-pointage} -d ${POSTGRES_DB:-pointage}']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [pointage]
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    # AOF active : les files BullMQ (rapports, notifications) ne doivent pas
+    # disparaitre au redemarrage du conteneur.
+    command: ['redis-server', '--appendonly', 'yes', '--save', '60', '1']
+    ports:
+      - '6379:6379'
+    volumes:
+      - ./.docker-data/redis:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [pointage]
+
+  # Stockage objet compatible S3. En production, remplace par S3/Scaleway/OVH
+  # sans changer une ligne de code applicatif.
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-change-me-in-production}
+    ports:
+      - '9000:9000' # API S3
+      - '9001:9001' # console web
+    volumes:
+      - ./.docker-data/minio:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [pointage]
+
+  # Cree les buckets au premier demarrage et verrouille l'acces public.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${S3_ACCESS_KEY:-minioadmin} ${S3_SECRET_KEY:-change-me-in-production} &&
+      mc mb --ignore-existing local/${S3_BUCKET:-pointage} &&
+      mc anonymous set none local/${S3_BUCKET:-pointage} &&
+      echo 'Bucket pret, acces anonyme desactive.'
+      "
+    networks: [pointage]
+
+  # Boite mail de developpement : aucun e-mail ne sort de la machine.
+  # Interface web sur http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: 500
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    ports:
+      - '1025:1025' # SMTP
+      - '8025:8025' # interface web
+    networks: [pointage]
+
+  # ---------------------------------------------------------------------------
+  #  Reconnaissance faciale (profil `face`)
+  #
+  #  Auto-heberge : les embeddings biometriques ne quittent jamais notre infra.
+  #  AUCUN port publie : joignable uniquement depuis le reseau interne. Exposer
+  #  ce service reviendrait a exposer une base de donnees biometriques.
+  # ---------------------------------------------------------------------------
+  face:
+    profiles: ['face', 'full']
+    build:
+      context: ./services/face
+    restart: unless-stopped
+    environment:
+      FACE_SERVICE_TOKEN: ${FACE_SERVICE_TOKEN:-change-me-in-production}
+      FACE_MODEL_VERSION: ${FACE_MODEL_VERSION:-buffalo_l-v1}
+    expose:
+      - '8000'
+    volumes:
+      - ./.docker-data/face-models:/root/.insightface
+    networks: [pointage]
+
+  # Analyse antivirus des justificatifs et documents (phase 6).
+  clamav:
+    profiles: ['security', 'full']
+    image: clamav/clamav:stable
+    restart: unless-stopped
+    expose:
+      - '3310'
+    volumes:
+      - ./.docker-data/clamav:/var/lib/clamav
+    healthcheck:
+      test: ['CMD', 'clamdcheck.sh']
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 300s
+    networks: [pointage]
+
+networks:
+  pointage:
+    driver: bridge

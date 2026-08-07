@@ -1,0 +1,26 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "baseUrl": "./",
+
+    // NestJS repose sur les decorateurs et les metadonnees de type.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+
+    // Les decorateurs Nest sont incompatibles avec isolatedModules dans
+    // certaines configurations de transpilation ; tsc compile le projet entier.
+    "isolatedModules": false,
+
+    "types": ["node"],
+    "lib": ["ES2023"]
+  },
+  // Uniquement le code applicatif : c'est ce qui est compile vers dist/.
+  // Les scripts d'outillage (prisma.config.ts, seed) sont verifies par
+  // tsconfig.tools.json, qui n'emet rien.
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "test", "src/**/*.test.ts"]
+}

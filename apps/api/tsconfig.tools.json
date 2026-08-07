@@ -1,0 +1,17 @@
+{
+  // Verification de type des scripts d'outillage (configuration Prisma, seed).
+  // Ils ne sont jamais compiles vers dist/ : Prisma et tsx les transpilent
+  // a la volee. On les type-verifie quand meme, car un seed casse bloque
+  // toute la boucle de developpement.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "isolatedModules": false,
+    "types": ["node"]
+  },
+  "include": ["prisma/**/*.ts", "prisma.config.ts"]
+}

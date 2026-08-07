@@ -1,0 +1,1807 @@
+// =============================================================================
+//  Winner Pointage - Schema de donnees
+// =============================================================================
+//
+//  ISOLATION MULTI-ENTREPRISES : premier mur.
+//
+//  Tout modele portant des donnees d'un client possede `companyId` ET un index
+//  dont la PREMIERE colonne est `companyId`. Une extension Prisma injecte le
+//  filtre tenant automatiquement, en mode fail-closed : sans contexte tenant,
+//  elle leve une exception plutot que de requeter. Le second mur (RLS Postgres)
+//  arrive en phase 6.
+//
+//  `scripts/check-tenant-scoping.mjs` verifie mecaniquement ces deux regles a
+//  chaque commit. Les seuls modeles autorises a s'en affranchir sont ceux de la
+//  liste GLOBAL_MODELS (plateforme, catalogue d'offres, journal plateforme).
+//
+//  IMMUTABILITE : Punch et AuditLog ne sont jamais mis a jour. Une correction
+//  cree une ligne PunchCorrection ; l'audit est append-only, garanti au niveau
+//  des droits PostgreSQL.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+//  ENUMS
+// =============================================================================
+
+enum CompanyStatus {
+  PENDING // inscrite, en attente d'activation e-mail/SMS
+  ACTIVE
+  SUSPENDED // impaye : le pointage est interrompu
+  ARCHIVED
+}
+
+enum PlanCode {
+  STARTER
+  BUSINESS
+  ENTERPRISE
+}
+
+enum BillingPeriod {
+  MONTHLY
+  ANNUAL
+}
+
+enum SubscriptionStatus {
+  PENDING_PAYMENT
+  ACTIVE
+  PAST_DUE // echue mais dans la periode de grace
+  SUSPENDED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PAID
+  OVERDUE
+  VOID
+}
+
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  REFUNDED
+}
+
+/// Mode d'encaissement. Seul MANUAL est implemente (le Super Admin confirme) ;
+/// les autres existent pour que brancher un PSP ne demande pas de migration.
+enum PaymentMethod {
+  MANUAL_TRANSFER
+  MANUAL_MOBILE_MONEY
+  MANUAL_CASH
+  CINETPAY
+  WAVE
+  STRIPE
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  CEO
+  HR
+  MANAGER
+  EMPLOYEE
+}
+
+enum UserStatus {
+  PENDING_ACTIVATION
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  SUSPENDED
+  DISABLED
+  OFFBOARDED
+}
+
+enum ScheduleType {
+  FIXED // heures identiques chaque jour travaille
+  FLEXIBLE // volume quotidien a respecter, plage libre
+  ROTATION // equipes tournantes
+  NIGHT // travail de nuit, passe minuit
+}
+
+enum ScheduleAssignmentLevel {
+  COMPANY
+  SITE
+  DEPARTMENT
+  EMPLOYEE
+}
+
+enum PunchType {
+  IN
+  OUT
+  BREAK_START
+  BREAK_END
+}
+
+enum PunchMethod {
+  GPS_SELFIE
+  QR_KIOSK
+  MANUAL_HR
+  NFC_BADGE
+}
+
+enum PunchDecision {
+  ACCEPTED
+  PENDING_REVIEW
+  REJECTED
+}
+
+enum WorkDayStatus {
+  NOT_STARTED
+  PRESENT
+  LATE
+  ABSENT
+  ON_LEAVE
+  ON_MISSION
+  HOLIDAY
+  REST_DAY
+}
+
+enum LeaveStatus {
+  DRAFT
+  PENDING_MANAGER
+  PENDING_HR
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REJECTED
+}
+
+enum OvertimeStatus {
+  DETECTED // calcule automatiquement, pas encore soumis
+  PENDING_MANAGER
+  PENDING_HR
+  APPROVED
+  REJECTED
+}
+
+enum TemporaryExitStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  IN_PROGRESS
+  RETURNED
+  OVERDUE
+}
+
+enum LatenessStatus {
+  RECORDED
+  JUSTIFICATION_SUBMITTED
+  EXCUSED
+  UNEXCUSED
+}
+
+enum MissionStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  VALIDATED
+  CANCELLED
+}
+
+enum VisitStatus {
+  PLANNED
+  ARRIVED
+  COMPLETED
+  VALIDATED
+  CANCELLED
+}
+
+enum AlertLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AlertStatus {
+  OPEN
+  UNDER_REVIEW
+  CONFIRMED_FRAUD
+  DISMISSED
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  SMS
+  PUSH
+  WHATSAPP
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+  READ
+}
+
+enum ReportType {
+  DAILY
+  WEEKLY
+  MONTHLY
+  ANNUAL
+  LATENESS
+  ABSENCE
+  OVERTIME
+  BY_DEPARTMENT
+  BY_SITE
+  PAYROLL_EXPORT
+}
+
+enum ReportFormat {
+  PDF
+  XLSX
+  CSV
+}
+
+enum ReportStatus {
+  QUEUED
+  GENERATING
+  READY
+  FAILED
+  EXPIRED
+}
+
+enum FileKind {
+  SELFIE
+  REFERENCE_PHOTO
+  LEAVE_JUSTIFICATION
+  MISSION_PHOTO
+  VISIT_PHOTO
+  VISIT_SIGNATURE
+  COMPANY_LOGO
+  EMPLOYEE_DOCUMENT
+  PAYMENT_PROOF
+  REPORT
+  IMPORT_CSV
+}
+
+enum ScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  SCAN_FAILED
+}
+
+enum DevicePlatform {
+  WEB
+  ANDROID
+  IOS
+  KIOSK
+}
+
+enum DeviceTrust {
+  UNKNOWN
+  TRUSTED
+  BLOCKED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum OtpPurpose {
+  ACCOUNT_ACTIVATION
+  PASSWORD_RESET
+  EMPLOYEE_LOGIN
+  DEVICE_BINDING
+}
+
+enum LeaveUnit {
+  FULL_DAY
+  HALF_DAY_MORNING
+  HALF_DAY_AFTERNOON
+}
+
+// =============================================================================
+//  PLATEFORME  (modeles globaux, hors perimetre tenant)
+// =============================================================================
+
+/// Catalogue d'offres. Global : les tarifs sont les memes pour tous.
+model Plan {
+  id   String   @id @default(uuid()) @db.Uuid
+  code PlanCode @unique
+
+  name           String
+  maxEmployees   Int /// plafond de sieges applique a la creation d'un employe
+  maxSites       Int
+  monthlyPriceIt Int /// en francs CFA entiers, jamais en flottant
+  annualPriceIt  Int
+  features       Json     @default("[]")
+  isPublic       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("plan")
+}
+
+model Company {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// Code remis aux employes pour se connecter, format "WDS-4821".
+  code   String        @unique
+  name   String
+  sector String
+  status CompanyStatus @default(PENDING)
+
+  country  String @db.Char(2)
+  city     String
+  address  String?
+  timezone String @default("Africa/Abidjan")
+  locale   String @default("fr-FR")
+  currency String @default("XOF")
+
+  logoFileId String? @db.Uuid
+
+  activatedAt DateTime?
+  suspendedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  /// Cle de chiffrement de l'entreprise, elle-meme enveloppee par la cle maitre
+  /// KMS. Sert a chiffrer les embeddings biometriques et les secrets QR.
+  wrappedDek Bytes?
+
+  settings      CompanySettings?
+  subscription  Subscription?
+  users         User[]
+  employees     Employee[]
+  departments   Department[]
+  positions     Position[]
+  sites         Site[]
+  schedules     Schedule[]
+  scheduleLinks ScheduleAssignment[]
+  rotations     ShiftRotation[]
+  holidays      Holiday[]
+  specialDays   SpecialSchedule[]
+  punches       Punch[]
+  corrections   PunchCorrection[]
+  workDays      WorkDay[]
+  latenesses    Lateness[]
+  absences      Absence[]
+  leaveTypes    LeaveType[]
+  leaves        Leave[]
+  leaveBalances LeaveBalance[]
+  exits         TemporaryExit[]
+  overtimes     Overtime[]
+  missions      FieldMission[]
+  missionRepts  MissionReport[]
+  clients       Client[]
+  visits        CommercialVisit[]
+  salesTargets  SalesTarget[]
+  fraudSignals  FraudSignal[]
+  alerts        SecurityAlert[]
+  faceTemplates FaceTemplate[]
+  qrTokens      QrToken[]
+  devices       Device[]
+  notifications Notification[]
+  reports       Report[]
+  files         FileObject[]
+  auditLogs     AuditLog[]
+  roleGrants    RolePermissionGrant[]
+  invoices      Invoice[]
+  payments      Payment[]
+  tickets       SupportTicket[]
+  empDocuments  EmployeeDocument[]
+
+  @@index([status])
+  @@map("company")
+}
+
+model Subscription {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @unique @db.Uuid
+  planId    String @db.Uuid
+
+  status        SubscriptionStatus @default(PENDING_PAYMENT)
+  billingPeriod BillingPeriod      @default(MONTHLY)
+
+  /// Plafond de sieges recopie a la souscription : changer le catalogue ne doit
+  /// pas modifier retroactivement ce qu'un client a achete.
+  seatLimit    Int
+  currentSeats Int  @default(0)
+
+  startedAt      DateTime?
+  currentPeriodEnd DateTime?
+  /// Fin de la periode de grace avant suspension automatique.
+  graceUntil     DateTime?
+  cancelledAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan     Plan      @relation(fields: [planId], references: [id])
+  invoices Invoice[]
+
+  @@index([status, currentPeriodEnd])
+  @@map("subscription")
+}
+
+model Invoice {
+  id             String @id @default(uuid()) @db.Uuid
+  companyId      String @db.Uuid
+  subscriptionId String @db.Uuid
+
+  /// Reference lisible, unique par entreprise : "FAC-2026-0001".
+  reference String
+  status    InvoiceStatus @default(DRAFT)
+
+  amountIt   Int /// francs CFA entiers
+  taxIt      Int @default(0)
+  totalIt    Int
+  periodFrom DateTime
+  periodTo   DateTime
+  dueAt      DateTime
+  issuedAt   DateTime?
+  paidAt     DateTime?
+
+  pdfFileId String?  @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+  payments     Payment[]
+
+  @@unique([companyId, reference])
+  @@index([companyId, status, dueAt])
+  @@map("invoice")
+}
+
+model Payment {
+  id        String  @id @default(uuid()) @db.Uuid
+  companyId String  @db.Uuid
+  invoiceId String? @db.Uuid
+
+  method   PaymentMethod
+  status   PaymentStatus @default(PENDING)
+  amountIt Int
+
+  /// Reference de l'operateur (numero de transaction Mobile Money, avis de virement).
+  externalRef String?
+  /// Preuve televersee par le client.
+  proofFileId String? @db.Uuid
+
+  /// Super Admin ayant confirme l'encaissement (mode manuel).
+  confirmedById String?   @db.Uuid
+  confirmedAt   DateTime?
+  notes         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invoice Invoice? @relation(fields: [invoiceId], references: [id])
+
+  @@index([companyId, status, createdAt])
+  @@map("payment")
+}
+
+// =============================================================================
+//  IDENTITE & ACCES
+// =============================================================================
+
+model User {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+
+  role   UserRole
+  status UserStatus @default(PENDING_ACTIVATION)
+
+  email String?
+  phone String?
+
+  firstName String
+  lastName  String
+
+  /// Hachage argon2id. Jamais le mot de passe.
+  passwordHash String
+  /// Invalide tous les jetons emis avant cette date (changement de mot de passe,
+  /// revocation manuelle, deconnexion globale).
+  tokensValidFrom DateTime @default(now())
+
+  /// Secret TOTP, chiffre AES-256-GCM au niveau applicatif.
+  mfaSecret    Bytes?
+  mfaEnabled   Boolean @default(false)
+
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+  lastLoginAt    DateTime?
+
+  activatedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee      Employee?
+  refreshTokens RefreshToken[]
+  otpChallenges OtpChallenge[]
+  notifications Notification[]
+  devices       Device[]
+
+  /// L'unicite de l'e-mail est PAR ENTREPRISE, pas globale : la meme personne
+  /// peut etre prestataire chez deux clients avec la meme adresse.
+  @@unique([companyId, email])
+  @@index([companyId, role, status])
+  @@index([email])
+  @@map("app_user")
+}
+
+/// Grant de permission par role, modifiable entreprise par entreprise.
+/// Les valeurs par defaut sont seedees depuis packages/shared/src/rbac.ts.
+model RolePermissionGrant {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+
+  role UserRole
+  /// Format "RESSOURCE:ACTION", par exemple "LEAVE:VALIDER".
+  permission String
+  granted    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, role, permission])
+  @@index([companyId, role])
+  @@map("role_permission_grant")
+}
+
+model RefreshToken {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+  userId    String @db.Uuid
+
+  /// SHA-256 du jeton. Le jeton en clair n'est jamais stocke.
+  tokenHash String @unique
+  /// Identifiant de famille : rejouer un jeton consomme revoque toute la famille.
+  familyId  String @db.Uuid
+
+  expiresAt DateTime
+  usedAt    DateTime?
+  revokedAt DateTime?
+  /// Raison de revocation, pour l'analyse d'incident ("REUSE_DETECTED", "LOGOUT").
+  revokedReason String?
+
+  deviceId  String?  @db.Uuid
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device Device? @relation(fields: [deviceId], references: [id])
+
+  @@index([companyId, userId])
+  @@index([familyId])
+  @@index([expiresAt])
+  @@map("refresh_token")
+}
+
+model OtpChallenge {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+  userId    String @db.Uuid
+
+  purpose OtpPurpose
+  /// Hachage du code a 6 chiffres, jamais le code lui-meme.
+  codeHash String
+  /// Destination masquee pour l'affichage ("+225 07 ** ** ** 12").
+  maskedTarget String
+
+  attempts    Int      @default(0)
+  maxAttempts Int      @default(3)
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, userId, purpose])
+  @@index([expiresAt])
+  @@map("otp_challenge")
+}
+
+model Device {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+  userId    String? @db.Uuid
+
+  /// Empreinte stable calculee cote client.
+  fingerprint String
+  platform    DevicePlatform @default(WEB)
+  trust       DeviceTrust    @default(UNKNOWN)
+
+  label     String?
+  model     String?
+  osVersion String?
+  appVersion String?
+
+  /// Renseigne uniquement par la coque native (phase 8).
+  lastAttestationAt DateTime?
+  attestationValid  Boolean?
+
+  firstSeenAt DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  blockedAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  punches       Punch[]
+  refreshTokens RefreshToken[]
+
+  @@unique([companyId, fingerprint])
+  @@index([companyId, trust])
+  @@map("device")
+}
+
+// =============================================================================
+//  ORGANISATION
+// =============================================================================
+
+model CompanySettings {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @unique @db.Uuid
+
+  // --- Pointage ---
+  /// Precision GPS maximale toleree, en metres.
+  maxGpsAccuracyM Int @default(100)
+  /// Tolerance de retard en minutes avant qu'un retard soit compte.
+  latenessToleranceMin Int @default(10)
+  /// Delai minimal entre deux pointages du meme employe.
+  minPunchIntervalSec Int @default(60)
+  /// Fenetre pendant laquelle un pointage differe hors ligne garde son heure client.
+  offlineGraceMinutes Int @default(120)
+  requireSelfie       Boolean @default(true)
+  requireGeofence     Boolean @default(true)
+  allowQrKiosk        Boolean @default(true)
+  /// Impose l'attestation native : bloque le pointage depuis un navigateur.
+  requireNativeAttestation Boolean @default(false)
+
+  // --- Reconnaissance faciale ---
+  /// Seuil de correspondance en pourcentage.
+  faceMatchThreshold Int @default(80)
+  livenessRequired   Boolean @default(true)
+
+  // --- Heures supplementaires ---
+  overtimeDailyThresholdMin Int @default(480)
+  overtimeRateStandard      Int @default(25) /// majoration en %
+  overtimeRateNight         Int @default(50)
+  overtimeRateSunday        Int @default(100)
+  overtimeRateHoliday       Int @default(100)
+
+  // --- Retention des donnees ---
+  selfieRetentionDays Int @default(90)
+
+  // --- Apparence ---
+  theme        String  @default("terracotta")
+  primaryColor String?
+
+  // --- Notifications ---
+  notifyOnLate       Boolean @default(true)
+  notifyOnAbsence    Boolean @default(true)
+  notifyOnFraud      Boolean @default(true)
+  dailyDigestHour    Int     @default(18)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("company_settings")
+}
+
+model Department {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+
+  name        String
+  code        String?
+  description String?
+  managerId   String? @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company     Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employees   Employee[]
+  scheduleFor ScheduleAssignment[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@map("department")
+}
+
+model Position {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+
+  title String
+  level String?
+  /// Salaire mensuel brut de reference, pour chiffrer le cout des retards.
+  referenceSalaryIt Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employees Employee[]
+
+  @@unique([companyId, title])
+  @@index([companyId])
+  @@map("position")
+}
+
+model Site {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+
+  name    String
+  address String?
+
+  latitude  Float
+  longitude Float
+  /// Rayon autorise autour du point, en metres.
+  radiusM Int @default(150)
+
+  managerId String? @db.Uuid
+
+  /// Secret HMAC du QR dynamique, chiffre AES-256-GCM. Sa rotation invalide
+  /// instantanement toute capture d'ecran en circulation.
+  qrSecret       Bytes?
+  qrEnabled      Boolean @default(false)
+  qrRotationSec  Int     @default(30)
+
+  /// Impose la presence d'une balise BLE (phase 8, natif uniquement).
+  requiresBeacon Boolean  @default(false)
+  beaconIds      String[] @default([])
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company     Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employees   Employee[]
+  punches     Punch[]
+  qrTokens    QrToken[]
+  scheduleFor ScheduleAssignment[]
+  missions    FieldMission[]
+
+  @@unique([companyId, name])
+  @@index([companyId, isActive])
+  @@map("site")
+}
+
+model Holiday {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+
+  name String
+  /// Date metier "2026-08-07", exprimee dans le fuseau de l'entreprise.
+  date     DateTime @db.Date
+  isPaid   Boolean  @default(true)
+  /// Jour ferie national reconduit chaque annee.
+  recurring Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, date])
+  @@index([companyId, date])
+  @@map("holiday")
+}
+
+model SpecialSchedule {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+
+  name       String
+  date       DateTime @db.Date
+  startMin   Int /// minutes depuis minuit
+  endMin     Int
+  breakMin   Int      @default(0)
+  /// Portee : tout le monde si departmentId et siteId sont nuls.
+  departmentId String? @db.Uuid
+  siteId       String? @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, date])
+  @@map("special_schedule")
+}
+
+// =============================================================================
+//  PERSONNEL
+// =============================================================================
+
+model Employee {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+  /// Compte de connexion. Nul tant que l'employe n'a pas d'acces (badge seul).
+  userId String? @unique @db.Uuid
+
+  matricule String
+  firstName String
+  lastName  String
+  email     String?
+  phone     String?
+
+  departmentId String? @db.Uuid
+  positionId   String? @db.Uuid
+  siteId       String? @db.Uuid
+  managerId    String? @db.Uuid
+
+  referencePhotoId String? @db.Uuid
+
+  /// Consentement biometrique explicite et revocable. Sa revocation supprime le
+  /// FaceTemplate et bascule l'employe sur QR+GPS : elle ne doit JAMAIS
+  /// l'empecher de travailler, sinon le consentement n'est pas libre.
+  biometricConsentAt      DateTime?
+  biometricConsentRevoked DateTime?
+
+  /// Salaire mensuel brut, pour le chiffrage du cout des retards et absences.
+  monthlySalaryIt Int?
+
+  hiredAt   DateTime?
+  status    EmployeeStatus @default(ACTIVE)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  company    Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  position   Position?   @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  site       Site?       @relation(fields: [siteId], references: [id], onDelete: SetNull)
+
+  manager      Employee?  @relation("EmployeeHierarchy", fields: [managerId], references: [id], onDelete: SetNull)
+  subordinates Employee[] @relation("EmployeeHierarchy")
+
+  punches       Punch[]
+  workDays      WorkDay[]
+  latenesses    Lateness[]
+  absences      Absence[]
+  leaves        Leave[]
+  leaveBalances LeaveBalance[]
+  exits         TemporaryExit[]
+  overtimes     Overtime[]
+  missions      FieldMission[]
+  visits        CommercialVisit[]
+  salesTargets  SalesTarget[]
+  faceTemplate  FaceTemplate?
+  documents     EmployeeDocument[]
+  fraudSignals  FraudSignal[]
+  alerts        SecurityAlert[]
+  scheduleFor   ScheduleAssignment[]
+  qrTokens      QrToken[]
+
+  @@unique([companyId, matricule])
+  @@index([companyId, status])
+  @@index([companyId, siteId, status])
+  @@index([companyId, managerId])
+  @@index([companyId, departmentId])
+  @@map("employee")
+}
+
+model EmployeeDocument {
+  id         String @id @default(uuid()) @db.Uuid
+  companyId  String @db.Uuid
+  employeeId String @db.Uuid
+
+  kind     String
+  fileId   String   @db.Uuid
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, employeeId])
+  @@map("employee_document")
+}
+
+/// Gabarit biometrique. Le vecteur n'est JAMAIS stocke en clair : une extraction
+/// de base ne doit pas livrer de donnee biometrique exploitable.
+model FaceTemplate {
+  id         String @id @default(uuid()) @db.Uuid
+  companyId  String @db.Uuid
+  employeeId String @unique @db.Uuid
+
+  /// Vecteur ArcFace 512 dimensions, chiffre AES-256-GCM avec la DEK de l'entreprise.
+  embedding    Bytes
+  /// Version du modele ayant produit le vecteur : un changement de modele impose
+  /// un reenrolement, les vecteurs ne sont pas comparables entre versions.
+  modelVersion String
+  /// Score de qualite de la photo de reference (nettete, pose, eclairage).
+  qualityScore Float?
+
+  enrolledAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@map("face_template")
+}
+
+// =============================================================================
+//  HORAIRES
+// =============================================================================
+
+model Schedule {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+
+  name String
+  type ScheduleType @default(FIXED)
+
+  /// Minutes depuis minuit. Une equipe de nuit a endMin < startMin.
+  startMin Int
+  endMin   Int
+  breakMin Int @default(60)
+
+  /// Volume quotidien attendu pour un horaire flexible.
+  dailyTargetMin Int?
+  /// Plage d'arrivee autorisee en horaire flexible.
+  flexStartMin Int?
+  flexEndMin   Int?
+
+  toleranceMin Int @default(10)
+  /// Jours travailles, 1 = lundi ... 7 = dimanche.
+  workDays Int[] @default([1, 2, 3, 4, 5])
+
+  isDefault Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company     Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assignments ScheduleAssignment[]
+  rotations   ShiftRotation[]
+  workDaysRef WorkDay[]
+
+  @@unique([companyId, name])
+  @@index([companyId, isActive])
+  @@map("schedule")
+}
+
+/// Affectation d'un horaire. La resolution suit l'ordre de specificite :
+/// EMPLOYEE > DEPARTMENT > SITE > COMPANY.
+model ScheduleAssignment {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+
+  scheduleId String                  @db.Uuid
+  level      ScheduleAssignmentLevel
+
+  employeeId   String? @db.Uuid
+  departmentId String? @db.Uuid
+  siteId       String? @db.Uuid
+
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date
+
+  createdAt DateTime @default(now())
+
+  company    Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  schedule   Schedule    @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  employee   Employee?   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  department Department? @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  site       Site?       @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, level, effectiveFrom])
+  @@index([companyId, employeeId, effectiveFrom])
+  @@map("schedule_assignment")
+}
+
+model ShiftRotation {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+
+  name       String
+  scheduleId String @db.Uuid
+  /// Sequence de rotation en jours : [1,1,1,0,0] pour 3 jours travailles/2 repos.
+  pattern    Int[]
+  /// Date d'ancrage du cycle.
+  anchorDate DateTime @db.Date
+
+  createdAt DateTime @default(now())
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  schedule Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@map("shift_rotation")
+}
+
+// =============================================================================
+//  POINTAGE
+// =============================================================================
+
+/// Pointage. IMMUTABLE : jamais de UPDATE. Une correction cree une ligne
+/// PunchCorrection et declenche le recalcul du WorkDay.
+model Punch {
+  id         String @id @default(uuid()) @db.Uuid
+  companyId  String @db.Uuid
+  employeeId String @db.Uuid
+  siteId     String? @db.Uuid
+  deviceId   String? @db.Uuid
+
+  type   PunchType
+  method PunchMethod
+
+  /// Heure faisant foi, posee par le SERVEUR. Jamais celle du client.
+  serverTime DateTime @default(now())
+  /// Heure declaree par l'appareil, conservee pour l'audit et le calcul de derive.
+  clientTime DateTime?
+  /// Heure retenue pour le calcul. Egale a serverTime sauf pointage differe
+  /// hors ligne dans la fenetre de grace.
+  effectiveTime DateTime
+  /// Date metier de rattachement, dans le fuseau de l'entreprise.
+  businessDate DateTime @db.Date
+
+  latitude   Float?
+  longitude  Float?
+  accuracyM  Float?
+  /// Distance au centre du site, calculee cote serveur.
+  distanceM  Float?
+
+  ip        String?
+  userAgent String?
+  /// Pays derive de l'IP, pour la detection d'incoherence geographique.
+  ipCountry String? @db.Char(2)
+
+  selfieFileId String? @db.Uuid
+  faceScore    Float?
+  livenessScore Float?
+
+  decision      PunchDecision @default(ACCEPTED)
+  fraudScore    Int           @default(0)
+  policyVersion String        @default("v1")
+  /// Code du premier veto, quand la decision est REJECTED.
+  rejectionCode String?
+
+  /// Vrai si le pointage a transite par la file hors ligne.
+  wasOffline      Boolean   @default(false)
+  offlineQueuedAt DateTime?
+  clockSkewMin    Int?
+
+  /// Cle d'idempotence fournie par le client. Garantit qu'un renvoi ne cree
+  /// jamais de doublon, y compris apres une resynchronisation hors ligne.
+  idempotencyKey String
+
+  /// Signaux natifs bruts (mock location, root, balises). Nul depuis un navigateur.
+  nativeSignals Json?
+
+  reviewedById String?   @db.Uuid
+  reviewedAt   DateTime?
+  reviewNote   String?
+
+  createdAt DateTime @default(now())
+
+  company     Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee    Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  site        Site?             @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  device      Device?           @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  signals     FraudSignal[]
+  alerts      SecurityAlert[]
+  corrections PunchCorrection[]
+
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, businessDate])
+  @@index([companyId, employeeId, businessDate])
+  @@index([companyId, siteId, effectiveTime])
+  @@index([companyId, decision, createdAt])
+  @@map("punch")
+}
+
+model PunchCorrection {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+  punchId   String @db.Uuid
+
+  /// Valeurs avant et apres, conservees integralement pour l'audit.
+  beforeValue Json
+  afterValue  Json
+  reason      String
+
+  correctedById String   @db.Uuid
+  createdAt     DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  punch   Punch   @relation(fields: [punchId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, punchId])
+  @@map("punch_correction")
+}
+
+/// Journee de travail derivee. TOUS les dashboards et rapports lisent cette
+/// table, jamais les pointages bruts : c'est ce qui garde les KPI rapides
+/// et coherents entre les ecrans.
+model WorkDay {
+  id         String @id @default(uuid()) @db.Uuid
+  companyId  String @db.Uuid
+  employeeId String @db.Uuid
+  scheduleId String? @db.Uuid
+
+  date DateTime @db.Date
+
+  scheduledInMin  Int?
+  scheduledOutMin Int?
+
+  actualIn  DateTime?
+  actualOut DateTime?
+
+  workedMin   Int @default(0)
+  breakMin    Int @default(0)
+  lateMin     Int @default(0)
+  earlyLeaveMin Int @default(0)
+  overtimeMin Int @default(0)
+
+  status WorkDayStatus @default(NOT_STARTED)
+
+  /// Horodatage du dernier recalcul, pour diagnostiquer une derive.
+  recomputedAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  schedule Schedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, date])
+  @@index([companyId, date, status])
+  @@index([companyId, employeeId, date])
+  @@map("work_day")
+}
+
+model Lateness {
+  id         String @id @default(uuid()) @db.Uuid
+  companyId  String @db.Uuid
+  employeeId String @db.Uuid
+
+  date         DateTime @db.Date
+  scheduledMin Int
+  actualMin    Int
+  minutes      Int
+
+  status        LatenessStatus @default(RECORDED)
+  justification String?
+  justificationFileId String? @db.Uuid
+
+  decidedById String?   @db.Uuid
+  decidedAt   DateTime?
+  /// Cout estime du retard, fige au moment de la decision.
+  costIt Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, date])
+  @@index([companyId, date, status])
+  @@map("lateness")
+}
+
+model Absence {
+  id         String @id @default(uuid()) @db.Uuid
+  companyId  String @db.Uuid
+  employeeId String @db.Uuid
+
+  date       DateTime @db.Date
+  justified  Boolean  @default(false)
+  reason     String?
+  justificationFileId String? @db.Uuid
+  costIt     Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, date])
+  @@index([companyId, date, justified])
+  @@map("absence")
+}
+
+// =============================================================================
+//  SECURITE DU POINTAGE
+// =============================================================================
+
+/// Un signal = une ligne. Rejouer les lignes d'un pointage doit reproduire
+/// exactement la decision : c'est ce qui rend un refus defendable.
+model FraudSignal {
+  id         String @id @default(uuid()) @db.Uuid
+  companyId  String @db.Uuid
+  punchId    String @db.Uuid
+  employeeId String @db.Uuid
+
+  /// Code du signal, aligne sur FraudSignalCode de @pointage/shared.
+  code String
+  /// Valeur mesuree, conservee telle quelle ("412" m, "18" min).
+  value  String?
+  weight Int     @default(0)
+  isVeto Boolean @default(false)
+
+  policyVersion String   @default("v1")
+  createdAt     DateTime @default(now())
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  punch    Punch    @relation(fields: [punchId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, punchId])
+  @@index([companyId, code, createdAt])
+  @@map("fraud_signal")
+}
+
+model SecurityAlert {
+  id         String  @id @default(uuid()) @db.Uuid
+  companyId  String  @db.Uuid
+  punchId    String? @db.Uuid
+  employeeId String? @db.Uuid
+
+  type        String
+  level       AlertLevel  @default(MEDIUM)
+  status      AlertStatus @default(OPEN)
+  description String
+
+  handledById String?   @db.Uuid
+  handledAt   DateTime?
+  decision    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  punch    Punch?    @relation(fields: [punchId], references: [id], onDelete: SetNull)
+  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  @@index([companyId, status, level, createdAt])
+  @@map("security_alert")
+}
+
+/// Jeton QR consomme. Sert a interdire le rejeu : une capture d'ecran partagee
+/// ne peut servir qu'une fois, et seulement dans sa fenetre de 30 secondes.
+model QrToken {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+  siteId    String @db.Uuid
+
+  /// Compteur TOTP consomme.
+  counter    BigInt
+  employeeId String @db.Uuid
+
+  consumedAt DateTime @default(now())
+  expiresAt  DateTime
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  site     Site     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  /// Le triplet garantit qu'un meme code ne sert qu'une fois par employe.
+  @@unique([siteId, counter, employeeId])
+  @@index([companyId, expiresAt])
+  @@map("qr_token")
+}
+
+// =============================================================================
+//  CONGES, SORTIES, HEURES SUPPLEMENTAIRES
+// =============================================================================
+
+model LeaveType {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+
+  name           String
+  code           String
+  /// Jours acquis par an. Nul pour un type sans quota (sans solde).
+  annualQuota    Float?
+  paid           Boolean @default(true)
+  requiresProof  Boolean @default(false)
+  /// Exige la validation RH en plus de celle du manager.
+  requiresHrApproval Boolean @default(true)
+  color          String?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  leaves   Leave[]
+  balances LeaveBalance[]
+
+  @@unique([companyId, code])
+  @@index([companyId, isActive])
+  @@map("leave_type")
+}
+
+model Leave {
+  id          String @id @default(uuid()) @db.Uuid
+  companyId   String @db.Uuid
+  employeeId  String @db.Uuid
+  leaveTypeId String @db.Uuid
+
+  startDate DateTime  @db.Date
+  endDate   DateTime  @db.Date
+  startUnit LeaveUnit @default(FULL_DAY)
+  endUnit   LeaveUnit @default(FULL_DAY)
+  /// Jours decomptes, hors week-ends et jours feries. Demi-journees admises.
+  days Float
+
+  reason              String?
+  justificationFileId String? @db.Uuid
+
+  status LeaveStatus @default(PENDING_MANAGER)
+
+  managerDecision   ApprovalDecision?
+  managerId         String?           @db.Uuid
+  managerDecidedAt  DateTime?
+  managerComment    String?
+
+  hrDecision   ApprovalDecision?
+  hrUserId     String?           @db.Uuid
+  hrDecidedAt  DateTime?
+  hrComment    String?
+
+  cancelledAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee  Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@index([companyId, status, startDate])
+  @@index([companyId, employeeId, startDate])
+  @@map("leave")
+}
+
+model LeaveBalance {
+  id          String @id @default(uuid()) @db.Uuid
+  companyId   String @db.Uuid
+  employeeId  String @db.Uuid
+  leaveTypeId String @db.Uuid
+
+  year     Int
+  entitled Float @default(0)
+  taken    Float @default(0)
+  pending  Float @default(0)
+  carried  Float @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee  Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, leaveTypeId, year])
+  @@index([companyId, year])
+  @@map("leave_balance")
+}
+
+model TemporaryExit {
+  id         String @id @default(uuid()) @db.Uuid
+  companyId  String @db.Uuid
+  employeeId String @db.Uuid
+
+  reason        String
+  requestedAt   DateTime  @default(now())
+  plannedOutAt  DateTime
+  plannedBackAt DateTime
+  actualOutAt   DateTime?
+  actualBackAt  DateTime?
+
+  status TemporaryExitStatus @default(PENDING)
+
+  decidedById String?   @db.Uuid
+  decidedAt   DateTime?
+  comment     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, status, plannedOutAt])
+  @@index([companyId, employeeId])
+  @@map("temporary_exit")
+}
+
+model Overtime {
+  id         String @id @default(uuid()) @db.Uuid
+  companyId  String @db.Uuid
+  employeeId String @db.Uuid
+
+  date      DateTime @db.Date
+  startAt   DateTime
+  endAt     DateTime
+  minutes   Int
+  /// Majoration appliquee en pourcentage (25, 50, 100).
+  ratePct   Int
+  amountIt  Int?
+
+  reason String?
+  status OvertimeStatus @default(DETECTED)
+
+  /// Vrai si l'enregistrement provient de la detection automatique sur WorkDay.
+  autoDetected Boolean @default(true)
+
+  managerDecision  ApprovalDecision?
+  managerId        String?           @db.Uuid
+  managerDecidedAt DateTime?
+
+  hrDecision  ApprovalDecision?
+  hrUserId    String?           @db.Uuid
+  hrDecidedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, date, startAt])
+  @@index([companyId, status, date])
+  @@map("overtime")
+}
+
+// =============================================================================
+//  TERRAIN & COMMERCIAL
+// =============================================================================
+
+model FieldMission {
+  id         String @id @default(uuid()) @db.Uuid
+  companyId  String @db.Uuid
+  employeeId String @db.Uuid
+  siteId     String? @db.Uuid
+
+  title       String
+  description String?
+
+  /// Lieu de la mission quand ce n'est pas un site de l'entreprise.
+  latitude  Float?
+  longitude Float?
+  address   String?
+  radiusM   Int    @default(200)
+
+  plannedStart DateTime
+  plannedEnd   DateTime
+  actualStart  DateTime?
+  actualEnd    DateTime?
+
+  status MissionStatus @default(PLANNED)
+
+  validatedById String?   @db.Uuid
+  validatedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  site     Site?           @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  reports  MissionReport[]
+
+  @@index([companyId, status, plannedStart])
+  @@index([companyId, employeeId, plannedStart])
+  @@map("field_mission")
+}
+
+model MissionReport {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+  missionId String @db.Uuid
+
+  content   String
+  photoIds  String[] @default([])
+  createdAt DateTime @default(now())
+
+  company Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  mission FieldMission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, missionId])
+  @@map("mission_report")
+}
+
+model Client {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+
+  name      String
+  contact   String?
+  phone     String?
+  email     String?
+  address   String?
+  latitude  Float?
+  longitude Float?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  visits  CommercialVisit[]
+
+  @@unique([companyId, name])
+  @@index([companyId, isActive])
+  @@map("client")
+}
+
+/// Visite client. La position n'est captee QU'A l'arrivee et au depart : il n'y
+/// a aucun suivi continu dans ce produit, ni ici ni ailleurs.
+model CommercialVisit {
+  id         String @id @default(uuid()) @db.Uuid
+  companyId  String @db.Uuid
+  employeeId String @db.Uuid
+  clientId   String @db.Uuid
+
+  plannedAt DateTime?
+
+  arrivedAt     DateTime?
+  arrivalLat    Float?
+  arrivalLng    Float?
+  departedAt    DateTime?
+  departureLat  Float?
+  departureLng  Float?
+
+  summary        String?
+  photoIds       String[] @default([])
+  signatureFileId String? @db.Uuid
+  signerName     String?
+
+  status VisitStatus @default(PLANNED)
+
+  validatedById String?   @db.Uuid
+  validatedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, employeeId, arrivedAt])
+  @@index([companyId, status, plannedAt])
+  @@map("commercial_visit")
+}
+
+model SalesTarget {
+  id         String @id @default(uuid()) @db.Uuid
+  companyId  String @db.Uuid
+  employeeId String @db.Uuid
+
+  periodFrom  DateTime @db.Date
+  periodTo    DateTime @db.Date
+  targetVisits Int     @default(0)
+  actualVisits Int     @default(0)
+  targetAmountIt Int?
+  actualAmountIt Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, periodFrom, periodTo])
+  @@index([companyId, periodFrom])
+  @@map("sales_target")
+}
+
+// =============================================================================
+//  TRANSVERSE
+// =============================================================================
+
+model Notification {
+  id        String  @id @default(uuid()) @db.Uuid
+  companyId String  @db.Uuid
+  userId    String? @db.Uuid
+
+  channel NotificationChannel @default(IN_APP)
+  status  NotificationStatus  @default(QUEUED)
+
+  /// Code de modele, pas un texte fige : les libelles vivent cote applicatif.
+  templateCode String
+  payload      Json    @default("{}")
+  title        String
+  body         String
+
+  sentAt   DateTime?
+  readAt   DateTime?
+  failedAt DateTime?
+  error    String?
+
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, userId, status, createdAt])
+  @@map("notification")
+}
+
+model Report {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+
+  type   ReportType
+  format ReportFormat @default(PDF)
+  status ReportStatus @default(QUEUED)
+
+  periodFrom DateTime @db.Date
+  periodTo   DateTime @db.Date
+  /// Filtres appliques (site, departement, employe).
+  filters Json @default("{}")
+
+  fileId       String?   @db.Uuid
+  generatedById String   @db.Uuid
+  generatedAt  DateTime?
+  /// Reference unique imprimee sur le document, verifiable.
+  reference    String
+  expiresAt    DateTime?
+  error        String?
+
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, reference])
+  @@index([companyId, type, createdAt])
+  @@map("report")
+}
+
+model FileObject {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+
+  kind FileKind
+  /// Cle de stockage opaque. Le nom d'origine n'est JAMAIS utilise comme chemin.
+  storageKey       String  @unique
+  originalName     String?
+  mimeType         String
+  sizeBytes        Int
+  /// SHA-256 du contenu, pour la deduplication et la preuve d'integrite.
+  checksum         String?
+
+  scanStatus ScanStatus @default(PENDING)
+  scannedAt  DateTime?
+
+  /// Date de purge automatique, posee selon la matrice de retention.
+  purgeAfter DateTime?
+  purgedAt   DateTime?
+
+  uploadedById String?  @db.Uuid
+  createdAt    DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, kind, createdAt])
+  @@index([purgeAfter])
+  @@map("file_object")
+}
+
+/// Journal d'audit. APPEND-ONLY, garanti au niveau des droits PostgreSQL :
+/// le role applicatif n'a ni UPDATE ni DELETE sur cette table. La chaine de
+/// hachage rend toute alteration detectable, meme par un administrateur base.
+model AuditLog {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+
+  actorId   String?   @db.Uuid
+  actorRole UserRole?
+  action    String
+  entityType String
+  entityId   String?  @db.Uuid
+
+  /// Diffs, avec redaction par LISTE BLANCHE : un nouveau champ sensible est
+  /// exclu par defaut, ce qui reste correct a mesure que le schema grossit.
+  beforeValue Json?
+  afterValue  Json?
+
+  ip        String?
+  userAgent String?
+  requestId String?
+
+  /// Chaine de hachage par entreprise : hash = H(prevHash || contenu).
+  prevHash String?
+  hash     String
+
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, createdAt])
+  @@index([companyId, entityType, entityId])
+  @@index([companyId, actorId, createdAt])
+  @@map("audit_log")
+}
+
+model SupportTicket {
+  id        String @id @default(uuid()) @db.Uuid
+  companyId String @db.Uuid
+
+  subject  String
+  body     String
+  status   TicketStatus   @default(OPEN)
+  priority TicketPriority @default(NORMAL)
+
+  openedById   String  @db.Uuid
+  assignedToId String? @db.Uuid
+
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId, status, priority])
+  @@map("support_ticket")
+}
+
+/// Journal des actions de la PLATEFORME (super admin). Volontairement separe du
+/// journal des entreprises : un super admin n'ecrit pas dans l'audit d'un client.
+model PlatformAuditLog {
+  id String @id @default(uuid()) @db.Uuid
+
+  actorId    String  @db.Uuid
+  action     String
+  targetCompanyId String? @db.Uuid
+  entityType String
+  entityId   String?
+  metadata   Json?
+
+  ip        String?
+  requestId String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([targetCompanyId, createdAt])
+  @@map("platform_audit_log")
+}

@@ -1,0 +1,35 @@
+// Fixture de test pour scripts/check-tenant-scoping.mjs.
+// Contient volontairement les deux violations que le controle doit detecter.
+// N'est jamais utilisee par l'application.
+
+model Company {
+  id String @id
+}
+
+// Violation 1 : modele tenant sans champ companyId.
+// Une requete sur ce modele renverrait les lignes de toutes les entreprises.
+model FuiteSansCompanyId {
+  id   String @id
+  note String
+
+  @@index([note])
+}
+
+// Violation 2 : champ companyId present, mais aucun index ne commence par lui.
+// Le filtre tenant declencherait un balayage complet de table.
+model LentSansIndexTenant {
+  id        String @id
+  companyId String
+  label     String
+
+  @@index([label])
+}
+
+// Modele correct : sert de temoin, il ne doit PAS etre signale.
+model CorrectementCloisonne {
+  id        String @id
+  companyId String
+  label     String
+
+  @@index([companyId, label])
+}

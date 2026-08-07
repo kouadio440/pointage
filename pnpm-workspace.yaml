@@ -1,0 +1,35 @@
+packages:
+  - 'apps/api'
+  - 'apps/app'
+  - 'packages/*'
+
+# apps/web est volontairement HORS workspace : c'est le site vitrine statique
+# (index.html / app.js / styles.css). Il n'a aucune dependance npm et se sert
+# tel quel. Voir docs/ARCHITECTURE.md, section « Front hybride ».
+
+# Securite de la chaine d'approvisionnement : aucun paquet n'execute de script
+# d'installation sans autorisation NOMMEE ici. Les scripts post-install sont le
+# principal vecteur de compromission via npm, et le defaut de pnpm est de tout
+# bloquer. Chaque entree ci-dessous est une decision, pas une formalite.
+allowBuilds:
+  # --- Autorises : modules natifs sans lesquels le projet ne fonctionne pas ---
+
+  # Compilateur natif de Vite et Vitest.
+  esbuild: true
+  # Compile TypeScript pour NestJS et les tests de l'API.
+  '@swc/core': true
+  # Telecharge les moteurs de requete Prisma (binaires par plateforme).
+  prisma: true
+  '@prisma/client': true
+  '@prisma/engines': true
+  # Implementation native d'argon2id. C'est le hachage des mots de passe :
+  # le repli JavaScript serait trop lent pour garder un cout memoire honnete.
+  argon2: true
+
+  # --- Refuses ---------------------------------------------------------------
+
+  # Accelerateur natif OPTIONNEL de msgpackr (dependance de BullMQ). BullMQ
+  # fonctionne parfaitement sans : msgpackr bascule sur son implementation JS.
+  # Aucun gain mesurable a notre volume, donc aucune raison d'executer un script
+  # d'installation supplementaire.
+  msgpackr-extract: false
