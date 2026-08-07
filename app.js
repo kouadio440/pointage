@@ -132,16 +132,21 @@ function initIcons() {
   }
 }
 
-// Live Clock Display
+// Live Clock Display (Strict Abidjan GMT / UTC+0 Time)
 function startLiveClock() {
   const clockEl = document.getElementById('live-system-clock');
-  setInterval(() => {
+  function updateClock() {
     const now = new Date();
-    const hrs = String(now.getHours()).padStart(2, '0');
-    const mins = String(now.getMinutes()).padStart(2, '0');
-    const secs = String(now.getSeconds()).padStart(2, '0');
-    if (clockEl) clockEl.innerText = `${hrs}:${mins}:${secs} GMT`;
-  }, 1000);
+    const timeStr = now.toLocaleTimeString('fr-FR', { 
+      timeZone: 'Africa/Abidjan', 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit' 
+    });
+    if (clockEl) clockEl.innerText = `${timeStr} GMT (Abidjan)`;
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
 }
 
 // View Switcher (Landing vs Dashboard vs Employee vs Manager)
@@ -539,7 +544,12 @@ function submitPunch(type) {
 
   // Step 4: 2500ms -> Registration & Toast Notification
   setTimeout(() => {
-    const nowStr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const nowStr = new Date().toLocaleTimeString('fr-FR', { 
+      timeZone: 'Africa/Abidjan', 
+      hour: '2-digit', 
+      minute: '2-digit', 
+      second: '2-digit' 
+    });
 
     showToast(
       `Pointage d'${type} Réussi`,
