@@ -1,7 +1,7 @@
 /**
  * Winner Pointage — Application Logic
  * Preset B — Sécurité Nocturne
- * Tailored for Winner Digital SARL (Packaging personnalisé, Abidjan)
+ * Plateforme SaaS de Gestion du Temps et Pointage pour Entreprises
  */
 
 // Production Application State
@@ -9,23 +9,23 @@ const state = {
   activeView: 'hero',
   activeSection: 'overview',
   company: {
-    name: 'Winner Digital SARL',
-    sector: 'Packaging personnalisé',
-    siteName: 'Siège Winner Digital — Yopougon ZI',
+    name: 'SaaS Entreprise (Exemple)',
+    sector: 'Services, Industrie & Commerce',
+    siteName: 'Siège Social — Zone Principale',
     coordinates: { lat: 5.359942, lng: -4.008311 },
     geofenceRadius: 150
   },
   employees: [
-    { id: 1, name: 'Marc KOUASSI', role: 'Chef d\'Atelier Packaging', site: 'Siège Yopougon', status: 'Présent', arriveTime: '07:58', method: 'GPS + Selfie', distance: '14m', confidence: 99.2, avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80' },
-    { id: 2, name: 'Awa KONE', role: 'Responsable Qualité', site: 'Siège Yopougon', status: 'Présent', arriveTime: '08:02', method: 'GPS + Selfie', distance: '12m', confidence: 98.4, avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80' },
-    { id: 3, name: 'Jean-Luc BAMBA', role: 'Commercial Terrain', site: 'Missions Abidjan', status: 'Retard', arriveTime: '08:18', method: 'GPS Mobile Client', distance: 'Site Client Plateau', confidence: 96.0, avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80' },
-    { id: 4, name: 'Sarah DIABATE', role: 'Graphiste & Designer Packaging', site: 'Siège Yopougon', status: 'Présent', arriveTime: '07:50', method: 'GPS + Selfie', distance: '8m', confidence: 99.5, avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80' },
-    { id: 5, name: 'Koffi YAO', role: 'Conducteur d\'Imprimerie', site: 'Siège Yopougon', status: 'Présent', arriveTime: '07:55', method: 'QR Kiosque', distance: '0m (Kiosque)', confidence: 100.0, avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80' },
-    { id: 6, name: 'Grace TOURE', role: 'Comptable & RH', site: 'Siège Yopougon', status: 'En Congé', arriveTime: '-', method: '-', distance: '-', confidence: 0, avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80' },
-    { id: 7, name: 'Ibrahim SANOGO', role: 'Logistique & Expédition', site: 'Siège Yopougon', status: 'Présent', arriveTime: '07:45', method: 'GPS + Selfie', distance: '22m', confidence: 97.8, avatar: 'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?w=150&auto=format&fit=crop&q=80' },
-    { id: 8, name: 'Patricia EHOUNOU', role: 'Assistante Commerciale', site: 'Siège Yopougon', status: 'Présent', arriveTime: '07:59', method: 'GPS + Selfie', distance: '10m', confidence: 98.9, avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=150&auto=format&fit=crop&q=80' },
-    { id: 9, name: 'Emmanuel ADOU', role: 'Opérateur Découpe Carton', site: 'Siège Yopougon', status: 'Présent', arriveTime: '08:00', method: 'QR Kiosque', distance: '0m', confidence: 100.0, avatar: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=150&auto=format&fit=crop&q=80' },
-    { id: 10, name: 'Fatou CISSE', role: 'Stagiaire Marketing', site: 'Siège Yopougon', status: 'Absent', arriveTime: '-', method: '-', distance: '-', confidence: 0, avatar: 'https://images.unsplash.com/photo-1567532939604-b6b5b0db2604?w=150&auto=format&fit=crop&q=80' }
+    { id: 1, name: 'Marc KOUASSI', role: 'Chef d\'Atelier & Production', site: 'Siège Principal', status: 'Présent', arriveTime: '07:58', method: 'GPS + Selfie', distance: '14m', confidence: 99.2, avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80' },
+    { id: 2, name: 'Awa KONE', role: 'Responsable Qualité', site: 'Siège Principal', status: 'Présent', arriveTime: '08:02', method: 'GPS + Selfie', distance: '12m', confidence: 98.4, avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80' },
+    { id: 3, name: 'Jean-Luc BAMBA', role: 'Commercial Terrain', site: 'Missions Client', status: 'Retard', arriveTime: '08:18', method: 'GPS Mobile Client', distance: 'Site Client Plateau', confidence: 96.0, avatar: 'https://images.unsplash.com/photo-1531384441138-2736e62e0919?w=150&auto=format&fit=crop&q=80' },
+    { id: 4, name: 'Sarah DIABATE', role: 'Designer & Marketing', site: 'Siège Principal', status: 'Présent', arriveTime: '07:50', method: 'GPS + Selfie', distance: '8m', confidence: 99.5, avatar: 'https://images.unsplash.com/photo-1589156280159-27698a70f29e?w=150&auto=format&fit=crop&q=80' },
+    { id: 5, name: 'Koffi YAO', role: 'Technicien de Maintenance', site: 'Siège Principal', status: 'Présent', arriveTime: '07:55', method: 'QR Kiosque', distance: '0m (Kiosque)', confidence: 100.0, avatar: 'https://images.unsplash.com/photo-1522529599102-193c0d76b5b6?w=150&auto=format&fit=crop&q=80' },
+    { id: 6, name: 'Grace TOURE', role: 'Comptable & RH', site: 'Siège Principal', status: 'En Congé', arriveTime: '-', method: '-', distance: '-', confidence: 0, avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=150&auto=format&fit=crop&q=80' },
+    { id: 7, name: 'Ibrahim SANOGO', role: 'Logistique & Expédition', site: 'Siège Principal', status: 'Présent', arriveTime: '07:45', method: 'GPS + Selfie', distance: '22m', confidence: 97.8, avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80' },
+    { id: 8, name: 'Patricia EHOUNOU', role: 'Assistante Commerciale', site: 'Siège Principal', status: 'Présent', arriveTime: '07:59', method: 'GPS + Selfie', distance: '10m', confidence: 98.9, avatar: 'https://images.unsplash.com/photo-1567532939604-b6b5b0db2604?w=150&auto=format&fit=crop&q=80' },
+    { id: 9, name: 'Emmanuel ADOU', role: 'Opérateur Découpe', site: 'Siège Principal', status: 'Présent', arriveTime: '08:00', method: 'QR Kiosque', distance: '0m', confidence: 100.0, avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80' },
+    { id: 10, name: 'Fatou CISSE', role: 'Stagiaire Marketing', site: 'Siège Principal', status: 'Absent', arriveTime: '-', method: '-', distance: '-', confidence: 0, avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80' }
   ],
   leaves: [
     { id: 101, employee: 'Grace TOURE', type: 'Congé Payé Annuel', period: '04/08/2026 au 08/08/2026', days: 5, reason: 'Congé annuel légal', status: 'Approuvé' },
@@ -651,8 +651,8 @@ function askCopilot(topic) {
 
   if (topic === 'synthèse') {
     box.innerHTML = `
-      <strong>💡 Synthèse des présences Winner Digital SARL :</strong><br/>
-      Sur 10 employés inscrits, 8 sont actuellement présents au Siège Yopougon. 1 est en congé annuel autorisé (Grace TOURE) et 1 retard de 18 min a été enregistré à 08h18 (Jean-Luc BAMBA, en mission terrain client Plateau). Taux global de présence : <strong>80%</strong>.
+      <strong>💡 Synthèse des présences de l'Entreprise :</strong><br/>
+      Sur 10 employés inscrits, 8 sont actuellement présents au Siège Social. 1 est en congé autorisé (Grace TOURE) et 1 retard de 18 min a été enregistré à 08h18 (Jean-Luc BAMBA, en mission terrain client). Taux global de présence : <strong>80%</strong>.
     `;
   } else if (topic === 'retards') {
     box.innerHTML = `
