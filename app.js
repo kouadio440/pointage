@@ -377,14 +377,77 @@ function startQRCountdown() {
   }, 1000);
 }
 
-// Modals Trigger Handlers
-function openPunchModal() {
-  document.getElementById('modal-punch').classList.remove('hidden');
-  document.getElementById('modal-punch').classList.add('flex');
+// Modals Trigger Handlers & Media Stream
+let punchMediaStream = null;
+let isPunchScanning = false;
+
+async function openPunchModal() {
+  const modal = document.getElementById('modal-punch');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  }
+
+  resetPunchScanUI();
+
+  // Attempt real webcam feed
+  const videoEl = document.getElementById('punch-webcam');
+  const fallbackFace = document.getElementById('punch-avatar-fallback');
+
+  if (videoEl && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    try {
+      punchMediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      videoEl.srcObject = punchMediaStream;
+      videoEl.classList.remove('hidden');
+      if (fallbackFace) fallbackFace.classList.add('hidden');
+    } catch (err) {
+      console.log('Webcam non activée (utilisation de la simulation faciale HD):', err);
+      if (videoEl) videoEl.classList.add('hidden');
+      if (fallbackFace) fallbackFace.classList.remove('hidden');
+    }
+  }
 }
+
 function closePunchModal() {
-  document.getElementById('modal-punch').classList.add('hidden');
-  document.getElementById('modal-punch').classList.remove('flex');
+  const modal = document.getElementById('modal-punch');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+
+  if (punchMediaStream) {
+    punchMediaStream.getTracks().forEach(track => track.stop());
+    punchMediaStream = null;
+  }
+  resetPunchScanUI();
+}
+
+function resetPunchScanUI() {
+  isPunchScanning = false;
+  const laser = document.getElementById('laser-scan-line');
+  const statusBadge = document.getElementById('selfie-match-badge');
+  const scanMsg = document.getElementById('punch-scan-status-msg');
+  const faceFrame = document.getElementById('punch-face-frame');
+  const btnArrivee = document.getElementById('btn-punch-arrivee');
+  const btnSortie = document.getElementById('btn-punch-sortie');
+
+  if (laser) laser.classList.add('hidden');
+  if (statusBadge) {
+    statusBadge.innerText = 'Détection : Prêt';
+    statusBadge.className = 'text-[9px] font-mono text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/40';
+  }
+  if (scanMsg) scanMsg.innerHTML = 'Positionnez votre visage dans le cadre et cliquez sur <strong>Pointer l\'Arrivée</strong>.';
+  if (faceFrame) faceFrame.className = 'w-36 h-44 rounded-2xl border-2 border-dashed border-emerald-400/80 flex flex-col items-center justify-between p-2 relative z-10 transition-all duration-300';
+
+  if (btnArrivee) {
+    btnArrivee.disabled = false;
+    btnArrivee.innerHTML = `<i data-lucide="log-in" class="w-4 h-4"></i> POINTER L'ARRIVÉE`;
+  }
+  if (btnSortie) {
+    btnSortie.disabled = false;
+    btnSortie.innerHTML = `<i data-lucide="log-out" class="w-4 h-4"></i> POINTER LA SORTIE`;
+  }
+  if (window.lucide) lucide.createIcons();
 }
 
 function openLeaveModal() {
@@ -421,23 +484,85 @@ function closeCopilotDrawer() {
   document.getElementById('drawer-copilot').classList.add('translate-x-full');
 }
 
-// Action Submissions
+// Action Submissions with Live Facial Recognition Scan Simulation
 function submitPunch(type) {
+  if (isPunchScanning) return;
+  isPunchScanning = true;
+
   const empSelect = document.getElementById('punch-employee-select');
   const empName = empSelect ? empSelect.options[empSelect.selectedIndex].text.split(' (')[0] : 'Employé';
-  const nowStr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  
-  showToast(
-    `Pointage d'${type} Enregistré !`,
-    `<strong class="text-white">${empName}</strong><br/>` +
-    `<span class="text-emerald-400 font-semibold">✓ GPS :</span> Dans le rayon de 150m (Siège Winner Digital)<br/>` +
-    `<span class="text-emerald-400 font-semibold">✓ Visage IA :</span> Reconnaissance faciale 98.6%<br/>` +
-    `<span class="text-emerald-400 font-semibold">✓ Horodateur :</span> ${nowStr} GMT`,
-    'success',
-    6000
-  );
-  closePunchModal();
-  renderDashboard();
+
+  const laser = document.getElementById('laser-scan-line');
+  const statusBadge = document.getElementById('selfie-match-badge');
+  const scanMsg = document.getElementById('punch-scan-status-msg');
+  const faceFrame = document.getElementById('punch-face-frame');
+  const activeBtn = type === 'ENTRÉE' ? document.getElementById('btn-punch-arrivee') : document.getElementById('btn-punch-sortie');
+  const otherBtn = type === 'ENTRÉE' ? document.getElementById('btn-punch-sortie') : document.getElementById('btn-punch-arrivee');
+
+  if (otherBtn) otherBtn.disabled = true;
+  if (activeBtn) {
+    activeBtn.disabled = true;
+    activeBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> SCAN FACIAL EN COURS...`;
+    if (window.lucide) lucide.createIcons();
+  }
+
+  // Activate laser scanner beam
+  if (laser) laser.classList.remove('hidden');
+  if (faceFrame) faceFrame.className = 'w-36 h-44 rounded-2xl border-2 border-emerald-400 flex flex-col items-center justify-between p-2 relative z-10 transition-all duration-300 shadow-[0_0_25px_rgba(16,185,129,0.5)]';
+
+  // Phase 1: 0ms -> Localisation des points biométriques
+  if (scanMsg) scanMsg.innerHTML = '<span class="text-amber-400 font-bold animate-pulse">🔍 Phase 1/3 :</span> Analyse des 68 points biométriques faciaux...';
+  if (statusBadge) {
+    statusBadge.innerText = 'Calcul biométrique...';
+    statusBadge.className = 'text-[9px] font-mono text-amber-400 bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/40 animate-pulse';
+  }
+
+  // Phase 2: 900ms -> Anti-spoofing & Vivacité
+  setTimeout(() => {
+    if (scanMsg) scanMsg.innerHTML = '<span class="text-emerald-400 font-bold animate-pulse">🧬 Phase 2/3 :</span> Test de vivacité & Anti-usurpation d\'identité...';
+    if (statusBadge) statusBadge.innerText = 'Vivacité : 94.2%';
+  }, 900);
+
+  // Phase 3: 1800ms -> Matching réussi
+  setTimeout(() => {
+    if (scanMsg) scanMsg.innerHTML = '<span class="text-emerald-400 font-bold">✅ Phase 3/3 :</span> Identité faciale validée avec succès !';
+    if (statusBadge) {
+      statusBadge.innerText = 'Match IA : 99.4%';
+      statusBadge.className = 'text-[9px] font-mono text-emerald-400 bg-emerald-500/30 px-2 py-0.5 rounded border border-emerald-400 font-bold shadow-lg shadow-emerald-500/30';
+    }
+    if (laser) laser.classList.add('hidden');
+    if (faceFrame) {
+      faceFrame.className = 'w-36 h-44 rounded-2xl border-2 border-solid border-emerald-400 bg-emerald-500/10 flex flex-col items-center justify-between p-2 relative z-10 shadow-[0_0_35px_rgba(16,185,129,0.7)]';
+    }
+  }, 1800);
+
+  // Step 4: 2500ms -> Registration & Toast Notification
+  setTimeout(() => {
+    const nowStr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    showToast(
+      `Pointage d'${type} Réussi`,
+      `<strong class="text-white">${empName}</strong><br/>` +
+      `<span class="text-emerald-400 font-semibold">✓ Reconnaissance Faciale :</span> Match 99.4% (Visage Identifié)<br/>` +
+      `<span class="text-emerald-400 font-semibold">✓ Géolocalisation GPS :</span> Validé (14m du Siège)<br/>` +
+      `<span class="text-emerald-400 font-semibold">✓ Horodateur Certifié :</span> ${nowStr} GMT`,
+      'success',
+      6500
+    );
+
+    closePunchModal();
+
+    // Update employee status in state
+    const empObj = state.employees.find(e => empName.includes(e.name) || e.name.includes(empName));
+    if (empObj) {
+      empObj.status = type === 'ENTRÉE' ? 'Présent' : 'Sorti';
+      empObj.arriveTime = nowStr.substring(0, 5);
+      empObj.confidence = 99.4;
+    }
+
+    renderDashboard();
+    renderStaffGrid();
+  }, 2500);
 }
 
 function submitLeaveRequest() {

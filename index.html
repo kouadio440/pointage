@@ -1254,69 +1254,84 @@
 
   <!-- ==================== MODALS & DRAWERS ==================== -->
 
-  <!-- MODAL 1: PUNCH MODAL (GEOLOCATION & SELFIE SIMULATOR) -->
+  <!-- MODAL 1: PUNCH MODAL (GEOLOCATION & BIOMETRIC FACIAL SCANNER) -->
   <div id="modal-punch" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4">
-    <div class="glass-panel-elevated max-w-lg w-full p-6 space-y-5 border border-emerald-500/40 relative">
+    <div class="glass-panel-elevated max-w-lg w-full p-6 space-y-4 border border-emerald-500/40 relative">
       <button onclick="closePunchModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white p-1">
         <i data-lucide="x" class="w-5 h-5"></i>
       </button>
 
       <div class="space-y-1">
         <h3 class="text-lg font-bold text-white flex items-center gap-2">
-          <i data-lucide="navigation" class="w-5 h-5 text-emerald-400"></i>
-          Pointage de Présence Sécurisé
+          <i data-lucide="scan-face" class="w-5 h-5 text-emerald-400"></i>
+          Pointage par Reconnaissance Faciale IA
         </h3>
-        <p class="text-xs text-slate-400">Winner Digital SARL • Géolocalisation & Vérification Biométrique</p>
+        <p class="text-xs text-slate-400">Winner Digital SARL • Authentification Biométrique & Géofencing GPS</p>
       </div>
 
       <!-- Employee Selector -->
       <div>
-        <label class="text-xs text-slate-300 font-semibold mb-1 block">Sélectionner l'Employé :</label>
-        <select id="punch-employee-select" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-mono">
+        <label class="text-xs text-slate-300 font-semibold mb-1 block">Sélectionner l'Employé pour le Test :</label>
+        <select id="punch-employee-select" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-mono">
           <option value="1">Marc KOUASSI (Chef d'Atelier Packaging)</option>
           <option value="2">Awa KONE (Responsable Qualité)</option>
           <option value="3">Jean-Luc BAMBA (Commercial Terrain)</option>
+          <option value="4">Sarah DIABATE (Graphiste & Designer Packaging)</option>
         </select>
       </div>
 
-      <!-- Live Camera Stream Simulation -->
-      <div class="relative w-full h-52 bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center">
+      <!-- Live Camera Stream & Facial Scanner Container -->
+      <div class="relative w-full h-56 bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center">
+        
+        <!-- Live Real Webcam Stream -->
+        <video id="punch-webcam" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover hidden"></video>
+
         <!-- Grid overlay -->
-        <div class="absolute inset-0 bg-[radial-gradient(#1c2533_1px,transparent_1px)] [background-size:12px_12px] opacity-40"></div>
+        <div class="absolute inset-0 bg-[radial-gradient(#1c2533_1px,transparent_1px)] [background-size:14px_14px] opacity-40"></div>
+
+        <!-- Laser Scan Line -->
+        <div id="laser-scan-line" class="hidden absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_20px_#10b981] z-20 animate-scan-laser"></div>
 
         <!-- Face Frame Box -->
-        <div class="w-36 h-44 rounded-2xl border-2 border-dashed border-emerald-400/80 flex flex-col items-center justify-between p-2 relative">
-          <span class="text-[9px] font-mono text-emerald-400 bg-black/60 px-1 rounded">Cadrer le Visage</span>
-          <div class="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-emerald-400">
-            <i data-lucide="user" class="w-8 h-8"></i>
+        <div id="punch-face-frame" class="w-36 h-44 rounded-2xl border-2 border-dashed border-emerald-400/80 flex flex-col items-center justify-between p-2 relative z-10 transition-all duration-300">
+          <span class="text-[9px] font-mono text-emerald-400 bg-black/70 px-2 py-0.5 rounded border border-emerald-500/30">Cadrer le Visage</span>
+          
+          <div id="punch-avatar-fallback" class="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-emerald-400 glow-amber">
+            <i data-lucide="user-check" class="w-8 h-8"></i>
           </div>
-          <span id="selfie-match-badge" class="text-[9px] font-mono text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/40">Détection : 98.6%</span>
+
+          <span id="selfie-match-badge" class="text-[9px] font-mono text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/40">Détection : Prêt</span>
         </div>
 
-        <div class="absolute bottom-2 left-2 right-2 flex justify-between text-[10px] font-mono text-slate-400 bg-slate-900/90 p-1.5 rounded border border-slate-800">
-          <span>Luminosité : OK</span>
-          <span class="text-emerald-400">Anti-Spoofing : Valide</span>
+        <div class="absolute bottom-2 left-2 right-2 flex justify-between text-[10px] font-mono text-slate-300 bg-slate-900/90 p-2 rounded-lg border border-slate-800 z-10 backdrop-blur-md">
+          <span class="flex items-center gap-1"><i data-lucide="sun" class="w-3 h-3 text-amber-400"></i> Luminosité : OK</span>
+          <span class="flex items-center gap-1 text-emerald-400"><i data-lucide="shield-check" class="w-3 h-3"></i> Anti-Spoofing : Actif</span>
         </div>
       </div>
 
+      <!-- Live Scan Status Message -->
+      <div class="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs font-mono text-center">
+        <p id="punch-scan-status-msg" class="text-slate-300">Positionnez votre visage dans le cadre et cliquez sur <strong>Pointer l'Arrivée</strong>.</p>
+      </div>
+
       <!-- Location Verification status -->
-      <div class="p-3 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1 text-xs font-mono">
+      <div class="p-3 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-1 text-xs font-mono">
         <div class="flex justify-between">
           <span class="text-slate-400">Coordonnées GPS :</span>
-          <span class="text-emerald-400">5.3599° N, 4.0083° W</span>
+          <span class="text-emerald-400 font-bold">5.3599° N, 4.0083° W</span>
         </div>
         <div class="flex justify-between">
-          <span class="text-slate-400">Distance au bureau :</span>
-          <span class="text-emerald-400">14 mètres (Dans le rayon)</span>
+          <span class="text-slate-400">Géofence Siège Yopougon :</span>
+          <span class="text-emerald-400 font-bold">14 mètres (Dans le rayon)</span>
         </div>
       </div>
 
       <!-- Action Buttons -->
-      <div class="grid grid-cols-2 gap-3 pt-2">
-        <button onclick="submitPunch('ENTRÉE')" class="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs tracking-wider transition shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-1.5">
+      <div class="grid grid-cols-2 gap-3 pt-1">
+        <button id="btn-punch-arrivee" onclick="submitPunch('ENTRÉE')" class="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-black font-extrabold text-xs tracking-wider transition shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2">
           <i data-lucide="log-in" class="w-4 h-4"></i> POINTER L'ARRIVÉE
         </button>
-        <button onclick="submitPunch('SORTIE')" class="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs tracking-wider transition flex items-center justify-center gap-1.5">
+        <button id="btn-punch-sortie" onclick="submitPunch('SORTIE')" class="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs tracking-wider transition flex items-center justify-center gap-2">
           <i data-lucide="log-out" class="w-4 h-4"></i> POINTER LA SORTIE
         </button>
       </div>
