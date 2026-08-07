@@ -47,6 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initIcons();
   startLiveClock();
   startQRCountdown();
+  switchView('hero');
   renderDashboard();
   renderStaffGrid();
   setTheme('terracotta');
