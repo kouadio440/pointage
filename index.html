@@ -43,8 +43,8 @@
     }
   </script>
 
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Lucide Icons (Fixed version) -->
+  <script src="https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js"></script>
   
   <!-- GSAP Animation Library CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
@@ -110,7 +110,7 @@
 
       <!-- Action Buttons -->
       <div class="flex items-center space-x-2">
-        <button onclick="openAuthModal('login')" class="px-3.5 py-1.5 rounded-full bg-[var(--border-subtle)] hover:bg-[var(--border-accent)] text-[var(--color-offwhite)] text-xs font-semibold border border-[var(--border-subtle)] transition">
+        <button id="nav-login-btn" onclick="openAuthModal('login')" class="px-3.5 py-1.5 rounded-full bg-[var(--border-subtle)] hover:bg-[var(--border-accent)] text-[var(--color-offwhite)] text-xs font-semibold border border-[var(--border-subtle)] transition">
           Se Connecter
         </button>
       </div>

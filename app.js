@@ -4,10 +4,23 @@
  * Plateforme SaaS de Gestion du Temps et Pointage pour Entreprises
  */
 
+// Security Utility: HTML Entity Escaping to prevent DOM-based XSS (CWE-79)
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Production Application State
 const state = {
   activeView: 'hero',
   activeSection: 'overview',
+  isAuthenticated: false,
+  currentUser: null,
   company: {
     name: 'SaaS Entreprise (Exemple)',
     sector: 'Services, Industrie & Commerce',
@@ -151,6 +164,13 @@ function startLiveClock() {
 
 // View Switcher (Landing vs Dashboard vs Employee vs Manager)
 function switchView(viewName) {
+  // Security Gatekeeper: Require authenticated session for RH Cockpit (CWE-306 / CWE-602)
+  if (viewName === 'dashboard' && !state.isAuthenticated) {
+    showToast('Accès Restreint', 'Veuillez vous connecter à votre Espace Client RH pour accéder au Cockpit.', 'info');
+    openAuthModal('login');
+    return;
+  }
+
   state.activeView = viewName;
 
   document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
@@ -222,12 +242,12 @@ function renderDashboard() {
       return `
         <tr class="hover:bg-slate-800/40 transition">
           <td class="p-2.5 flex items-center space-x-2">
-            <img src="${emp.avatar}" class="w-6 h-6 rounded-full object-cover border border-slate-700" alt="${emp.name}" />
-            <span class="font-bold text-white">${emp.name}</span>
+            <img src="${escapeHtml(emp.avatar)}" class="w-6 h-6 rounded-full object-cover border border-slate-700" alt="${escapeHtml(emp.name)}" />
+            <span class="font-bold text-white">${escapeHtml(emp.name)}</span>
           </td>
-          <td class="p-2.5 font-mono text-slate-300">${emp.arriveTime}</td>
-          <td class="p-2.5 text-slate-400">${emp.method}</td>
-          <td class="p-2.5 text-emerald-400">${emp.distance}</td>
+          <td class="p-2.5 font-mono text-slate-300">${escapeHtml(emp.arriveTime)}</td>
+          <td class="p-2.5 text-slate-400">${escapeHtml(emp.method)}</td>
+          <td class="p-2.5 text-emerald-400">${escapeHtml(emp.distance)}</td>
           <td class="p-2.5">${statusBadge}</td>
         </tr>
       `;
@@ -253,19 +273,19 @@ function renderStaffGrid() {
     return `
       <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition space-y-3">
         <div class="flex items-center space-x-3">
-          <img src="${emp.avatar}" class="w-12 h-12 rounded-xl object-cover border border-slate-700 shadow-md" alt="${emp.name}" />
+          <img src="${escapeHtml(emp.avatar)}" class="w-12 h-12 rounded-xl object-cover border border-slate-700 shadow-md" alt="${escapeHtml(emp.name)}" />
           <div>
-            <h4 class="font-bold text-white text-sm">${emp.name}</h4>
-            <p class="text-[11px] text-slate-400">${emp.role}</p>
+            <h4 class="font-bold text-white text-sm">${escapeHtml(emp.name)}</h4>
+            <p class="text-[11px] text-slate-400">${escapeHtml(emp.role)}</p>
           </div>
         </div>
         <div class="flex items-center justify-between text-xs font-mono pt-2 border-t border-slate-800/80">
           <span class="text-slate-400">Statut :</span>
-          <span class="px-2 py-0.5 rounded bg-slate-800 border ${statusClass} text-[10px] font-bold">${emp.status}</span>
+          <span class="px-2 py-0.5 rounded bg-slate-800 border ${statusClass} text-[10px] font-bold">${escapeHtml(emp.status)}</span>
         </div>
         <div class="flex justify-between text-[11px] font-mono text-slate-400">
           <span>Affectation :</span>
-          <span class="text-white">${emp.site}</span>
+          <span class="text-white">${escapeHtml(emp.site)}</span>
         </div>
       </div>
     `;
@@ -279,14 +299,14 @@ function renderLeaveRequestsTable() {
 
   tbody.innerHTML = state.leaves.map(req => `
     <tr class="hover:bg-slate-800/40 transition">
-      <td class="p-3 font-bold text-white">${req.employee}</td>
-      <td class="p-3 text-cyan-400">${req.type}</td>
-      <td class="p-3 text-slate-400">${req.period}</td>
+      <td class="p-3 font-bold text-white">${escapeHtml(req.employee)}</td>
+      <td class="p-3 text-cyan-400">${escapeHtml(req.type)}</td>
+      <td class="p-3 text-slate-400">${escapeHtml(req.period)}</td>
       <td class="p-3">${req.days} Jours</td>
-      <td class="p-3 text-slate-300">${req.reason}</td>
+      <td class="p-3 text-slate-300">${escapeHtml(req.reason)}</td>
       <td class="p-3">
         <span class="${req.status === 'Approuvé' ? 'badge-verified' : 'badge-alert'} px-2 py-0.5 rounded text-[10px]">
-          ${req.status}
+          ${escapeHtml(req.status)}
         </span>
       </td>
       <td class="p-3 text-right">
@@ -306,15 +326,15 @@ function renderOvertimeTable() {
 
   tbody.innerHTML = state.overtimes.map(ot => `
     <tr class="hover:bg-slate-800/40 transition">
-      <td class="p-3 font-bold text-white">${ot.employee}</td>
-      <td class="p-3 text-slate-400">${ot.date}</td>
-      <td class="p-3 font-mono text-emerald-400">${ot.slot}</td>
-      <td class="p-3 font-bold text-white">${ot.duration}</td>
-      <td class="p-3 text-emerald-400">${ot.multiplier}</td>
-      <td class="p-3 text-slate-300">${ot.reason}</td>
+      <td class="p-3 font-bold text-white">${escapeHtml(ot.employee)}</td>
+      <td class="p-3 text-slate-400">${escapeHtml(ot.date)}</td>
+      <td class="p-3 font-mono text-emerald-400">${escapeHtml(ot.slot)}</td>
+      <td class="p-3 font-bold text-white">${escapeHtml(ot.duration)}</td>
+      <td class="p-3 text-emerald-400">${escapeHtml(ot.multiplier)}</td>
+      <td class="p-3 text-slate-300">${escapeHtml(ot.reason)}</td>
       <td class="p-3">
         <span class="${ot.status === 'Validé' ? 'badge-verified' : 'badge-alert'} px-2 py-0.5 rounded text-[10px]">
-          ${ot.status}
+          ${escapeHtml(ot.status)}
         </span>
       </td>
       <td class="p-3 text-right">
@@ -333,13 +353,13 @@ function renderLatenessTable() {
 
   tbody.innerHTML = state.latenesses.map(lat => `
     <tr class="hover:bg-slate-800/40 transition">
-      <td class="p-3 font-bold text-white">${lat.employee}</td>
-      <td class="p-3 text-slate-400">${lat.date}</td>
-      <td class="p-3 text-slate-400">${lat.scheduled}</td>
-      <td class="p-3 text-orange-400 font-bold">${lat.actual}</td>
+      <td class="p-3 font-bold text-white">${escapeHtml(lat.employee)}</td>
+      <td class="p-3 text-slate-400">${escapeHtml(lat.date)}</td>
+      <td class="p-3 text-slate-400">${escapeHtml(lat.scheduled)}</td>
+      <td class="p-3 text-orange-400 font-bold">${escapeHtml(lat.actual)}</td>
       <td class="p-3 text-orange-400 font-bold">+${lat.minutes} min</td>
-      <td class="p-3 text-slate-300">${lat.justification}</td>
-      <td class="p-3"><span class="badge-alert px-2 py-0.5 rounded text-[10px]">${lat.status}</span></td>
+      <td class="p-3 text-slate-300">${escapeHtml(lat.justification)}</td>
+      <td class="p-3"><span class="badge-alert px-2 py-0.5 rounded text-[10px]">${escapeHtml(lat.status)}</span></td>
       <td class="p-3 text-right">
         <button onclick="acceptJustification(${lat.id})" class="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px]">Accepter Motifs</button>
       </td>
@@ -577,12 +597,16 @@ function submitPunch(type) {
 }
 
 function submitLeaveRequest() {
-  const type = document.getElementById('leave-type').value;
-  const reason = document.getElementById('leave-reason').value || 'Sans commentaire';
+  const typeEl = document.getElementById('leave-type');
+  const reasonEl = document.getElementById('leave-reason');
+  
+  const type = typeEl ? escapeHtml(typeEl.value) : 'Congé Payé Annuel';
+  const rawReason = reasonEl ? reasonEl.value : '';
+  const reason = rawReason.trim() ? escapeHtml(rawReason) : 'Sans commentaire';
 
   state.leaves.push({
     id: Date.now(),
-    employee: 'Sarah DIABATE',
+    employee: state.currentUser ? escapeHtml(state.currentUser.email) : 'Employé',
     type: type,
     period: '10/08/2026 au 14/08/2026',
     days: 5,
@@ -598,7 +622,7 @@ function submitLeaveRequest() {
 function submitOvertimeRequest() {
   state.overtimes.push({
     id: Date.now(),
-    employee: 'Marc KOUASSI',
+    employee: state.currentUser ? escapeHtml(state.currentUser.email) : 'Marc KOUASSI',
     date: '06/08/2026',
     slot: '17:00 - 19:30',
     duration: '2.5 h',
@@ -769,7 +793,37 @@ function closeAuthModal() {
 
 function handleAuthSubmit(e) {
   if (e) e.preventDefault();
+  const emailInput = document.querySelector('#modal-auth input[type="email"]');
+  const emailVal = emailInput ? emailInput.value : 'rh@entreprise.com';
+  
+  state.isAuthenticated = true;
+  state.currentUser = { email: emailVal, role: 'Manager RH' };
+  
   closeAuthModal();
+  
+  // Update Nav Login Button state
+  const loginBtn = document.getElementById('nav-login-btn');
+  if (loginBtn) {
+    loginBtn.innerText = 'Déconnexion RH';
+    loginBtn.onclick = handleLogout;
+    loginBtn.className = 'px-3.5 py-1.5 rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/30 text-xs font-semibold border border-red-500/30 transition';
+  }
+
   switchView('dashboard');
-  showToast('Connexion Réussie', 'Bienvenue sur votre cockpit RH Winner Pointage Pro.', 'success');
+  showToast('Connexion Sécurisée', `Bienvenue ${escapeHtml(emailVal)} sur votre Cockpit RH.`, 'success');
+}
+
+function handleLogout() {
+  state.isAuthenticated = false;
+  state.currentUser = null;
+  
+  const loginBtn = document.getElementById('nav-login-btn');
+  if (loginBtn) {
+    loginBtn.innerText = 'Se Connecter';
+    loginBtn.onclick = () => openAuthModal('login');
+    loginBtn.className = 'px-3.5 py-1.5 rounded-full bg-[var(--border-subtle)] hover:bg-[var(--border-accent)] text-[var(--color-offwhite)] text-xs font-semibold border border-[var(--border-subtle)] transition';
+  }
+
+  switchView('hero');
+  showToast('Déconnexion Réussie', 'Vous avez été déconnecté de la session RH.', 'info');
 }
