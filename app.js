@@ -53,6 +53,65 @@ document.addEventListener('DOMContentLoaded', () => {
   updateRoiCalculator();
 });
 
+// Toast Notification System (Replaces native browser alerts)
+function showToast(title, message, type = 'success', duration = 5000) {
+  let container = document.getElementById('toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toast-container';
+    container.className = 'fixed top-5 right-5 z-[100] flex flex-col space-y-3 max-w-sm w-full pointer-events-none px-4 sm:px-0';
+    document.body.appendChild(container);
+  }
+
+  const toast = document.createElement('div');
+  const isSuccess = type === 'success';
+  const isInfo = type === 'info';
+  
+  const borderColor = isSuccess ? 'border-emerald-500/50' : (isInfo ? 'border-amber-500/50' : 'border-slate-700');
+  const glowShadow = isSuccess ? 'shadow-[0_10px_30px_rgba(16,185,129,0.3)]' : (isInfo ? 'shadow-[0_10px_30px_rgba(245,158,11,0.3)]' : 'shadow-2xl');
+  const badgeColor = isSuccess ? 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30' : 'text-amber-400 bg-amber-500/15 border-amber-500/30';
+  const iconName = isSuccess ? 'shield-check' : 'info';
+  const barGradient = isSuccess ? 'from-emerald-500 via-teal-400 to-emerald-300' : 'from-amber-500 via-orange-400 to-amber-300';
+
+  toast.className = `transform -translate-y-4 opacity-0 transition-all duration-300 ease-out max-w-md w-full bg-slate-900/95 border ${borderColor} rounded-2xl p-4 ${glowShadow} backdrop-blur-2xl flex items-start space-x-3 pointer-events-auto relative overflow-hidden`;
+
+  toast.innerHTML = `
+    <div class="p-2 rounded-xl border ${badgeColor} flex-shrink-0 mt-0.5">
+      <i data-lucide="${iconName}" class="w-5 h-5"></i>
+    </div>
+    <div class="flex-1 space-y-1 pr-3">
+      <h4 class="text-xs font-bold text-white tracking-wide uppercase font-mono flex items-center justify-between">
+        <span>${title}</span>
+        <span class="text-[9px] font-mono text-slate-400 font-normal">À l'instant</span>
+      </h4>
+      <div class="text-xs text-slate-200 leading-relaxed font-sans">${message}</div>
+    </div>
+    <button onclick="this.parentElement.classList.add('opacity-0', '-translate-y-2'); setTimeout(() => this.parentElement.remove(), 250);" class="text-slate-400 hover:text-white p-1 transition">
+      <i data-lucide="x" class="w-4 h-4"></i>
+    </button>
+    <div class="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r ${barGradient} animate-pulse"></div>
+  `;
+
+  container.appendChild(toast);
+
+  if (window.lucide) {
+    lucide.createIcons();
+  }
+
+  requestAnimationFrame(() => {
+    toast.classList.remove('-translate-y-4', 'opacity-0');
+    toast.classList.add('translate-y-0', 'opacity-100');
+  });
+
+  setTimeout(() => {
+    if (toast.parentElement) {
+      toast.classList.remove('translate-y-0', 'opacity-100');
+      toast.classList.add('-translate-y-2', 'opacity-0');
+      setTimeout(() => toast.remove(), 300);
+    }
+  }, duration);
+}
+
 // Dynamic Theme Switcher (Chaleur d'Afrique)
 function setTheme(themeName) {
   state.currentTheme = themeName;
@@ -365,9 +424,18 @@ function closeCopilotDrawer() {
 // Action Submissions
 function submitPunch(type) {
   const empSelect = document.getElementById('punch-employee-select');
-  const empName = empSelect.options[empSelect.selectedIndex].text.split(' (')[0];
+  const empName = empSelect ? empSelect.options[empSelect.selectedIndex].text.split(' (')[0] : 'Employé';
+  const nowStr = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   
-  alert(`Pointage d'${type} enregistré avec succès pour ${empName} !\n\n✓ GPS : Dans le rayon de 150m (Siège Winner Digital Yopougon)\n✓ Selfie IA : Reconnaissance faciale 98.6%\n✓ Horodateur : ${new Date().toLocaleTimeString()} GMT`);
+  showToast(
+    `Pointage d'${type} Enregistré !`,
+    `<strong class="text-white">${empName}</strong><br/>` +
+    `<span class="text-emerald-400 font-semibold">✓ GPS :</span> Dans le rayon de 150m (Siège Winner Digital)<br/>` +
+    `<span class="text-emerald-400 font-semibold">✓ Visage IA :</span> Reconnaissance faciale 98.6%<br/>` +
+    `<span class="text-emerald-400 font-semibold">✓ Horodateur :</span> ${nowStr} GMT`,
+    'success',
+    6000
+  );
   closePunchModal();
   renderDashboard();
 }
@@ -386,7 +454,7 @@ function submitLeaveRequest() {
     status: 'En attente'
   });
 
-  alert('Votre demande de congé a été soumise au manager RH !');
+  showToast('Demande Transmise', 'Votre demande de congé a été soumise au manager RH avec succès.', 'success');
   closeLeaveModal();
   renderDashboard();
 }
@@ -403,38 +471,50 @@ function submitOvertimeRequest() {
     status: 'En attente'
   });
 
-  alert('Déclaration d\'heures supplémentaires transmise au manager !');
+  showToast('Heures Supp Transmises', 'La déclaration d\'heures supplémentaires a été soumise au manager RH.', 'success');
   closeOvertimeModal();
   renderDashboard();
 }
 
 function approveLeave(id) {
   const item = state.leaves.find(l => l.id === id);
-  if (item) item.status = 'Approuvé';
+  if (item) {
+    item.status = 'Approuvé';
+    showToast('Congé Approuvé', `La demande de congé de ${item.employee} a été validée.`, 'success');
+  }
   renderDashboard();
 }
 
 function rejectLeave(id) {
   const item = state.leaves.find(l => l.id === id);
-  if (item) item.status = 'Refusé';
+  if (item) {
+    item.status = 'Refusé';
+    showToast('Congé Refusé', `La demande de congé de ${item.employee} a été refusée.`, 'info');
+  }
   renderDashboard();
 }
 
 function approveOvertime(id) {
   const item = state.overtimes.find(o => o.id === id);
-  if (item) item.status = 'Validé';
+  if (item) {
+    item.status = 'Validé';
+    showToast('Heures Supp Validées', `Les heures supplémentaires de ${item.employee} ont été validées.`, 'success');
+  }
   renderDashboard();
 }
 
 function acceptJustification(id) {
   const item = state.latenesses.find(l => l.id === id);
-  if (item) item.status = 'Retard Justifié';
+  if (item) {
+    item.status = 'Retard Justifié';
+    showToast('Retard Justifié', `La justification de ${item.employee} a été acceptée.`, 'success');
+  }
   renderDashboard();
 }
 
 function triggerRefreshSimulatedData() {
   renderDashboard();
-  alert('Flux de pointages actualisé en temps réel.');
+  showToast('Flux Actualisé', 'Le registre et la carte des pointages en direct ont été mis à jour.', 'info');
 }
 
 // AI Copilot Logic
@@ -555,5 +635,5 @@ function handleAuthSubmit(e) {
   if (e) e.preventDefault();
   closeAuthModal();
   switchView('dashboard');
-  alert('Connexion réussie ! Bienvenue sur votre cockpit RH Winner Pointage.');
+  showToast('Connexion Réussie', 'Bienvenue sur votre cockpit RH Winner Pointage Pro.', 'success');
 }
