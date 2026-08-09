@@ -1,15 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "pnpm turbo run build --filter=@pointage/app",
-  "outputDirectory": "apps/app/dist",
+  "buildCommand": "pnpm turbo run build && node scripts/prepare-vercel.mjs",
+  "outputDirectory": "apps/web",
   "rewrites": [
     {
       "source": "/app/:path*",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/:path*",
-      "destination": "/index.html"
+      "destination": "/app/index.html"
     }
   ]
 }
