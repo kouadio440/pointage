@@ -1606,239 +1606,432 @@
         <div>
           <h2 class="text-2xl font-extrabold text-white flex items-center gap-2">
             Notre Tableau de Bord Propriétaire
-            <span class="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 rounded-full glow-amber">Super Admin • Métriques SaaS</span>
+            <span class="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 rounded-full glow-amber">Super Admin • Fondateur SaaS</span>
           </h2>
-          <p class="text-xs text-slate-400">Pilotage financier et commercial global : ARR, MRR, Chiffre d'Affaires, Ventes & Abonnements des entreprises clients.</p>
+          <p class="text-xs text-slate-400">Pilotage stratégique, commercial, financier et technique global de la plateforme.</p>
         </div>
 
         <div class="flex items-center space-x-3">
           <span class="text-xs font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
             <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-            Santé Financière : Excellente (NRR 97.8%)
+            Santé Réseau & API : 100% Opérationnel
           </span>
-          <button onclick="showToast('Export Comptable', 'Téléchargement du rapport des ventes et revenus au format PDF/Excel.', 'success')" class="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-black font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition">
+          <button onclick="showToast('Export Données SaaS', 'Téléchargement complet des métriques, comptes et factures (Excel/PDF).', 'success')" class="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-black font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition">
             <i data-lucide="download" class="w-3.5 h-3.5"></i>
-            Exporter le Bilan
+            Exporter les Rapport SaaS
           </button>
         </div>
       </div>
 
-      <!-- MAIN FINANCIAL & REVENUE KPI GRID -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <!-- MAIN FINANCIAL & OPERATIONAL KPI GRID (ALL 11 METRICS SUMMARY) -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-3.5">
         
-        <!-- KPI 1: ARR -->
-        <div class="glass-panel p-5 interactive-card border-amber-500/30 bg-amber-500/5">
+        <!-- KPI 1: Revenus Annuels (ARR) -->
+        <div class="glass-panel p-4 interactive-card border-amber-500/30 bg-amber-500/5">
           <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span class="font-semibold text-amber-300">ARR (Revenu Annuel Récurrent)</span>
-            <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center">
-              <i data-lucide="trending-up" class="w-4 h-4"></i>
-            </div>
+            <span class="font-semibold text-amber-300">ARR (Revenu Annuel)</span>
+            <i data-lucide="trending-up" class="w-4 h-4 text-amber-400"></i>
           </div>
-          <div class="text-2xl font-extrabold font-mono text-white tracking-tight">48.600.000 FCFA</div>
-          <div class="flex items-center justify-between text-[11px] mt-2">
-            <span class="text-emerald-400 font-bold flex items-center gap-1">
-              <i data-lucide="arrow-up-right" class="w-3 h-3"></i> +18.4% cette année
-            </span>
-            <span class="text-slate-500 font-mono">Cible: 50M FCFA</span>
-          </div>
+          <div class="text-xl font-extrabold font-mono text-white tracking-tight">48.600.000 F</div>
+          <div class="text-[10px] text-emerald-400 font-bold mt-1">+18.4% YoY • Objectif 50M</div>
         </div>
 
-        <!-- KPI 2: MRR -->
-        <div class="glass-panel p-5 interactive-card border-emerald-500/30 bg-emerald-500/5">
+        <!-- KPI 2: Revenus Mensuels (MRR) -->
+        <div class="glass-panel p-4 interactive-card border-emerald-500/30 bg-emerald-500/5">
           <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span class="font-semibold text-emerald-300">MRR (Revenu Mensuel Récurrent)</span>
-            <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-              <i data-lucide="dollar-sign" class="w-4 h-4"></i>
-            </div>
+            <span class="font-semibold text-emerald-300">MRR (Revenu Mensuel)</span>
+            <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
           </div>
-          <div class="text-2xl font-extrabold font-mono text-emerald-400 tracking-tight">4.050.000 FCFA</div>
-          <div class="flex items-center justify-between text-[11px] mt-2">
-            <span class="text-emerald-400 font-bold flex items-center gap-1">
-              <i data-lucide="arrow-up-right" class="w-3 h-3"></i> +12.1% ce mois
-            </span>
-            <span class="text-slate-500 font-mono">42 Abonnés</span>
-          </div>
+          <div class="text-xl font-extrabold font-mono text-emerald-400 tracking-tight">4.050.000 F</div>
+          <div class="text-[10px] text-emerald-400/80 mt-1">+12.1% ce mois</div>
         </div>
 
-        <!-- KPI 3: CA CUMULÉ TOTAL -->
-        <div class="glass-panel p-5 interactive-card border-cyan-500/30 bg-cyan-500/5">
+        <!-- KPI 3: Nombre total d'entreprises -->
+        <div class="glass-panel p-4 interactive-card border-slate-700">
           <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span class="font-semibold text-cyan-300">CA Total Encaissé</span>
-            <div class="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center">
-              <i data-lucide="credit-card" class="w-4 h-4"></i>
-            </div>
+            <span>Total Entreprises</span>
+            <i data-lucide="building-2" class="w-4 h-4 text-slate-400"></i>
           </div>
-          <div class="text-2xl font-extrabold font-mono text-cyan-400 tracking-tight">36.800.000 FCFA</div>
-          <div class="flex items-center justify-between text-[11px] mt-2">
-            <span class="text-slate-400 font-medium">Recouvrement : 98.2%</span>
-            <span class="text-emerald-400 font-bold">À jour</span>
-          </div>
+          <div class="text-xl font-extrabold font-mono text-white">48 Clientèle</div>
+          <div class="text-[10px] text-slate-400 mt-1">Inscrites sur la plateforme</div>
         </div>
 
-        <!-- KPI 4: ENTREPRISES ET LICENCES -->
-        <div class="glass-panel p-5 interactive-card border-slate-700 bg-slate-900/60">
+        <!-- KPI 4: Entreprises Actives -->
+        <div class="glass-panel p-4 interactive-card border-emerald-500/20 bg-emerald-500/5">
           <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span class="font-semibold text-slate-200">Entreprises & Licences</span>
-            <div class="w-8 h-8 rounded-lg bg-slate-800 text-slate-300 flex items-center justify-center">
-              <i data-lucide="building-2" class="w-4 h-4"></i>
-            </div>
+            <span class="text-emerald-400 font-semibold">Entreprises Actives</span>
+            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i>
           </div>
-          <div class="text-2xl font-extrabold font-mono text-white tracking-tight">42 Clients</div>
-          <div class="flex items-center justify-between text-[11px] mt-2">
-            <span class="text-amber-400 font-bold">1.840 Employés actifs</span>
-            <span class="text-slate-500">Moy. 43/sté</span>
+          <div class="text-xl font-extrabold font-mono text-emerald-400">42 Actives</div>
+          <div class="text-[10px] text-emerald-500/80 mt-1">Taux d'activité : 87.5%</div>
+        </div>
+
+        <!-- KPI 5: Employés Actifs sous Licence -->
+        <div class="glass-panel p-4 interactive-card border-cyan-500/20 bg-cyan-500/5">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span class="text-cyan-300 font-semibold">Employés Actifs</span>
+            <i data-lucide="users" class="w-4 h-4 text-cyan-400"></i>
           </div>
+          <div class="text-xl font-extrabold font-mono text-cyan-400">1.840 emp.</div>
+          <div class="text-[10px] text-cyan-400/80 mt-1">Moyenne : 43 / entreprise</div>
+        </div>
+
+        <!-- KPI 6: Essais Expirés -->
+        <div class="glass-panel p-4 interactive-card border-orange-500/20 bg-orange-500/5">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span class="text-orange-300 font-semibold">Essais Expirés</span>
+            <i data-lucide="clock" class="w-4 h-4 text-orange-400"></i>
+          </div>
+          <div class="text-xl font-extrabold font-mono text-orange-400">4 Essais</div>
+          <div class="text-[10px] text-orange-400/80 mt-1">Relance commerciale à faire</div>
+        </div>
+
+        <!-- KPI 7: Comptes Suspendus -->
+        <div class="glass-panel p-4 interactive-card border-red-500/20 bg-red-500/5">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span class="text-red-400 font-semibold">Comptes Suspendus</span>
+            <i data-lucide="shield-ban" class="w-4 h-4 text-red-400"></i>
+          </div>
+          <div class="text-xl font-extrabold font-mono text-red-400">2 Suspendus</div>
+          <div class="text-[10px] text-red-400/80 mt-1">Impayé / Non-respect CGU</div>
+        </div>
+
+        <!-- KPI 8: Tickets Support -->
+        <div class="glass-panel p-4 interactive-card border-purple-500/20 bg-purple-500/5">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span class="text-purple-300 font-semibold">Tickets Support</span>
+            <i data-lucide="life-buoy" class="w-4 h-4 text-purple-400"></i>
+          </div>
+          <div class="text-xl font-extrabold font-mono text-purple-400">3 Ouverts</div>
+          <div class="text-[10px] text-purple-400/80 mt-1">24 Résolus ce mois (96%)</div>
         </div>
 
       </div>
 
-      <!-- REVENUE & SUBSCRIPTION BREAKDOWN ROW -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <!-- SAAS SUB-SECTION SWITCHER TABS -->
+      <div class="flex items-center space-x-2 border-b border-slate-800/80 pb-2 overflow-x-auto">
+        <button onclick="switchSaasSection('overview')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-bold transition text-amber-400 bg-amber-500/10 border border-amber-500/30" data-saas-section="overview">
+          📊 Vue d'Ensemble & Revenus
+        </button>
+        <button onclick="switchSaasSection('companies')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-saas-section="companies">
+          🏢 Entreprises & Abonnements (48)
+        </button>
+        <button onclick="switchSaasSection('payments')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-saas-section="payments">
+          💳 Paiements & Factures
+        </button>
+        <button onclick="switchSaasSection('tickets')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-saas-section="tickets">
+          🎫 Tickets Support (3)
+        </button>
+        <button onclick="switchSaasSection('logs')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-saas-section="logs">
+          🖥️ Logs Système & Sécurité
+        </button>
+      </div>
 
-        <!-- Left Column: Repartition par Formule d'Abonnement -->
-        <div class="lg:col-span-5 glass-panel p-6 border-slate-800 space-y-4">
-          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-            <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
-              <i data-lucide="pie-chart" class="w-4 h-4 text-amber-400"></i>
-              Ventes par Formule d'Abonnement
-            </h3>
-            <span class="text-[10px] font-mono text-slate-400">42 Entreprises</span>
+      <!-- ==================== SUB-SECTION 1: OVERVIEW & FINANCIALS ==================== -->
+      <div id="saas-section-overview" class="saas-sub-section space-y-6">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+          <!-- Left Column: Repartition des Abonnements -->
+          <div class="lg:col-span-5 glass-panel p-6 border-slate-800 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+                <i data-lucide="pie-chart" class="w-4 h-4 text-amber-400"></i>
+                Ventes par Formule d'Abonnement
+              </h3>
+              <span class="text-[10px] font-mono text-slate-400">42 Entreprises</span>
+            </div>
+
+            <div class="space-y-4 pt-1">
+              <!-- Formule Starter -->
+              <div class="space-y-1.5 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="font-bold text-white flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+                    Formule Starter (150.000 FCFA/m)
+                  </span>
+                  <span class="font-mono text-cyan-400 font-bold">18 Abonnés</span>
+                </div>
+                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                  <div class="bg-cyan-400 h-full rounded-full" style="width: 42.8%"></div>
+                </div>
+                <div class="flex justify-between text-[10px] text-slate-400 pt-0.5">
+                  <span>Part : 42.8% des abonnés</span>
+                  <span class="font-mono text-slate-300">2.700.000 FCFA / mois</span>
+                </div>
+              </div>
+
+              <!-- Formule Pro -->
+              <div class="space-y-1.5 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="font-bold text-white flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                    Formule Pro (350.000 FCFA/m)
+                  </span>
+                  <span class="font-mono text-amber-400 font-bold">19 Abonnés</span>
+                </div>
+                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                  <div class="bg-amber-400 h-full rounded-full" style="width: 45.2%"></div>
+                </div>
+                <div class="flex justify-between text-[10px] text-slate-400 pt-0.5">
+                  <span>Part : 45.2% des abonnés</span>
+                  <span class="font-mono text-slate-300">6.650.000 FCFA / mois</span>
+                </div>
+              </div>
+
+              <!-- Formule Sur-Mesure -->
+              <div class="space-y-1.5 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="font-bold text-white flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                    Formule Sur-Mesure / Groupe (~750k FCFA)
+                  </span>
+                  <span class="font-mono text-emerald-400 font-bold">5 Abonnés</span>
+                </div>
+                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                  <div class="bg-emerald-400 h-full rounded-full" style="width: 12.0%"></div>
+                </div>
+                <div class="flex justify-between text-[10px] text-slate-400 pt-0.5">
+                  <span>Part : 12.0% (Grands comptes)</span>
+                  <span class="font-mono text-slate-300">3.750.000 FCFA / mois</span>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div class="space-y-4 pt-1">
-            <!-- Formule Starter -->
-            <div class="space-y-1.5 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
-              <div class="flex items-center justify-between text-xs">
-                <span class="font-bold text-white flex items-center gap-2">
-                  <span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
-                  Formule Starter (150.000 FCFA/m)
-                </span>
-                <span class="font-mono text-cyan-400 font-bold">18 Abonnés</span>
-              </div>
-              <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                <div class="bg-cyan-400 h-full rounded-full" style="width: 42.8%"></div>
-              </div>
-              <div class="flex justify-between text-[10px] text-slate-400 pt-0.5">
-                <span>Part : 42.8% des abonnés</span>
-                <span class="font-mono text-slate-300">2.700.000 FCFA / mois</span>
-              </div>
+          <!-- Right Column: Résumé Récent des Ventes -->
+          <div class="lg:col-span-7 glass-panel p-6 border-slate-800 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+                <i data-lucide="arrow-up-right" class="w-4 h-4 text-emerald-400"></i>
+                Croissance & Nouvelles Souscriptions
+              </h3>
+              <span class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">+4 Nouvelles Entreprises ce mois</span>
             </div>
 
-            <!-- Formule Pro -->
-            <div class="space-y-1.5 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
-              <div class="flex items-center justify-between text-xs">
-                <span class="font-bold text-white flex items-center gap-2">
-                  <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-                  Formule Pro (350.000 FCFA/m)
-                </span>
-                <span class="font-mono text-amber-400 font-bold">19 Abonnés</span>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
+                <div class="text-xs text-slate-400">Taux d'Acquisition Client</div>
+                <div class="text-2xl font-bold font-mono text-white">+8.3% / mois</div>
+                <p class="text-[10px] text-slate-500">Moyenne de 4.2 nouveaux abonnements par mois.</p>
               </div>
-              <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                <div class="bg-amber-400 h-full rounded-full" style="width: 45.2%"></div>
-              </div>
-              <div class="flex justify-between text-[10px] text-slate-400 pt-0.5">
-                <span>Part : 45.2% des abonnés</span>
-                <span class="font-mono text-slate-300">6.650.000 FCFA / mois</span>
-              </div>
-            </div>
-
-            <!-- Formule Sur-Mesure -->
-            <div class="space-y-1.5 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
-              <div class="flex items-center justify-between text-xs">
-                <span class="font-bold text-white flex items-center gap-2">
-                  <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-                  Formule Sur-Mesure / Groupe (~750k FCFA)
-                </span>
-                <span class="font-mono text-emerald-400 font-bold">5 Abonnés</span>
-              </div>
-              <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                <div class="bg-emerald-400 h-full rounded-full" style="width: 12.0%"></div>
-              </div>
-              <div class="flex justify-between text-[10px] text-slate-400 pt-0.5">
-                <span>Part : 12.0% (Grands comptes)</span>
-                <span class="font-mono text-slate-300">3.750.000 FCFA / mois</span>
+              <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
+                <div class="text-xs text-slate-400">Taux de Rétention Net (NRR)</div>
+                <div class="text-2xl font-bold font-mono text-emerald-400">97.8%</div>
+                <p class="text-[10px] text-slate-500">Faible Churn (0.8%) compensé par l'upsell Pro/Entreprise.</p>
               </div>
             </div>
           </div>
         </div>
+      </div>
 
-        <!-- Right Column: Dernières Ventes & Souscriptions -->
-        <div class="lg:col-span-7 glass-panel p-6 border-slate-800 space-y-4">
+      <!-- ==================== SUB-SECTION 2: GESTION DES ENTREPRISES ==================== -->
+      <div id="saas-section-companies" class="saas-sub-section hidden space-y-4">
+        <div class="glass-panel p-6 border-slate-800 space-y-4">
+          
+          <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+            <div>
+              <h3 class="font-bold text-white text-base flex items-center gap-2">
+                <i data-lucide="building" class="w-5 h-5 text-amber-400"></i>
+                Gestion des Entreprises & Abonnements Clients (48)
+              </h3>
+              <p class="text-xs text-slate-400">Supervision des comptes client, statut des essais, formules souscrites et contrôles d'accès.</p>
+            </div>
+
+            <div class="flex items-center space-x-2">
+              <select id="company-status-filter" onchange="filterCompanyTable()" class="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-amber-500">
+                <option value="all">Tous les Statuts (48)</option>
+                <option value="active" selected>Actives (42)</option>
+                <option value="expired">Essais Expirés (4)</option>
+                <option value="suspended">Comptes Suspendus (2)</option>
+              </select>
+              <button onclick="showToast('Nouvelle Entreprise', 'Ouverture du formulaire d\'onboarding d\'une nouvelle entreprise.', 'info')" class="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs transition">
+                + Ajouter une Entreprise
+              </button>
+            </div>
+          </div>
+
+          <!-- TABLEAU DES ENTREPRISES -->
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead>
+                <tr class="text-slate-400 border-b border-slate-800/80 font-mono text-[11px]">
+                  <th class="pb-2.5 font-semibold">Nom de l'Entreprise</th>
+                  <th class="pb-2.5 font-semibold">Formule</th>
+                  <th class="pb-2.5 font-semibold">Employés Actifs</th>
+                  <th class="pb-2.5 font-semibold">Revenu Mensuel</th>
+                  <th class="pb-2.5 font-semibold">Statut du Compte</th>
+                  <th class="pb-2.5 font-semibold text-right">Actions Admin</th>
+                </tr>
+              </thead>
+              <tbody id="company-table-body" class="divide-y divide-slate-800/40 text-slate-300">
+                <tr class="hover:bg-slate-800/30 transition">
+                  <td class="py-3 font-bold text-white flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                    Winner Digital SARL
+                  </td>
+                  <td><span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono text-[10px] border border-amber-500/20">Pro</span></td>
+                  <td class="font-mono">85 emp.</td>
+                  <td class="font-mono text-emerald-400 font-bold">350.000 FCFA</td>
+                  <td><span class="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold text-[10px] border border-emerald-500/20">Active</span></td>
+                  <td class="text-right space-x-2">
+                    <button onclick="toggleCompanyStatus('Winner Digital SARL', 'suspend')" class="px-2 py-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 font-semibold text-[10px] border border-red-500/20 transition">Suspendre</button>
+                  </td>
+                </tr>
+                <tr class="hover:bg-slate-800/30 transition">
+                  <td class="py-3 font-bold text-white flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                    Ivoire BTP & Construction
+                  </td>
+                  <td><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono text-[10px] border border-emerald-500/20">Entreprise</span></td>
+                  <td class="font-mono">320 emp.</td>
+                  <td class="font-mono text-emerald-400 font-bold">750.000 FCFA</td>
+                  <td><span class="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold text-[10px] border border-emerald-500/20">Active</span></td>
+                  <td class="text-right space-x-2">
+                    <button onclick="toggleCompanyStatus('Ivoire BTP', 'suspend')" class="px-2 py-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 font-semibold text-[10px] border border-red-500/20 transition">Suspendre</button>
+                  </td>
+                </tr>
+                <tr class="hover:bg-slate-800/30 transition">
+                  <td class="py-3 font-bold text-white flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-orange-400"></span>
+                    Batimat Côte d'Ivoire
+                  </td>
+                  <td><span class="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-mono text-[10px] border border-cyan-500/20">Starter (Essai)</span></td>
+                  <td class="font-mono">18 emp.</td>
+                  <td class="font-mono text-slate-400 font-bold">0 FCFA (Essai)</td>
+                  <td><span class="px-2.5 py-0.5 rounded-full bg-orange-500/10 text-orange-400 font-semibold text-[10px] border border-orange-500/20">Essai Expiré</span></td>
+                  <td class="text-right space-x-2">
+                    <button onclick="showToast('Relance Commerciale', 'Email et appel de relance envoyés à Batimat.', 'info')" class="px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-semibold text-[10px] border border-amber-500/20 transition">Relancer</button>
+                  </td>
+                </tr>
+                <tr class="hover:bg-slate-800/30 transition">
+                  <td class="py-3 font-bold text-white flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-red-400"></span>
+                    Trans-Afrique Transit & Fret
+                  </td>
+                  <td><span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono text-[10px] border border-amber-500/20">Pro</span></td>
+                  <td class="font-mono">45 emp.</td>
+                  <td class="font-mono text-red-400 font-bold">350.000 FCFA</td>
+                  <td><span class="px-2.5 py-0.5 rounded-full bg-red-500/10 text-red-400 font-semibold text-[10px] border border-red-500/20">Suspendu (Impayé)</span></td>
+                  <td class="text-right space-x-2">
+                    <button onclick="toggleCompanyStatus('Trans-Afrique', 'activate')" class="px-2 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-semibold text-[10px] border border-emerald-500/20 transition">Réactiver</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== SUB-SECTION 3: PAIEMENTS & FACTURES ==================== -->
+      <div id="saas-section-payments" class="saas-sub-section hidden space-y-4">
+        <div class="glass-panel p-6 border-slate-800 space-y-4">
           <div class="flex items-center justify-between border-b border-slate-800 pb-3">
             <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
-              <i data-lucide="receipt" class="w-4 h-4 text-emerald-400"></i>
-              Dernières Ventes & Facturation Entreprises
+              <i data-lucide="credit-card" class="w-4 h-4 text-emerald-400"></i>
+              Historique des Paiements & Transactions SaaS
             </h3>
-            <span class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Flux Temps Réel</span>
+            <span class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Recouvrement : 98.2%</span>
           </div>
 
           <div class="overflow-x-auto">
             <table class="w-full text-left text-xs">
               <thead>
                 <tr class="text-slate-400 border-b border-slate-800/80 font-mono text-[11px]">
-                  <th class="pb-2 font-semibold">Entreprise Client</th>
-                  <th class="pb-2 font-semibold">Formule</th>
-                  <th class="pb-2 font-semibold">Effectif</th>
-                  <th class="pb-2 font-semibold">Montant Facturé</th>
-                  <th class="pb-2 font-semibold text-right">Statut Vente</th>
+                  <th class="pb-2 font-semibold">N° Transaction</th>
+                  <th class="pb-2 font-semibold">Client</th>
+                  <th class="pb-2 font-semibold">Moyen de Paiement</th>
+                  <th class="pb-2 font-semibold">Montant</th>
+                  <th class="pb-2 font-semibold text-right">Statut</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-800/40 text-slate-300">
                 <tr class="hover:bg-slate-800/30 transition">
-                  <td class="py-2.5 font-bold text-white flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                    Winner Digital SARL
-                  </td>
-                  <td><span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono text-[10px] border border-amber-500/20">Pro</span></td>
-                  <td class="font-mono">85 emp.</td>
-                  <td class="font-mono text-emerald-400 font-bold">350.000 FCFA/m</td>
-                  <td class="text-right"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-semibold text-[10px]">Paiement Encaissé</span></td>
+                  <td class="py-2.5 font-mono text-amber-400">#TX-94012</td>
+                  <td class="font-bold text-white">Winner Digital SARL</td>
+                  <td>Orange Money / Wave</td>
+                  <td class="font-mono text-emerald-400 font-bold">350.000 FCFA</td>
+                  <td class="text-right"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-semibold">Succès • Reçu émis</span></td>
                 </tr>
                 <tr class="hover:bg-slate-800/30 transition">
-                  <td class="py-2.5 font-bold text-white flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                    Ivoire BTP & Construction
-                  </td>
-                  <td><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono text-[10px] border border-emerald-500/20">Entreprise</span></td>
-                  <td class="font-mono">320 emp.</td>
-                  <td class="font-mono text-emerald-400 font-bold">750.000 FCFA/m</td>
-                  <td class="text-right"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-semibold text-[10px]">Paiement Encaissé</span></td>
+                  <td class="py-2.5 font-mono text-amber-400">#TX-94011</td>
+                  <td class="font-bold text-white">Ivoire BTP & Construction</td>
+                  <td>Virement Bancaire (NSIA)</td>
+                  <td class="font-mono text-emerald-400 font-bold">750.000 FCFA</td>
+                  <td class="text-right"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-semibold">Succès • Reçu émis</span></td>
                 </tr>
                 <tr class="hover:bg-slate-800/30 transition">
-                  <td class="py-2.5 font-bold text-white flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                    Sahel Logistique Abidjan
-                  </td>
-                  <td><span class="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-mono text-[10px] border border-cyan-500/20">Starter</span></td>
-                  <td class="font-mono">25 emp.</td>
-                  <td class="font-mono text-emerald-400 font-bold">150.000 FCFA/m</td>
-                  <td class="text-right"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-semibold text-[10px]">Paiement Encaissé</span></td>
-                </tr>
-                <tr class="hover:bg-slate-800/30 transition">
-                  <td class="py-2.5 font-bold text-white flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                    Générale d'Import-Export (GIE)
-                  </td>
-                  <td><span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono text-[10px] border border-amber-500/20">Pro</span></td>
-                  <td class="font-mono">60 emp.</td>
-                  <td class="font-mono text-emerald-400 font-bold">350.000 FCFA/m</td>
-                  <td class="text-right"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-semibold text-[10px]">Paiement Encaissé</span></td>
-                </tr>
-                <tr class="hover:bg-slate-800/30 transition">
-                  <td class="py-2.5 font-bold text-white flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-                    Kouassi & Associés Cabinet RH
-                  </td>
-                  <td><span class="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-mono text-[10px] border border-cyan-500/20">Starter</span></td>
-                  <td class="font-mono">14 emp.</td>
-                  <td class="font-mono text-emerald-400 font-bold">150.000 FCFA/m</td>
-                  <td class="text-right"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-semibold text-[10px]">Paiement Encaissé</span></td>
+                  <td class="py-2.5 font-mono text-amber-400">#TX-94010</td>
+                  <td class="font-bold text-white">Sahel Logistique Abidjan</td>
+                  <td>MTN Mobile Money</td>
+                  <td class="font-mono text-emerald-400 font-bold">150.000 FCFA</td>
+                  <td class="text-right"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-semibold">Succès • Reçu émis</span></td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
+      </div>
 
+      <!-- ==================== SUB-SECTION 4: TICKETS SUPPORT ==================== -->
+      <div id="saas-section-tickets" class="saas-sub-section hidden space-y-4">
+        <div class="glass-panel p-6 border-slate-800 space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+              <i data-lucide="life-buoy" class="w-4 h-4 text-purple-400"></i>
+              Tickets de Support Client & Assistance Technique (3 Ouverts)
+            </h3>
+            <span class="text-[10px] font-mono text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">Temps Réponse Moyen : 8 min</span>
+          </div>
+
+          <div class="space-y-3">
+            <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <div class="flex items-center gap-2 text-xs font-bold text-white">
+                  <span class="px-2 py-0.5 rounded bg-red-500/20 text-red-400 font-mono text-[10px]">Urgent</span>
+                  [#TK-1082] Demande d'ajout de 50 licences supplémentaires
+                </div>
+                <div class="text-[11px] text-slate-400 mt-1">Client: Ivoire BTP • Il y a 14 min par M. Touré (Directeur RH)</div>
+              </div>
+              <button onclick="showToast('Ticket Résolu', 'Licences ajoutées et notification envoyée au client.', 'success')" class="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition">
+                Répondre & Traiter
+              </button>
+            </div>
+
+            <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between flex-wrap gap-3">
+              <div>
+                <div class="flex items-center gap-2 text-xs font-bold text-white">
+                  <span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono text-[10px]">Moyen</span>
+                  [#TK-1081] Question sur la configuration des heures supplémentaires
+                </div>
+                <div class="text-[11px] text-slate-400 mt-1">Client: Winner Digital • Il y a 45 min par Mme Koné</div>
+              </div>
+              <button onclick="showToast('Ticket Résolu', 'Guide envoyé au client.', 'success')" class="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition">
+                Répondre & Traiter
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ==================== SUB-SECTION 5: LOGS SYSTÈME ==================== -->
+      <div id="saas-section-logs" class="saas-sub-section hidden space-y-4">
+        <div class="glass-panel p-6 border-slate-800 space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+              <i data-lucide="terminal" class="w-4 h-4 text-emerald-400"></i>
+              Journaux Système & Audit de Sécurité en Direct
+            </h3>
+            <span class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Flux WebSocket Actif</span>
+          </div>
+
+          <div class="bg-black/90 p-4 rounded-xl border border-slate-800 font-mono text-xs text-slate-300 space-y-2 max-h-72 overflow-y-auto">
+            <div class="text-emerald-400">[SYSTEM 13:19:02] NestJS API Server: Healthcheck OK (0.4ms latency)</div>
+            <div class="text-cyan-400">[PRISMA 13:18:44] Database Query: SELECT * FROM "Tenant" WHERE status = 'ACTIVE' (1.2ms)</div>
+            <div class="text-slate-400">[AUTH 13:17:10] Session Refresh for RH Admin rh@votreentreprise.com</div>
+            <div class="text-emerald-400">[SECURITY 13:15:30] Anti-GPS Spoofing Shield: 0 fraudulent requests detected</div>
+            <div class="text-amber-400">[REDIS 13:10:00] Cache Purged & Synchronized for 42 Tenants</div>
+          </div>
+        </div>
       </div>
 
     </section>

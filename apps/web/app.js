@@ -196,6 +196,41 @@ function switchView(viewName) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+// Section Switcher within Super Admin SaaS Dashboard
+function switchSaasSection(sectionName) {
+  document.querySelectorAll('.saas-sub-section').forEach(el => el.classList.add('hidden'));
+  document.querySelectorAll('.saas-subtab-btn').forEach(btn => {
+    btn.classList.remove('text-amber-400', 'bg-amber-500/10', 'border-amber-500/30', 'font-bold');
+    btn.classList.add('text-slate-400');
+  });
+
+  const targetSection = document.getElementById(`saas-section-${sectionName}`);
+  const targetSubtab = document.querySelector(`.saas-subtab-btn[data-saas-section="${sectionName}"]`);
+
+  if (targetSection) targetSection.classList.remove('hidden');
+  if (targetSubtab) {
+    targetSubtab.classList.add('text-amber-400', 'bg-amber-500/10', 'border-amber-500/30', 'font-bold');
+    targetSubtab.classList.remove('text-slate-400');
+  }
+
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
+}
+
+function filterCompanyTable() {
+  const filter = document.getElementById('company-status-filter')?.value || 'all';
+  showToast('Filtre Appliqué', `Affichage des entreprises avec le statut : ${filter.toUpperCase()}`, 'info');
+}
+
+function toggleCompanyStatus(companyName, action) {
+  if (action === 'suspend') {
+    showToast('Compte Suspendu', `Le compte client de ${companyName} a été suspendu.`, 'error');
+  } else {
+    showToast('Compte Réactivé', `Le compte client de ${companyName} a été réactivé avec succès.`, 'success');
+  }
+}
+
 // Section Switcher within Dashboard
 function switchSection(sectionName) {
   state.activeSection = sectionName;
