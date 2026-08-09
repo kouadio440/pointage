@@ -801,12 +801,16 @@ function handleAuthSubmit(e) {
   
   closeAuthModal();
   
-  // Update Nav Login Button state
+  // Update Nav Login & Register Buttons state
   const loginBtn = document.getElementById('nav-login-btn');
+  const registerBtn = document.getElementById('nav-register-btn');
   if (loginBtn) {
     loginBtn.innerText = 'Déconnexion RH';
     loginBtn.onclick = handleLogout;
     loginBtn.className = 'px-3.5 py-1.5 rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/30 text-xs font-semibold border border-red-500/30 transition';
+  }
+  if (registerBtn) {
+    registerBtn.classList.add('hidden');
   }
 
   switchView('dashboard');
@@ -818,10 +822,14 @@ function handleLogout() {
   state.currentUser = null;
   
   const loginBtn = document.getElementById('nav-login-btn');
+  const registerBtn = document.getElementById('nav-register-btn');
   if (loginBtn) {
     loginBtn.innerText = 'Se Connecter';
     loginBtn.onclick = () => openAuthModal('login');
     loginBtn.className = 'px-3.5 py-1.5 rounded-full bg-[var(--border-subtle)] hover:bg-[var(--border-accent)] text-[var(--color-offwhite)] text-xs font-semibold border border-[var(--border-subtle)] transition';
+  }
+  if (registerBtn) {
+    registerBtn.classList.remove('hidden');
   }
 
   switchView('hero');
