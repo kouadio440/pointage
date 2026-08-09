@@ -223,21 +223,39 @@ const calendarState = {
   currentDate: new Date(2026, 7, 9), // August 9, 2026
   selectedDate: 9,
   activeFilter: 'all',
+  viewMode: 'list', // 'list' or 'timeline'
   events: [
-    { id: 1, day: 2, title: "Prélèvement Mensuel Starter", client: "Sahel Logistique Abidjan", amount: "150.000 FCFA", type: "billing", badge: "Encaissé", color: "emerald", status: "Done" },
-    { id: 2, day: 3, title: "Expiration Offre Découverte", client: "Société Ivoirienne de Négoce", amount: "Relance à faire", type: "trial", badge: "Essai Expiré", color: "orange", status: "Pending" },
-    { id: 3, day: 5, title: "Expiration Période d'Essai", client: "Batimat Côte d'Ivoire", amount: "Convertir 150k", type: "trial", badge: "Urgent", color: "orange", status: "Pending" },
-    { id: 4, day: 8, title: "Prélèvement Formule Starter", client: "ProTech Solutions", amount: "150.000 FCFA", type: "billing", badge: "Payé", color: "emerald", status: "Done" },
-    { id: 5, day: 9, title: "Paiement Abonnement Formule Pro", client: "Winner Digital SARL", amount: "350.000 FCFA", type: "billing", badge: "Aujourd'hui", color: "amber", status: "Pending" },
-    { id: 6, day: 12, title: "Maintenance & Déploiement Serveurs v2.5", client: "Plateforme Global SaaS", amount: "Système", type: "maintenance", badge: "Planifié 03:00 GMT", color: "cyan", status: "System" },
-    { id: 7, day: 15, title: "Renouvellement Contrat Annuel Groupe", client: "Ivoire BTP & Construction", amount: "750.000 FCFA", type: "contract", badge: "Grand Compte", color: "purple", status: "Pending" },
-    { id: 8, day: 18, title: "Relance Impayé Facture #TK-840", client: "Trans-Afrique Transit", amount: "350.000 FCFA", type: "trial", badge: "Compte Suspendu", color: "orange", status: "Pending" },
-    { id: 9, day: 20, title: "Audit Trimestriel Détection Faux GPS", client: "Tous les 42 Tenants", amount: "Sécurité", type: "audit", badge: "Automatique", color: "emerald", status: "Done" },
-    { id: 10, day: 22, title: "Demande d'Extension +50 Licences", client: "Grands Moulins d'Abidjan", amount: "250.000 FCFA", type: "contract", badge: "Upsell", color: "purple", status: "Pending" },
-    { id: 11, day: 25, title: "Mise à Jour Certificats SSL & Domaines", client: "Infrastructure Cloud", amount: "Sécurité", type: "maintenance", badge: "Récurrence", color: "cyan", status: "System" },
-    { id: 12, day: 28, title: "Génération Automatique des Factures M+1", client: "42 Entreprises Actives", amount: "4.050.000 FCFA", type: "billing", badge: "Automatique", color: "amber", status: "Pending" }
+    { id: 1, day: 2, timeStart: "08:30", timeEnd: "09:30", title: "Prélèvement Mensuel Starter", client: "Sahel Logistique Abidjan", amount: "150.000 FCFA", type: "billing", badge: "Encaissé", color: "emerald", status: "Done" },
+    { id: 2, day: 3, timeStart: "10:00", timeEnd: "11:30", title: "Expiration Offre Découverte", client: "Société Ivoirienne de Négoce", amount: "Relance à faire", type: "trial", badge: "Essai Expiré", color: "orange", status: "Pending" },
+    { id: 3, day: 5, timeStart: "14:00", timeEnd: "15:30", title: "Expiration Période d'Essai", client: "Batimat Côte d'Ivoire", amount: "Convertir 150k", type: "trial", badge: "Urgent", color: "orange", status: "Pending" },
+    { id: 4, day: 8, timeStart: "09:00", timeEnd: "10:00", title: "Prélèvement Formule Starter", client: "ProTech Solutions", amount: "150.000 FCFA", type: "billing", badge: "Payé", color: "emerald", status: "Done" },
+    { id: 5, day: 9, timeStart: "11:00", timeEnd: "12:30", title: "Paiement Abonnement Formule Pro", client: "Winner Digital SARL", amount: "350.000 FCFA", type: "billing", badge: "Aujourd'hui", color: "amber", status: "Pending" },
+    { id: 6, day: 12, timeStart: "08:00", timeEnd: "10:00", title: "Maintenance & Déploiement Serveurs v2.5", client: "Plateforme Global SaaS", amount: "Système", type: "maintenance", badge: "Planifié GMT", color: "cyan", status: "System" },
+    { id: 7, day: 15, timeStart: "15:00", timeEnd: "16:30", title: "Renouvellement Contrat Annuel Groupe", client: "Ivoire BTP & Construction", amount: "750.000 FCFA", type: "contract", badge: "Grand Compte", color: "purple", status: "Pending" },
+    { id: 8, day: 18, timeStart: "10:30", timeEnd: "12:00", title: "Relance Impayé Facture #TK-840", client: "Trans-Afrique Transit", amount: "350.000 FCFA", type: "trial", badge: "Compte Suspendu", color: "orange", status: "Pending" },
+    { id: 9, day: 20, timeStart: "13:00", timeEnd: "14:30", title: "Audit Trimestriel Détection Faux GPS", client: "Tous les 42 Tenants", amount: "Sécurité", type: "audit", badge: "Automatique", color: "emerald", status: "Done" },
+    { id: 10, day: 22, timeStart: "16:00", timeEnd: "17:30", title: "Demande d'Extension +50 Licences", client: "Grands Moulins d'Abidjan", amount: "250.000 FCFA", type: "contract", badge: "Upsell", color: "purple", status: "Pending" },
+    { id: 11, day: 25, timeStart: "09:30", timeEnd: "11:00", title: "Mise à Jour Certificats SSL & Domaines", client: "Infrastructure Cloud", amount: "Sécurité", type: "maintenance", badge: "Récurrence", color: "cyan", status: "System" },
+    { id: 12, day: 28, timeStart: "17:00", timeEnd: "18:00", title: "Génération Automatique des Factures M+1", client: "42 Entreprises Actives", amount: "4.050.000 FCFA", type: "billing", badge: "Automatique", color: "amber", status: "Pending" }
   ]
 };
+
+function switchCalendarViewMode(mode) {
+  calendarState.viewMode = mode;
+  
+  document.querySelectorAll('.cal-view-toggle').forEach(btn => {
+    btn.classList.remove('bg-amber-500/20', 'text-amber-300', 'border', 'border-amber-500/30', 'font-bold');
+    btn.classList.add('text-slate-400', 'font-semibold');
+  });
+
+  const activeBtn = document.getElementById(`cal-view-btn-${mode}`);
+  if (activeBtn) {
+    activeBtn.classList.add('bg-amber-500/20', 'text-amber-300', 'border', 'border-amber-500/30', 'font-bold');
+    activeBtn.classList.remove('text-slate-400', 'font-semibold');
+  }
+
+  renderSaasCalendar();
+}
 
 function filterCalendarCategory(category) {
   calendarState.activeFilter = category;
@@ -256,10 +274,12 @@ function filterCalendarCategory(category) {
   renderSaasCalendar();
 }
 
-function openAddEventModal() {
+function openAddEventModal(start = "09:00", end = "10:30") {
   const modal = document.getElementById('modal-add-event');
   if (modal) {
     document.getElementById('event-day-input').value = calendarState.selectedDate;
+    if (document.getElementById('event-time-start-input')) document.getElementById('event-time-start-input').value = start;
+    if (document.getElementById('event-time-end-input')) document.getElementById('event-time-end-input').value = end;
     modal.classList.remove('hidden');
   }
 }
@@ -277,6 +297,8 @@ function handleCreateEventSubmit(e) {
   const day = parseInt(document.getElementById('event-day-input')?.value || calendarState.selectedDate, 10);
   const amount = document.getElementById('event-amount-input')?.value || 'Non spécifié';
   const type = document.getElementById('event-type-input')?.value || 'billing';
+  const timeStart = document.getElementById('event-time-start-input')?.value || '09:00';
+  const timeEnd = document.getElementById('event-time-end-input')?.value || '10:00';
 
   let color = 'emerald';
   let badge = 'Planifié';
@@ -287,6 +309,8 @@ function handleCreateEventSubmit(e) {
   const newEvent = {
     id: Date.now(),
     day,
+    timeStart,
+    timeEnd,
     title,
     client,
     amount,
@@ -302,7 +326,7 @@ function handleCreateEventSubmit(e) {
   closeAddEventModal();
   renderSaasCalendar();
 
-  showToast('Échéance Programmée', `L'événement "${escapeHtml(title)}" a été ajouté au ${day} d'Août avec succès.`, 'success');
+  showToast('Échéance Programmée', `L'événement "${escapeHtml(title)}" (${timeStart} - ${timeEnd}) a été réservé avec succès.`, 'success');
 }
 
 function deleteCalendarEvent(eventId) {
@@ -386,38 +410,90 @@ function renderSaasCalendar() {
 
   if (eventsContainer) {
     const activeEvents = filteredEvents.filter(e => e.day === calendarState.selectedDate);
-    if (activeEvents.length === 0) {
+
+    if (calendarState.viewMode === 'timeline') {
+      // RENDER HOURLY TIMELINE (08:00 to 18:00)
+      const hours = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00"];
+      
       eventsContainer.innerHTML = `
-        <div class="p-6 rounded-xl bg-slate-900/60 border border-slate-800 text-center space-y-2">
-          <i data-lucide="calendar-off" class="w-6 h-6 text-slate-500 mx-auto"></i>
-          <p class="text-xs text-slate-400 font-semibold">Aucune échéance enregistrée pour ce jour.</p>
-          <p class="text-[10px] text-slate-500">Cliquez sur "+ Ajouter Échéance" pour enregistrer une action.</p>
+        <div class="space-y-2 max-h-[480px] overflow-y-auto pr-1">
+          ${hours.map(h => {
+            const hInt = parseInt(h.split(':')[0], 10);
+            const nextH = String(hInt + 1).padStart(2, '0') + ":00";
+            
+            // Events matching this hour slot
+            const slotEvents = activeEvents.filter(ev => {
+              const startH = parseInt((ev.timeStart || "09:00").split(':')[0], 10);
+              return startH === hInt;
+            });
+
+            if (slotEvents.length > 0) {
+              return slotEvents.map(ev => `
+                <div class="p-3 rounded-xl bg-slate-900 border border-${ev.color}-500/40 space-y-1.5 shadow-md">
+                  <div class="flex items-center justify-between text-xs">
+                    <span class="font-mono text-amber-300 font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                      ⏰ ${ev.timeStart || h} - ${ev.timeEnd || nextH}
+                    </span>
+                    <span class="px-2 py-0.5 rounded bg-${ev.color}-500/10 text-${ev.color}-400 font-mono text-[10px] font-bold border border-${ev.color}-500/20">${escapeHtml(ev.badge)}</span>
+                  </div>
+                  <div class="text-xs font-bold text-white">${escapeHtml(ev.title)}</div>
+                  <div class="flex justify-between text-[11px] text-slate-400">
+                    <span>${escapeHtml(ev.client)}</span>
+                    <span class="font-mono text-emerald-400 font-bold">${escapeHtml(ev.amount)}</span>
+                  </div>
+                </div>
+              `).join('');
+            } else {
+              return `
+                <div class="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between hover:border-slate-700 transition">
+                  <span class="font-mono text-xs text-slate-500 font-semibold">${h} - ${nextH}</span>
+                  <button onclick="openAddEventModal('${h}', '${nextH}')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold border border-slate-700 transition flex items-center gap-1">
+                    <i data-lucide="plus-circle" class="w-3 h-3 text-emerald-400"></i> Réserver Créneau
+                  </button>
+                </div>
+              `;
+            }
+          }).join('')}
         </div>
       `;
     } else {
-      eventsContainer.innerHTML = activeEvents.map(ev => `
-        <div class="p-3.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition space-y-2.5">
-          <div class="flex items-center justify-between text-xs">
-            <span class="font-bold text-white flex items-center gap-1.5">
-              <span class="w-2.5 h-2.5 rounded-full bg-${ev.color}-400"></span>
-              ${escapeHtml(ev.title)}
-            </span>
-            <span class="px-2 py-0.5 rounded bg-${ev.color}-500/10 text-${ev.color}-400 font-mono text-[10px] border border-${ev.color}-500/20 font-bold">${escapeHtml(ev.badge)}</span>
+      // RENDER LIST VIEW
+      if (activeEvents.length === 0) {
+        eventsContainer.innerHTML = `
+          <div class="p-6 rounded-xl bg-slate-900/60 border border-slate-800 text-center space-y-2">
+            <i data-lucide="calendar-off" class="w-6 h-6 text-slate-500 mx-auto"></i>
+            <p class="text-xs text-slate-400 font-semibold">Aucune échéance enregistrée pour ce jour.</p>
+            <p class="text-[10px] text-slate-500">Cliquez sur "+ Ajouter Échéance" pour programmer une plage horaire.</p>
           </div>
-          <div class="flex justify-between text-[11px] text-slate-400">
-            <span>Concerne : <strong class="text-slate-200">${escapeHtml(ev.client)}</strong></span>
-            <span class="font-mono text-emerald-400 font-bold">${escapeHtml(ev.amount)}</span>
+        `;
+      } else {
+        eventsContainer.innerHTML = activeEvents.map(ev => `
+          <div class="p-3.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition space-y-2.5">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold text-white flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-${ev.color}-400"></span>
+                ${escapeHtml(ev.title)}
+              </span>
+              <span class="px-2 py-0.5 rounded bg-${ev.color}-500/10 text-${ev.color}-400 font-mono text-[10px] border border-${ev.color}-500/20 font-bold">${escapeHtml(ev.badge)}</span>
+            </div>
+            <div class="flex justify-between text-[11px] text-slate-400">
+              <span class="font-mono text-amber-300 font-bold">⏰ ${ev.timeStart || "09:00"} - ${ev.timeEnd || "10:30"}</span>
+              <span>Client : <strong class="text-slate-200">${escapeHtml(ev.client)}</strong></span>
+            </div>
+            <div class="flex items-center justify-between border-t border-slate-800/60 pt-2 text-[11px]">
+              <span class="font-mono text-emerald-400 font-bold">${escapeHtml(ev.amount)}</span>
+              <div class="flex space-x-2">
+                <button onclick="deleteCalendarEvent(${ev.id})" class="px-2 py-0.5 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[10px] border border-red-500/20 transition">
+                  Supprimer
+                </button>
+                <button onclick="showToast('Action Confirmée', 'L\'échéance a été traitée.', 'success')" class="px-2 py-0.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/20 transition">
+                  ✓ Traité
+                </button>
+              </div>
+            </div>
           </div>
-          <div class="flex justify-end space-x-2 border-t border-slate-800/60 pt-2">
-            <button onclick="deleteCalendarEvent(${ev.id})" class="px-2 py-0.5 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[10px] border border-red-500/20 transition">
-              Supprimer
-            </button>
-            <button onclick="showToast('Action Confirmée', 'L\'échéance a été traitée et archivée.', 'success')" class="px-2 py-0.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/20 transition">
-              ✓ Marquer Traité
-            </button>
-          </div>
-        </div>
-      `).join('');
+        `).join('');
+      }
     }
   }
 

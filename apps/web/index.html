@@ -1957,13 +1957,13 @@
             </div>
           </div>
 
-          <!-- Right Column: Events of Selected Day -->
+          <!-- Right Column: Events & Time Slots of Selected Day -->
           <div class="lg:col-span-5 glass-panel p-6 border-slate-800 space-y-4">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3 flex-wrap gap-2">
               <div>
                 <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
                   <i data-lucide="clock" class="w-4 h-4 text-emerald-400"></i>
-                  Échéances du Jour
+                  Planning & Plages Horaires
                 </h3>
                 <p id="saas-calendar-selected-date" class="text-xs text-amber-400 font-mono font-bold">9 Août 2026</p>
               </div>
@@ -1972,7 +1972,17 @@
               </button>
             </div>
 
-            <!-- Selected Date Events List -->
+            <!-- View Switcher: Liste vs Plages Horaires -->
+            <div class="flex items-center space-x-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+              <button onclick="switchCalendarViewMode('list')" id="cal-view-btn-list" class="cal-view-toggle flex-1 py-1.5 rounded-lg font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 text-center transition">
+                📋 Vue Liste
+              </button>
+              <button onclick="switchCalendarViewMode('timeline')" id="cal-view-btn-timeline" class="cal-view-toggle flex-1 py-1.5 rounded-lg font-semibold text-slate-400 hover:text-white text-center transition">
+                ⏰ Plages Horaires (08h - 18h)
+              </button>
+            </div>
+
+            <!-- Selected Date Events / Timeline Container -->
             <div id="saas-calendar-events" class="space-y-3">
               <!-- Dynamically rendered by JS -->
             </div>
@@ -2272,6 +2282,22 @@
               <option value="maintenance">🔵 Maintenance Système / Mise à jour</option>
               <option value="contract">🟣 Grand Compte (Renouvellement)</option>
             </select>
+          </div>
+        </div>
+
+        <!-- PLAGE HORAIRE / CRÉNEAU -->
+        <div class="grid grid-cols-2 gap-3 bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+          <div class="space-y-1">
+            <label class="block text-[11px] font-semibold text-amber-300 flex items-center gap-1">
+              <i data-lucide="clock" class="w-3 h-3 text-amber-400"></i> Heure Début :
+            </label>
+            <input type="time" id="event-time-start-input" value="09:00" required class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-amber-500">
+          </div>
+          <div class="space-y-1">
+            <label class="block text-[11px] font-semibold text-amber-300 flex items-center gap-1">
+              <i data-lucide="clock" class="w-3 h-3 text-amber-400"></i> Heure Fin :
+            </label>
+            <input type="time" id="event-time-end-input" value="10:30" required class="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-amber-500">
           </div>
         </div>
 
