@@ -213,6 +213,136 @@ function closeMobileMenu() {
   }
 }
 
+// SAAS CALENDAR STATE & DATA
+const calendarState = {
+  currentDate: new Date(2026, 7, 9), // August 9, 2026
+  selectedDate: 9,
+  events: [
+    { day: 2, title: "Prélèvement Mensuel Starter", client: "Sahel Logistique", amount: "150.000 FCFA", type: "billing", badge: "Succès", color: "emerald" },
+    { day: 5, title: "Expiration Période d'Essai", client: "Batimat Côte d'Ivoire", amount: "Relance à faire", type: "trial", badge: "Urgent", color: "orange" },
+    { day: 9, title: "Paiement Abonnement Formule Pro", client: "Winner Digital SARL", amount: "350.000 FCFA", type: "billing", badge: "Aujourd'hui", color: "amber" },
+    { day: 12, title: "Maintenance & Mise à Jour Serveurs v2.5", client: "Plateforme Global", amount: "System", type: "maintenance", badge: "Planifié", color: "cyan" },
+    { day: 15, title: "Renouvellement Contrat Annuel Grand Compte", client: "Ivoire BTP & Construction", amount: "750.000 FCFA", type: "contract", badge: "Prochainement", color: "purple" },
+    { day: 20, title: "Audit Trimestriel des Faux GPS & Sécurité", client: "Tous les Tenants", amount: "Sécurité", type: "audit", badge: "Automatique", color: "emerald" },
+    { day: 28, title: "Génération automatique des Reçus & Factures", client: "42 Entreprises Actives", amount: "Facturation", type: "billing", badge: "Mensuel", color: "amber" }
+  ]
+};
+
+function renderSaasCalendar() {
+  const calendarDaysContainer = document.getElementById('saas-calendar-days');
+  const monthYearLabel = document.getElementById('saas-calendar-month-year');
+  const eventsContainer = document.getElementById('saas-calendar-events');
+  const selectedDateLabel = document.getElementById('saas-calendar-selected-date');
+
+  if (!calendarDaysContainer || !monthYearLabel) return;
+
+  const year = calendarState.currentDate.getFullYear();
+  const month = calendarState.currentDate.getMonth();
+  
+  const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+  monthYearLabel.innerText = `${monthNames[month]} ${year}`;
+
+  const firstDayIndex = new Date(year, month, 1).getDay(); // 0 is Sun
+  const startingDay = firstDayIndex === 0 ? 6 : firstDayIndex - 1; // Mon-first
+  
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  let daysHTML = '';
+
+  for (let i = 0; i < startingDay; i++) {
+    daysHTML += `<div class="p-2 text-center text-slate-700/40 text-xs font-mono select-none">.</div>`;
+  }
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const isToday = d === 9 && month === 7 && year === 2026;
+    const isSelected = d === calendarState.selectedDate;
+    const dayEvents = calendarState.events.filter(e => e.day === d);
+
+    let cellClass = "p-2 rounded-xl text-center cursor-pointer transition relative flex flex-col items-center justify-center min-h-[48px] border ";
+    if (isSelected) {
+      cellClass += "bg-amber-500/20 border-amber-500 text-amber-300 font-bold shadow-lg shadow-amber-500/10 glow-amber ";
+    } else if (isToday) {
+      cellClass += "bg-emerald-500/10 border-emerald-500/50 text-emerald-400 font-bold ";
+    } else {
+      cellClass += "bg-slate-900/60 border-slate-800/80 text-slate-300 hover:bg-slate-800 hover:border-slate-700 ";
+    }
+
+    let dotsHTML = '';
+    if (dayEvents.length > 0) {
+      dotsHTML = `<div class="flex items-center gap-1 mt-1">` + 
+        dayEvents.map(ev => {
+          let dotBg = "bg-amber-400";
+          if (ev.color === 'emerald') dotBg = "bg-emerald-400";
+          if (ev.color === 'orange') dotBg = "bg-orange-400";
+          if (ev.color === 'purple') dotBg = "bg-purple-400";
+          if (ev.color === 'cyan') dotBg = "bg-cyan-400";
+          return `<span class="w-1.5 h-1.5 rounded-full ${dotBg}"></span>`;
+        }).join('') +
+      `</div>`;
+    }
+
+    daysHTML += `
+      <div onclick="selectCalendarDate(${d})" class="${cellClass}">
+        <span class="text-xs ${isSelected ? 'scale-110' : ''}">${d}</span>
+        ${dotsHTML}
+      </div>
+    `;
+  }
+
+  calendarDaysContainer.innerHTML = daysHTML;
+
+  if (selectedDateLabel) {
+    selectedDateLabel.innerText = `${calendarState.selectedDate} ${monthNames[month]} ${year}`;
+  }
+
+  if (eventsContainer) {
+    const activeEvents = calendarState.events.filter(e => e.day === calendarState.selectedDate);
+    if (activeEvents.length === 0) {
+      eventsContainer.innerHTML = `
+        <div class="p-6 rounded-xl bg-slate-900/60 border border-slate-800 text-center space-y-2">
+          <i data-lucide="calendar-off" class="w-6 h-6 text-slate-500 mx-auto"></i>
+          <p class="text-xs text-slate-400 font-semibold">Aucune échéance enregistrée pour ce jour.</p>
+          <p class="text-[10px] text-slate-500">Toutes les opérations d'abonnement et prélèvements sont à jour.</p>
+        </div>
+      `;
+    } else {
+      eventsContainer.innerHTML = activeEvents.map(ev => `
+        <div class="p-3.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold text-white flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-${ev.color}-400"></span>
+              ${escapeHtml(ev.title)}
+            </span>
+            <span class="px-2 py-0.5 rounded bg-${ev.color}-500/10 text-${ev.color}-400 font-mono text-[10px] border border-${ev.color}-500/20 font-bold">${escapeHtml(ev.badge)}</span>
+          </div>
+          <div class="flex justify-between text-[11px] text-slate-400">
+            <span>Concerne : <strong class="text-slate-200">${escapeHtml(ev.client)}</strong></span>
+            <span class="font-mono text-emerald-400 font-bold">${escapeHtml(ev.amount)}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+  }
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function selectCalendarDate(d) {
+  calendarState.selectedDate = d;
+  renderSaasCalendar();
+}
+
+function changeCalendarMonth(delta) {
+  calendarState.currentDate.setMonth(calendarState.currentDate.getMonth() + delta);
+  renderSaasCalendar();
+}
+
+function resetCalendarToToday() {
+  calendarState.currentDate = new Date(2026, 7, 9);
+  calendarState.selectedDate = 9;
+  renderSaasCalendar();
+}
+
 // Section Switcher within Super Admin SaaS Dashboard
 function switchSaasSection(sectionName) {
   document.querySelectorAll('.saas-sub-section').forEach(el => el.classList.add('hidden'));
@@ -228,6 +358,10 @@ function switchSaasSection(sectionName) {
   if (targetSubtab) {
     targetSubtab.classList.add('text-amber-400', 'bg-amber-500/10', 'border-amber-500/30', 'font-bold');
     targetSubtab.classList.remove('text-slate-400');
+  }
+
+  if (sectionName === 'calendar') {
+    renderSaasCalendar();
   }
 
   if (window.lucide) {
