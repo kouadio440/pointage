@@ -316,12 +316,37 @@ function renderDashboard() {
   initIcons();
 }
 
-// Render Staff Cards Grid
+// Render & Filter Staff Cards Grid
 function renderStaffGrid() {
+  filterStaffGrid();
+}
+
+function filterStaffGrid() {
   const container = document.getElementById('staff-grid');
   if (!container) return;
 
-  container.innerHTML = state.employees.map(emp => {
+  const searchInput = document.getElementById('staff-search-input');
+  const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+
+  const filtered = state.employees.filter(emp => {
+    return emp.name.toLowerCase().includes(query) ||
+           emp.role.toLowerCase().includes(query) ||
+           emp.site.toLowerCase().includes(query) ||
+           emp.status.toLowerCase().includes(query);
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="col-span-full p-8 text-center glass-panel border-dashed border-slate-800 rounded-xl space-y-2">
+        <i data-lucide="user-x" class="w-8 h-8 text-slate-500 mx-auto"></i>
+        <p class="text-xs text-slate-400 font-semibold">Aucun employé ne correspond à votre recherche "${escapeHtml(query)}".</p>
+      </div>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
+
+  container.innerHTML = filtered.map(emp => {
     let statusClass = 'border-emerald-500/30 text-emerald-400';
     if (emp.status === 'Retard') statusClass = 'border-orange-500/30 text-orange-400';
     if (emp.status === 'Absent') statusClass = 'border-red-500/30 text-red-400';
@@ -346,6 +371,8 @@ function renderStaffGrid() {
       </div>
     `;
   }).join('');
+
+  if (window.lucide) window.lucide.createIcons();
 }
 
 // Render Leave Requests Table
