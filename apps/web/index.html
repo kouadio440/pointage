@@ -1661,10 +1661,22 @@
         </div>
 
         <div class="flex items-center space-x-3 flex-wrap gap-2">
-          <button onclick="switchSaasSection('calendar')" class="text-xs font-mono text-amber-300 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-amber-500/20 transition cursor-pointer" title="Ouvrir le Calendrier des Échéances">
-            <i data-lucide="calendar" class="w-3.5 h-3.5 text-amber-400"></i>
-            <span>9 Août 2026</span>
-          </button>
+          <!-- SÉLECTEUR DE DATE DYNAMIQUE -->
+          <div class="flex items-center space-x-1.5 bg-slate-900 border border-amber-500/40 rounded-xl px-3 py-1.5 text-xs shadow-md">
+            <i data-lucide="calendar" class="w-4 h-4 text-amber-400"></i>
+            <input 
+              type="date" 
+              id="saas-header-datepicker" 
+              value="2026-08-09" 
+              onchange="handleSaasDatePickerChange(this.value)" 
+              class="bg-transparent text-amber-300 font-mono text-xs focus:outline-none cursor-pointer"
+              title="Choisir une date pour filtrer le tableau de bord"
+            />
+            <button onclick="switchView('saas'); switchSaasSection('calendar');" class="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[10px] font-bold font-mono transition" title="Ouvrir la grille du calendrier complet">
+              Planning 📅
+            </button>
+          </div>
+
           <span class="text-xs font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
             <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
             Santé Réseau & API : 100% Opérationnel

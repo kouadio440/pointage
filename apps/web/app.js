@@ -63,6 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
   switchView('hero');
   renderDashboard();
   renderStaffGrid();
+  renderSaasCalendar();
   setTheme('terracotta');
   updateRoiCalculator();
 });
@@ -186,6 +187,10 @@ function switchView(viewName) {
   if (targetBtn) {
     targetBtn.classList.add('text-amber-400', 'bg-amber-500/10', 'border-amber-500/30', 'font-bold', 'glow-amber');
     targetBtn.classList.remove('text-slate-300');
+  }
+
+  if (viewName === 'saas') {
+    renderSaasCalendar();
   }
 
   closeMobileMenu();
@@ -329,7 +334,42 @@ function renderSaasCalendar() {
 
 function selectCalendarDate(d) {
   calendarState.selectedDate = d;
+  
+  // Sync date input in header
+  const dateInput = document.getElementById('saas-header-datepicker');
+  if (dateInput) {
+    const y = calendarState.currentDate.getFullYear();
+    const m = String(calendarState.currentDate.getMonth() + 1).padStart(2, '0');
+    const dayStr = String(d).padStart(2, '0');
+    dateInput.value = `${y}-${m}-${dayStr}`;
+  }
+
   renderSaasCalendar();
+
+  const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+  const dayEvents = calendarState.events.filter(ev => ev.day === d);
+  
+  if (dayEvents.length > 0) {
+    showToast(`Échéance du ${d} ${monthNames[calendarState.currentDate.getMonth()]}`, `${dayEvents[0].title} — ${dayEvents[0].client} (${dayEvents[0].amount})`, 'info');
+  } else {
+    showToast('Filtre Date Appliqué', `Tableau de bord filtré pour le ${d} ${monthNames[calendarState.currentDate.getMonth()]} ${calendarState.currentDate.getFullYear()}`, 'success');
+  }
+}
+
+function handleSaasDatePickerChange(dateVal) {
+  if (!dateVal) return;
+  const dObj = new Date(dateVal);
+  if (isNaN(dObj.getTime())) return;
+
+  calendarState.currentDate = dObj;
+  calendarState.selectedDate = dObj.getDate();
+
+  renderSaasCalendar();
+
+  const monthNames = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
+  const formattedDate = `${dObj.getDate()} ${monthNames[dObj.getMonth()]} ${dObj.getFullYear()}`;
+
+  showToast('Date du Dashboard Modifiée', `Visualisation active pour le : ${formattedDate}`, 'success');
 }
 
 function changeCalendarMonth(delta) {
@@ -340,7 +380,12 @@ function changeCalendarMonth(delta) {
 function resetCalendarToToday() {
   calendarState.currentDate = new Date(2026, 7, 9);
   calendarState.selectedDate = 9;
+
+  const dateInput = document.getElementById('saas-header-datepicker');
+  if (dateInput) dateInput.value = "2026-08-09";
+
   renderSaasCalendar();
+  showToast('Reinitialisation', 'Retour à la date d\'aujourd\'hui : 9 Août 2026', 'info');
 }
 
 // Section Switcher within Super Admin SaaS Dashboard
