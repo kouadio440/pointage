@@ -175,8 +175,8 @@ function switchView(viewName) {
 
   document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
   document.querySelectorAll('.nav-view-btn').forEach(btn => {
-    btn.classList.remove('text-emerald-400', 'bg-emerald-500/10', 'border-emerald-500/30', 'font-semibold');
-    btn.classList.add('text-slate-300', 'bg-slate-800/60');
+    btn.classList.remove('text-amber-400', 'bg-amber-500/10', 'border-amber-500/30', 'text-emerald-400', 'bg-emerald-500/10', 'border-emerald-500/30', 'font-bold', 'font-semibold', 'glow-amber');
+    btn.classList.add('text-slate-300');
   });
 
   const targetView = document.getElementById(`view-${viewName}`);
@@ -184,8 +184,12 @@ function switchView(viewName) {
 
   if (targetView) targetView.classList.remove('hidden');
   if (targetBtn) {
-    targetBtn.classList.add('text-emerald-400', 'bg-emerald-500/10', 'border-emerald-500/30', 'font-semibold');
-    targetBtn.classList.remove('text-slate-300', 'bg-slate-800/60');
+    targetBtn.classList.add('text-amber-400', 'bg-amber-500/10', 'border-amber-500/30', 'font-bold', 'glow-amber');
+    targetBtn.classList.remove('text-slate-300');
+  }
+
+  if (window.lucide) {
+    window.lucide.createIcons();
   }
 
   // Smooth scroll top

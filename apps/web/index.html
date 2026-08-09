@@ -91,8 +91,8 @@
   </header>
 
   <!-- MAIN NAVIGATION BAR -->
-  <nav class="max-w-6xl mx-auto px-4 mt-4 sticky top-12 z-40">
-    <div class="glass-pill px-4 py-2.5 flex items-center justify-between shadow-2xl border border-[var(--border-subtle)]">
+  <nav class="max-w-7xl mx-auto px-4 mt-4 sticky top-12 z-40">
+    <div class="glass-pill px-4 py-2.5 flex items-center justify-between shadow-2xl border border-[var(--border-subtle)] flex-wrap gap-2">
       <div class="flex items-center space-x-3 cursor-pointer" onclick="switchView('hero')">
         <div class="w-9 h-9 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 glow-amber">
           <i data-lucide="shield-check" class="w-5 h-5"></i>
@@ -106,7 +106,19 @@
         </div>
       </div>
 
-
+      <!-- Navigation Views Selector -->
+      <div class="flex items-center space-x-1.5 bg-slate-900/90 p-1 rounded-full border border-slate-800">
+        <button id="btn-view-hero" onclick="switchView('hero')" class="nav-view-btn px-3 py-1 rounded-full text-xs font-semibold text-slate-300 hover:text-white transition">
+          Accueil Vitrine
+        </button>
+        <button id="btn-view-saas" onclick="switchView('saas')" class="nav-view-btn px-3 py-1 rounded-full text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 transition flex items-center gap-1.5 glow-amber">
+          <i data-lucide="line-chart" class="w-3.5 h-3.5"></i>
+          Mon Dashboard SaaS (ARR/CA)
+        </button>
+        <button id="btn-view-dashboard" onclick="switchView('dashboard')" class="nav-view-btn px-3 py-1 rounded-full text-xs font-semibold text-slate-300 hover:text-white transition">
+          Cockpit Client RH
+        </button>
+      </div>
 
       <!-- Action Buttons -->
       <div class="flex items-center space-x-2">
@@ -1585,6 +1597,251 @@
       Assistant RH • Conforme au Code du Travail & Règlements Interne
     </div>
   </div>
+
+    <!-- ==================== VIEW 3: SUPER ADMIN / SAAS OWNER DASHBOARD ==================== -->
+    <section id="view-saas" class="view-section space-y-6">
+
+      <!-- Header Super Admin -->
+      <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+        <div>
+          <h2 class="text-2xl font-extrabold text-white flex items-center gap-2">
+            Notre Tableau de Bord Propriétaire
+            <span class="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 rounded-full glow-amber">Super Admin • Métriques SaaS</span>
+          </h2>
+          <p class="text-xs text-slate-400">Pilotage financier et commercial global : ARR, MRR, Chiffre d'Affaires, Ventes & Abonnements des entreprises clients.</p>
+        </div>
+
+        <div class="flex items-center space-x-3">
+          <span class="text-xs font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+            Santé Financière : Excellente (NRR 97.8%)
+          </span>
+          <button onclick="showToast('Export Comptable', 'Téléchargement du rapport des ventes et revenus au format PDF/Excel.', 'success')" class="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-black font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            Exporter le Bilan
+          </button>
+        </div>
+      </div>
+
+      <!-- MAIN FINANCIAL & REVENUE KPI GRID -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        
+        <!-- KPI 1: ARR -->
+        <div class="glass-panel p-5 interactive-card border-amber-500/30 bg-amber-500/5">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span class="font-semibold text-amber-300">ARR (Revenu Annuel Récurrent)</span>
+            <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center">
+              <i data-lucide="trending-up" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div class="text-2xl font-extrabold font-mono text-white tracking-tight">48.600.000 FCFA</div>
+          <div class="flex items-center justify-between text-[11px] mt-2">
+            <span class="text-emerald-400 font-bold flex items-center gap-1">
+              <i data-lucide="arrow-up-right" class="w-3 h-3"></i> +18.4% cette année
+            </span>
+            <span class="text-slate-500 font-mono">Cible: 50M FCFA</span>
+          </div>
+        </div>
+
+        <!-- KPI 2: MRR -->
+        <div class="glass-panel p-5 interactive-card border-emerald-500/30 bg-emerald-500/5">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span class="font-semibold text-emerald-300">MRR (Revenu Mensuel Récurrent)</span>
+            <div class="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+              <i data-lucide="dollar-sign" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div class="text-2xl font-extrabold font-mono text-emerald-400 tracking-tight">4.050.000 FCFA</div>
+          <div class="flex items-center justify-between text-[11px] mt-2">
+            <span class="text-emerald-400 font-bold flex items-center gap-1">
+              <i data-lucide="arrow-up-right" class="w-3 h-3"></i> +12.1% ce mois
+            </span>
+            <span class="text-slate-500 font-mono">42 Abonnés</span>
+          </div>
+        </div>
+
+        <!-- KPI 3: CA CUMULÉ TOTAL -->
+        <div class="glass-panel p-5 interactive-card border-cyan-500/30 bg-cyan-500/5">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span class="font-semibold text-cyan-300">CA Total Encaissé</span>
+            <div class="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center">
+              <i data-lucide="credit-card" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div class="text-2xl font-extrabold font-mono text-cyan-400 tracking-tight">36.800.000 FCFA</div>
+          <div class="flex items-center justify-between text-[11px] mt-2">
+            <span class="text-slate-400 font-medium">Recouvrement : 98.2%</span>
+            <span class="text-emerald-400 font-bold">À jour</span>
+          </div>
+        </div>
+
+        <!-- KPI 4: ENTREPRISES ET LICENCES -->
+        <div class="glass-panel p-5 interactive-card border-slate-700 bg-slate-900/60">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span class="font-semibold text-slate-200">Entreprises & Licences</span>
+            <div class="w-8 h-8 rounded-lg bg-slate-800 text-slate-300 flex items-center justify-center">
+              <i data-lucide="building-2" class="w-4 h-4"></i>
+            </div>
+          </div>
+          <div class="text-2xl font-extrabold font-mono text-white tracking-tight">42 Clients</div>
+          <div class="flex items-center justify-between text-[11px] mt-2">
+            <span class="text-amber-400 font-bold">1.840 Employés actifs</span>
+            <span class="text-slate-500">Moy. 43/sté</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- REVENUE & SUBSCRIPTION BREAKDOWN ROW -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Left Column: Repartition par Formule d'Abonnement -->
+        <div class="lg:col-span-5 glass-panel p-6 border-slate-800 space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+              <i data-lucide="pie-chart" class="w-4 h-4 text-amber-400"></i>
+              Ventes par Formule d'Abonnement
+            </h3>
+            <span class="text-[10px] font-mono text-slate-400">42 Entreprises</span>
+          </div>
+
+          <div class="space-y-4 pt-1">
+            <!-- Formule Starter -->
+            <div class="space-y-1.5 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-bold text-white flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+                  Formule Starter (150.000 FCFA/m)
+                </span>
+                <span class="font-mono text-cyan-400 font-bold">18 Abonnés</span>
+              </div>
+              <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                <div class="bg-cyan-400 h-full rounded-full" style="width: 42.8%"></div>
+              </div>
+              <div class="flex justify-between text-[10px] text-slate-400 pt-0.5">
+                <span>Part : 42.8% des abonnés</span>
+                <span class="font-mono text-slate-300">2.700.000 FCFA / mois</span>
+              </div>
+            </div>
+
+            <!-- Formule Pro -->
+            <div class="space-y-1.5 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-bold text-white flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                  Formule Pro (350.000 FCFA/m)
+                </span>
+                <span class="font-mono text-amber-400 font-bold">19 Abonnés</span>
+              </div>
+              <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                <div class="bg-amber-400 h-full rounded-full" style="width: 45.2%"></div>
+              </div>
+              <div class="flex justify-between text-[10px] text-slate-400 pt-0.5">
+                <span>Part : 45.2% des abonnés</span>
+                <span class="font-mono text-slate-300">6.650.000 FCFA / mois</span>
+              </div>
+            </div>
+
+            <!-- Formule Sur-Mesure -->
+            <div class="space-y-1.5 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-bold text-white flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                  Formule Sur-Mesure / Groupe (~750k FCFA)
+                </span>
+                <span class="font-mono text-emerald-400 font-bold">5 Abonnés</span>
+              </div>
+              <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                <div class="bg-emerald-400 h-full rounded-full" style="width: 12.0%"></div>
+              </div>
+              <div class="flex justify-between text-[10px] text-slate-400 pt-0.5">
+                <span>Part : 12.0% (Grands comptes)</span>
+                <span class="font-mono text-slate-300">3.750.000 FCFA / mois</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column: Dernières Ventes & Souscriptions -->
+        <div class="lg:col-span-7 glass-panel p-6 border-slate-800 space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+              <i data-lucide="receipt" class="w-4 h-4 text-emerald-400"></i>
+              Dernières Ventes & Facturation Entreprises
+            </h3>
+            <span class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Flux Temps Réel</span>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead>
+                <tr class="text-slate-400 border-b border-slate-800/80 font-mono text-[11px]">
+                  <th class="pb-2 font-semibold">Entreprise Client</th>
+                  <th class="pb-2 font-semibold">Formule</th>
+                  <th class="pb-2 font-semibold">Effectif</th>
+                  <th class="pb-2 font-semibold">Montant Facturé</th>
+                  <th class="pb-2 font-semibold text-right">Statut Vente</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/40 text-slate-300">
+                <tr class="hover:bg-slate-800/30 transition">
+                  <td class="py-2.5 font-bold text-white flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    Winner Digital SARL
+                  </td>
+                  <td><span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono text-[10px] border border-amber-500/20">Pro</span></td>
+                  <td class="font-mono">85 emp.</td>
+                  <td class="font-mono text-emerald-400 font-bold">350.000 FCFA/m</td>
+                  <td class="text-right"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-semibold text-[10px]">Paiement Encaissé</span></td>
+                </tr>
+                <tr class="hover:bg-slate-800/30 transition">
+                  <td class="py-2.5 font-bold text-white flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    Ivoire BTP & Construction
+                  </td>
+                  <td><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono text-[10px] border border-emerald-500/20">Entreprise</span></td>
+                  <td class="font-mono">320 emp.</td>
+                  <td class="font-mono text-emerald-400 font-bold">750.000 FCFA/m</td>
+                  <td class="text-right"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-semibold text-[10px]">Paiement Encaissé</span></td>
+                </tr>
+                <tr class="hover:bg-slate-800/30 transition">
+                  <td class="py-2.5 font-bold text-white flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    Sahel Logistique Abidjan
+                  </td>
+                  <td><span class="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-mono text-[10px] border border-cyan-500/20">Starter</span></td>
+                  <td class="font-mono">25 emp.</td>
+                  <td class="font-mono text-emerald-400 font-bold">150.000 FCFA/m</td>
+                  <td class="text-right"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-semibold text-[10px]">Paiement Encaissé</span></td>
+                </tr>
+                <tr class="hover:bg-slate-800/30 transition">
+                  <td class="py-2.5 font-bold text-white flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    Générale d'Import-Export (GIE)
+                  </td>
+                  <td><span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono text-[10px] border border-amber-500/20">Pro</span></td>
+                  <td class="font-mono">60 emp.</td>
+                  <td class="font-mono text-emerald-400 font-bold">350.000 FCFA/m</td>
+                  <td class="text-right"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-semibold text-[10px]">Paiement Encaissé</span></td>
+                </tr>
+                <tr class="hover:bg-slate-800/30 transition">
+                  <td class="py-2.5 font-bold text-white flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    Kouassi & Associés Cabinet RH
+                  </td>
+                  <td><span class="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-mono text-[10px] border border-cyan-500/20">Starter</span></td>
+                  <td class="font-mono">14 emp.</td>
+                  <td class="font-mono text-emerald-400 font-bold">150.000 FCFA/m</td>
+                  <td class="text-right"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-semibold text-[10px]">Paiement Encaissé</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
 
   <!-- PRODUCTION AUTHENTICATION MODAL -->
   <div id="modal-auth" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
