@@ -222,16 +222,94 @@ function closeMobileMenu() {
 const calendarState = {
   currentDate: new Date(2026, 7, 9), // August 9, 2026
   selectedDate: 9,
+  activeFilter: 'all',
   events: [
-    { day: 2, title: "Prélèvement Mensuel Starter", client: "Sahel Logistique", amount: "150.000 FCFA", type: "billing", badge: "Succès", color: "emerald" },
-    { day: 5, title: "Expiration Période d'Essai", client: "Batimat Côte d'Ivoire", amount: "Relance à faire", type: "trial", badge: "Urgent", color: "orange" },
-    { day: 9, title: "Paiement Abonnement Formule Pro", client: "Winner Digital SARL", amount: "350.000 FCFA", type: "billing", badge: "Aujourd'hui", color: "amber" },
-    { day: 12, title: "Maintenance & Mise à Jour Serveurs v2.5", client: "Plateforme Global", amount: "System", type: "maintenance", badge: "Planifié", color: "cyan" },
-    { day: 15, title: "Renouvellement Contrat Annuel Grand Compte", client: "Ivoire BTP & Construction", amount: "750.000 FCFA", type: "contract", badge: "Prochainement", color: "purple" },
-    { day: 20, title: "Audit Trimestriel des Faux GPS & Sécurité", client: "Tous les Tenants", amount: "Sécurité", type: "audit", badge: "Automatique", color: "emerald" },
-    { day: 28, title: "Génération automatique des Reçus & Factures", client: "42 Entreprises Actives", amount: "Facturation", type: "billing", badge: "Mensuel", color: "amber" }
+    { id: 1, day: 2, title: "Prélèvement Mensuel Starter", client: "Sahel Logistique Abidjan", amount: "150.000 FCFA", type: "billing", badge: "Encaissé", color: "emerald", status: "Done" },
+    { id: 2, day: 3, title: "Expiration Offre Découverte", client: "Société Ivoirienne de Négoce", amount: "Relance à faire", type: "trial", badge: "Essai Expiré", color: "orange", status: "Pending" },
+    { id: 3, day: 5, title: "Expiration Période d'Essai", client: "Batimat Côte d'Ivoire", amount: "Convertir 150k", type: "trial", badge: "Urgent", color: "orange", status: "Pending" },
+    { id: 4, day: 8, title: "Prélèvement Formule Starter", client: "ProTech Solutions", amount: "150.000 FCFA", type: "billing", badge: "Payé", color: "emerald", status: "Done" },
+    { id: 5, day: 9, title: "Paiement Abonnement Formule Pro", client: "Winner Digital SARL", amount: "350.000 FCFA", type: "billing", badge: "Aujourd'hui", color: "amber", status: "Pending" },
+    { id: 6, day: 12, title: "Maintenance & Déploiement Serveurs v2.5", client: "Plateforme Global SaaS", amount: "Système", type: "maintenance", badge: "Planifié 03:00 GMT", color: "cyan", status: "System" },
+    { id: 7, day: 15, title: "Renouvellement Contrat Annuel Groupe", client: "Ivoire BTP & Construction", amount: "750.000 FCFA", type: "contract", badge: "Grand Compte", color: "purple", status: "Pending" },
+    { id: 8, day: 18, title: "Relance Impayé Facture #TK-840", client: "Trans-Afrique Transit", amount: "350.000 FCFA", type: "trial", badge: "Compte Suspendu", color: "orange", status: "Pending" },
+    { id: 9, day: 20, title: "Audit Trimestriel Détection Faux GPS", client: "Tous les 42 Tenants", amount: "Sécurité", type: "audit", badge: "Automatique", color: "emerald", status: "Done" },
+    { id: 10, day: 22, title: "Demande d'Extension +50 Licences", client: "Grands Moulins d'Abidjan", amount: "250.000 FCFA", type: "contract", badge: "Upsell", color: "purple", status: "Pending" },
+    { id: 11, day: 25, title: "Mise à Jour Certificats SSL & Domaines", client: "Infrastructure Cloud", amount: "Sécurité", type: "maintenance", badge: "Récurrence", color: "cyan", status: "System" },
+    { id: 12, day: 28, title: "Génération Automatique des Factures M+1", client: "42 Entreprises Actives", amount: "4.050.000 FCFA", type: "billing", badge: "Automatique", color: "amber", status: "Pending" }
   ]
 };
+
+function filterCalendarCategory(category) {
+  calendarState.activeFilter = category;
+  
+  document.querySelectorAll('.cal-filter-btn').forEach(btn => {
+    btn.classList.remove('bg-amber-500/20', 'text-amber-300', 'border', 'border-amber-500/30', 'font-bold');
+    btn.classList.add('text-slate-400', 'font-semibold');
+  });
+
+  const activeBtn = document.getElementById(`cal-filter-${category}`);
+  if (activeBtn) {
+    activeBtn.classList.add('bg-amber-500/20', 'text-amber-300', 'border', 'border-amber-500/30', 'font-bold');
+    activeBtn.classList.remove('text-slate-400', 'font-semibold');
+  }
+
+  renderSaasCalendar();
+}
+
+function openAddEventModal() {
+  const modal = document.getElementById('modal-add-event');
+  if (modal) {
+    document.getElementById('event-day-input').value = calendarState.selectedDate;
+    modal.classList.remove('hidden');
+  }
+}
+
+function closeAddEventModal() {
+  const modal = document.getElementById('modal-add-event');
+  if (modal) modal.classList.add('hidden');
+}
+
+function handleCreateEventSubmit(e) {
+  if (e) e.preventDefault();
+  
+  const title = document.getElementById('event-title-input')?.value || 'Nouvelle Échéance';
+  const client = document.getElementById('event-client-input')?.value || 'Client SaaS';
+  const day = parseInt(document.getElementById('event-day-input')?.value || calendarState.selectedDate, 10);
+  const amount = document.getElementById('event-amount-input')?.value || 'Non spécifié';
+  const type = document.getElementById('event-type-input')?.value || 'billing';
+
+  let color = 'emerald';
+  let badge = 'Planifié';
+  if (type === 'trial') { color = 'orange'; badge = 'Fin d\'Essai'; }
+  if (type === 'maintenance') { color = 'cyan'; badge = 'Maintenance'; }
+  if (type === 'contract') { color = 'purple'; badge = 'Grand Compte'; }
+
+  const newEvent = {
+    id: Date.now(),
+    day,
+    title,
+    client,
+    amount,
+    type,
+    badge,
+    color,
+    status: 'Pending'
+  };
+
+  calendarState.events.push(newEvent);
+  calendarState.selectedDate = day;
+
+  closeAddEventModal();
+  renderSaasCalendar();
+
+  showToast('Échéance Programmée', `L'événement "${escapeHtml(title)}" a été ajouté au ${day} d'Août avec succès.`, 'success');
+}
+
+function deleteCalendarEvent(eventId) {
+  calendarState.events = calendarState.events.filter(ev => ev.id !== eventId);
+  renderSaasCalendar();
+  showToast('Échéance Supprimée', 'L\'événement a été retiré du calendrier.', 'info');
+}
 
 function renderSaasCalendar() {
   const calendarDaysContainer = document.getElementById('saas-calendar-days');
@@ -252,6 +330,12 @@ function renderSaasCalendar() {
   
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
+  // Filter events according to activeFilter
+  const filteredEvents = calendarState.events.filter(e => {
+    if (calendarState.activeFilter === 'all') return true;
+    return e.type === calendarState.activeFilter;
+  });
+
   let daysHTML = '';
 
   for (let i = 0; i < startingDay; i++) {
@@ -261,7 +345,7 @@ function renderSaasCalendar() {
   for (let d = 1; d <= daysInMonth; d++) {
     const isToday = d === 9 && month === 7 && year === 2026;
     const isSelected = d === calendarState.selectedDate;
-    const dayEvents = calendarState.events.filter(e => e.day === d);
+    const dayEvents = filteredEvents.filter(e => e.day === d);
 
     let cellClass = "p-2 rounded-xl text-center cursor-pointer transition relative flex flex-col items-center justify-center min-h-[48px] border ";
     if (isSelected) {
@@ -301,21 +385,21 @@ function renderSaasCalendar() {
   }
 
   if (eventsContainer) {
-    const activeEvents = calendarState.events.filter(e => e.day === calendarState.selectedDate);
+    const activeEvents = filteredEvents.filter(e => e.day === calendarState.selectedDate);
     if (activeEvents.length === 0) {
       eventsContainer.innerHTML = `
         <div class="p-6 rounded-xl bg-slate-900/60 border border-slate-800 text-center space-y-2">
           <i data-lucide="calendar-off" class="w-6 h-6 text-slate-500 mx-auto"></i>
           <p class="text-xs text-slate-400 font-semibold">Aucune échéance enregistrée pour ce jour.</p>
-          <p class="text-[10px] text-slate-500">Toutes les opérations d'abonnement et prélèvements sont à jour.</p>
+          <p class="text-[10px] text-slate-500">Cliquez sur "+ Ajouter Échéance" pour enregistrer une action.</p>
         </div>
       `;
     } else {
       eventsContainer.innerHTML = activeEvents.map(ev => `
-        <div class="p-3.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition space-y-2">
+        <div class="p-3.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition space-y-2.5">
           <div class="flex items-center justify-between text-xs">
             <span class="font-bold text-white flex items-center gap-1.5">
-              <span class="w-2 h-2 rounded-full bg-${ev.color}-400"></span>
+              <span class="w-2.5 h-2.5 rounded-full bg-${ev.color}-400"></span>
               ${escapeHtml(ev.title)}
             </span>
             <span class="px-2 py-0.5 rounded bg-${ev.color}-500/10 text-${ev.color}-400 font-mono text-[10px] border border-${ev.color}-500/20 font-bold">${escapeHtml(ev.badge)}</span>
@@ -323,6 +407,14 @@ function renderSaasCalendar() {
           <div class="flex justify-between text-[11px] text-slate-400">
             <span>Concerne : <strong class="text-slate-200">${escapeHtml(ev.client)}</strong></span>
             <span class="font-mono text-emerald-400 font-bold">${escapeHtml(ev.amount)}</span>
+          </div>
+          <div class="flex justify-end space-x-2 border-t border-slate-800/60 pt-2">
+            <button onclick="deleteCalendarEvent(${ev.id})" class="px-2 py-0.5 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[10px] border border-red-500/20 transition">
+              Supprimer
+            </button>
+            <button onclick="showToast('Action Confirmée', 'L\'échéance a été traitée et archivée.', 'success')" class="px-2 py-0.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[10px] font-bold border border-emerald-500/20 transition">
+              ✓ Marquer Traité
+            </button>
           </div>
         </div>
       `).join('');

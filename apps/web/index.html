@@ -1896,7 +1896,7 @@
 
           <!-- Left Column: Interactive Month Calendar -->
           <div class="lg:col-span-7 glass-panel p-6 border-slate-800 space-y-4">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3 flex-wrap gap-2">
               <div class="flex items-center space-x-3">
                 <h3 class="font-bold text-white text-base flex items-center gap-2">
                   <i data-lucide="calendar" class="w-5 h-5 text-amber-400"></i>
@@ -1905,6 +1905,25 @@
               </div>
               <button onclick="resetCalendarToToday()" class="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-bold font-mono transition">
                 Aujourd'hui
+              </button>
+            </div>
+
+            <!-- Category Filter Pills -->
+            <div class="flex items-center space-x-2 overflow-x-auto pb-1 text-xs">
+              <button onclick="filterCalendarCategory('all')" id="cal-filter-all" class="cal-filter-btn px-2.5 py-1 rounded-lg font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                Toutes les Échéances (12)
+              </button>
+              <button onclick="filterCalendarCategory('billing')" id="cal-filter-billing" class="cal-filter-btn px-2.5 py-1 rounded-lg font-semibold text-slate-400 hover:bg-slate-800 shrink-0">
+                🟢 Prélèvements
+              </button>
+              <button onclick="filterCalendarCategory('trial')" id="cal-filter-trial" class="cal-filter-btn px-2.5 py-1 rounded-lg font-semibold text-slate-400 hover:bg-slate-800 shrink-0">
+                🟠 Fins d'Essai
+              </button>
+              <button onclick="filterCalendarCategory('maintenance')" id="cal-filter-maintenance" class="cal-filter-btn px-2.5 py-1 rounded-lg font-semibold text-slate-400 hover:bg-slate-800 shrink-0">
+                🔵 Maintenances
+              </button>
+              <button onclick="filterCalendarCategory('contract')" id="cal-filter-contract" class="cal-filter-btn px-2.5 py-1 rounded-lg font-semibold text-slate-400 hover:bg-slate-800 shrink-0">
+                🟣 Grands Comptes
               </button>
             </div>
 
@@ -1948,8 +1967,8 @@
                 </h3>
                 <p id="saas-calendar-selected-date" class="text-xs text-amber-400 font-mono font-bold">9 Août 2026</p>
               </div>
-              <button onclick="showToast('Nouvelle Échéance', 'Formulaire de programmation d\'un rappel client.', 'info')" class="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition flex items-center gap-1">
-                <i data-lucide="plus" class="w-3.5 h-3.5"></i> Ajouter
+              <button onclick="openAddEventModal()" class="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition flex items-center gap-1">
+                <i data-lucide="plus" class="w-3.5 h-3.5"></i> Ajouter Échéance
               </button>
             </div>
 
@@ -2208,6 +2227,59 @@
       <div class="pt-2 text-center text-xs text-[var(--color-muted)] border-t border-[var(--border-subtle)]">
         Besoin d'aide ? <a href="https://wa.me/2250700000000" target="_blank" class="text-amber-400 font-bold hover:underline">Support Client WhatsApp 7j/7</a>
       </div>
+  <!-- MODAL AJOUT D'ÉCHÉANCE CALENDRIER -->
+  <div id="modal-add-event" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+    <div class="glass-panel-elevated p-6 max-w-md w-full relative space-y-5 border border-amber-500/40 shadow-2xl rounded-2xl">
+      <button onclick="closeAddEventModal()" class="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <div class="space-y-1">
+        <div class="flex items-center gap-2">
+          <i data-lucide="calendar-plus" class="w-5 h-5 text-amber-400"></i>
+          <h3 class="text-lg font-bold text-white">Programmer une Échéance SaaS</h3>
+        </div>
+        <p class="text-xs text-slate-400">Ajoutez un rappel de prélèvement, fin d'essai ou renouvellement client.</p>
+      </div>
+
+      <form onsubmit="handleCreateEventSubmit(event)" class="space-y-3.5 pt-1">
+        <div class="space-y-1">
+          <label class="block text-xs font-semibold text-slate-300">Titre de l'échéance / Opération :</label>
+          <input type="text" id="event-title-input" required placeholder="ex: Renouvellement Abonnement Pro" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-amber-500">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1">
+            <label class="block text-xs font-semibold text-slate-300">Client / Concerne :</label>
+            <input type="text" id="event-client-input" required placeholder="ex: Winner Digital SARL" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-amber-500">
+          </div>
+          <div class="space-y-1">
+            <label class="block text-xs font-semibold text-slate-300">Jour du Mois (1-31) :</label>
+            <input type="number" id="event-day-input" min="1" max="31" required value="9" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1">
+            <label class="block text-xs font-semibold text-slate-300">Montant / Note :</label>
+            <input type="text" id="event-amount-input" required placeholder="ex: 350.000 FCFA" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500">
+          </div>
+          <div class="space-y-1">
+            <label class="block text-xs font-semibold text-slate-300">Catégorie / Couleur :</label>
+            <select id="event-type-input" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500">
+              <option value="billing">🟢 Prélèvement Client (Facturation)</option>
+              <option value="trial">🟠 Fin d'Essai (Relance commerciale)</option>
+              <option value="maintenance">🔵 Maintenance Système / Mise à jour</option>
+              <option value="contract">🟣 Grand Compte (Renouvellement)</option>
+            </select>
+          </div>
+        </div>
+
+        <button type="submit" class="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white font-bold text-xs shadow-lg transition flex items-center justify-center gap-1.5">
+          <i data-lucide="check-circle" class="w-4 h-4"></i>
+          Enregistrer l'Échéance sur le Calendrier
+        </button>
+      </form>
     </div>
   </div>
 
