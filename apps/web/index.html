@@ -698,39 +698,92 @@
         </div>
       </div>
 
-      <!-- MAIN SECTION SWITCHER TABS -->
-      <div class="flex items-center space-x-2 border-b border-slate-800/60 pb-2 overflow-x-auto">
-        <button onclick="switchSection('overview')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold transition text-emerald-400 bg-emerald-500/10 border border-emerald-500/30" data-section="overview">
-          Vue d'Ensemble
-        </button>
-        <button onclick="switchSection('punch')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="punch">
-          Pointage GPS & Geofence
-        </button>
-        <button onclick="switchSection('leaves')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="leaves">
-          Demandes de Congé
-        </button>
-        <button onclick="switchSection('overtime')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="overtime">
-          Heures Supplémentaires
-        </button>
-        <button onclick="switchSection('lateness')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="lateness">
-          Calcul des Retards
-        </button>
-        <button onclick="switchSection('staff')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="staff">
-          Employés & Commerciaux
-        </button>
-        <button onclick="switchSection('security')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="security">
-          Sécurité & Faux GPS
-        </button>
-        <button onclick="switchSection('qr')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="qr">
-          QR Code Kiosque
-        </button>
-        <button onclick="switchSection('reports')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="reports">
-          Rapports PDF
-        </button>
-      </div>
+      <!-- DESKTOP GRID LAYOUT WITH LATERAL SIDEBAR MENU -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        <!-- LATERAL SIDEBAR MENU (VISIBLE ON PC lg+) -->
+        <aside class="hidden lg:block lg:col-span-3 lg:sticky lg:top-24 glass-panel p-4 rounded-2xl border border-slate-800 space-y-4 shadow-xl">
+          <div class="border-b border-slate-800/80 pb-3 flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold">
+              <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="font-bold text-white text-xs">Cockpit RH Client</h3>
+              <p class="text-[10px] text-slate-400 font-mono">Gestion des Présences</p>
+            </div>
+          </div>
 
-      <!-- SUB-SECTION 1: OVERVIEW -->
-      <div id="section-overview" class="sub-section space-y-6">
+          <div class="text-[10px] font-mono font-semibold text-slate-500 uppercase tracking-wider px-1">Navigation RH</div>
+
+          <nav class="space-y-1 text-xs">
+            <button onclick="switchSection('overview')" class="subtab-btn w-full text-left px-3 py-2 rounded-xl font-bold transition text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between" data-section="overview">
+              <span class="flex items-center gap-2"><i data-lucide="layout-dashboard" class="w-4 h-4"></i> Vue d'Ensemble</span>
+            </button>
+            <button onclick="switchSection('punch')" class="subtab-btn w-full text-left px-3 py-2 rounded-xl font-semibold text-slate-400 hover:text-white hover:bg-slate-800/80 transition flex items-center justify-between" data-section="punch">
+              <span class="flex items-center gap-2"><i data-lucide="map-pin" class="w-4 h-4"></i> Pointage GPS</span>
+            </button>
+            <button onclick="switchSection('leaves')" class="subtab-btn w-full text-left px-3 py-2 rounded-xl font-semibold text-slate-400 hover:text-white hover:bg-slate-800/80 transition flex items-center justify-between" data-section="leaves">
+              <span class="flex items-center gap-2"><i data-lucide="calendar" class="w-4 h-4"></i> Congés & Absences</span>
+              <span class="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300">2</span>
+            </button>
+            <button onclick="switchSection('overtime')" class="subtab-btn w-full text-left px-3 py-2 rounded-xl font-semibold text-slate-400 hover:text-white hover:bg-slate-800/80 transition flex items-center justify-between" data-section="overtime">
+              <span class="flex items-center gap-2"><i data-lucide="clock" class="w-4 h-4"></i> Heures Supp.</span>
+            </button>
+            <button onclick="switchSection('lateness')" class="subtab-btn w-full text-left px-3 py-2 rounded-xl font-semibold text-slate-400 hover:text-white hover:bg-slate-800/80 transition flex items-center justify-between" data-section="lateness">
+              <span class="flex items-center gap-2"><i data-lucide="alert-triangle" class="w-4 h-4"></i> Retards</span>
+              <span class="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-red-500/20 text-red-300">3</span>
+            </button>
+            <button onclick="switchSection('staff')" class="subtab-btn w-full text-left px-3 py-2 rounded-xl font-semibold text-slate-400 hover:text-white hover:bg-slate-800/80 transition flex items-center justify-between" data-section="staff">
+              <span class="flex items-center gap-2"><i data-lucide="users" class="w-4 h-4"></i> Employés</span>
+            </button>
+            <button onclick="switchSection('security')" class="subtab-btn w-full text-left px-3 py-2 rounded-xl font-semibold text-slate-400 hover:text-white hover:bg-slate-800/80 transition flex items-center justify-between" data-section="security">
+              <span class="flex items-center gap-2"><i data-lucide="shield-alert" class="w-4 h-4"></i> Sécurité GPS</span>
+            </button>
+            <button onclick="switchSection('qr')" class="subtab-btn w-full text-left px-3 py-2 rounded-xl font-semibold text-slate-400 hover:text-white hover:bg-slate-800/80 transition flex items-center justify-between" data-section="qr">
+              <span class="flex items-center gap-2"><i data-lucide="qr-code" class="w-4 h-4"></i> Kiosque QR</span>
+            </button>
+            <button onclick="switchSection('reports')" class="subtab-btn w-full text-left px-3 py-2 rounded-xl font-semibold text-slate-400 hover:text-white hover:bg-slate-800/80 transition flex items-center justify-between" data-section="reports">
+              <span class="flex items-center gap-2"><i data-lucide="file-text" class="w-4 h-4"></i> Rapports PDF</span>
+            </button>
+          </nav>
+        </aside>
+
+        <!-- MAIN RIGHT CONTENT (lg:col-span-9) -->
+        <div class="lg:col-span-9 space-y-6">
+
+          <!-- MOBILE SECTION SWITCHER TABS (VISIBLE ON MOBILE lg:hidden) -->
+          <div class="lg:hidden flex items-center space-x-2 border-b border-slate-800/60 pb-2 overflow-x-auto">
+            <button onclick="switchSection('overview')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold transition text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 shrink-0" data-section="overview">
+              Vue d'Ensemble
+            </button>
+            <button onclick="switchSection('punch')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0" data-section="punch">
+              Pointage GPS
+            </button>
+            <button onclick="switchSection('leaves')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0" data-section="leaves">
+              Congés
+            </button>
+            <button onclick="switchSection('overtime')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0" data-section="overtime">
+              Heures Supp.
+            </button>
+            <button onclick="switchSection('lateness')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0" data-section="lateness">
+              Retards
+            </button>
+            <button onclick="switchSection('staff')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0" data-section="staff">
+              Employés
+            </button>
+            <button onclick="switchSection('security')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0" data-section="security">
+              Sécurité
+            </button>
+            <button onclick="switchSection('qr')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0" data-section="qr">
+              Kiosque QR
+            </button>
+            <button onclick="switchSection('reports')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0" data-section="reports">
+              Rapports
+            </button>
+          </div>
+
+          <!-- SUB-SECTION 1: OVERVIEW -->
+          <div id="section-overview" class="sub-section space-y-6">
         
         <!-- KPI METRICS GRID -->
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -1632,7 +1685,10 @@
     </div>
   </div>
 
-    <!-- ==================== VIEW 3: SUPER ADMIN / SAAS OWNER DASHBOARD ==================== -->
+        </div>
+      </div>
+
+    </section>
     <section id="view-saas" class="view-section space-y-6">
 
       <!-- Header Super Admin -->
@@ -1652,420 +1708,494 @@
           </span>
           <button onclick="showToast('Export Données SaaS', 'Téléchargement complet des métriques, comptes et factures (Excel/PDF).', 'success')" class="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-black font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition">
             <i data-lucide="download" class="w-3.5 h-3.5"></i>
-            Exporter les Rapport SaaS
+            Exporter le Bilan
           </button>
         </div>
       </div>
 
-      <!-- MAIN FINANCIAL & OPERATIONAL KPI GRID (ALL 11 METRICS SUMMARY) -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-3.5">
+      <!-- DESKTOP GRID LAYOUT WITH LATERAL SIDEBAR MENU -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
-        <!-- KPI 1: Revenus Annuels (ARR) -->
-        <div class="glass-panel p-4 interactive-card border-amber-500/30 bg-amber-500/5">
-          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span class="font-semibold text-amber-300">ARR (Revenu Annuel)</span>
-            <i data-lucide="trending-up" class="w-4 h-4 text-amber-400"></i>
-          </div>
-          <div class="text-xl font-extrabold font-mono text-white tracking-tight">48.600.000 F</div>
-          <div class="text-[10px] text-emerald-400 font-bold mt-1">+18.4% YoY • Objectif 50M</div>
-        </div>
-
-        <!-- KPI 2: Revenus Mensuels (MRR) -->
-        <div class="glass-panel p-4 interactive-card border-emerald-500/30 bg-emerald-500/5">
-          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span class="font-semibold text-emerald-300">MRR (Revenu Mensuel)</span>
-            <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
-          </div>
-          <div class="text-xl font-extrabold font-mono text-emerald-400 tracking-tight">4.050.000 F</div>
-          <div class="text-[10px] text-emerald-400/80 mt-1">+12.1% ce mois</div>
-        </div>
-
-        <!-- KPI 3: Nombre total d'entreprises -->
-        <div class="glass-panel p-4 interactive-card border-slate-700">
-          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span>Total Entreprises</span>
-            <i data-lucide="building-2" class="w-4 h-4 text-slate-400"></i>
-          </div>
-          <div class="text-xl font-extrabold font-mono text-white">48 Clientèle</div>
-          <div class="text-[10px] text-slate-400 mt-1">Inscrites sur la plateforme</div>
-        </div>
-
-        <!-- KPI 4: Entreprises Actives -->
-        <div class="glass-panel p-4 interactive-card border-emerald-500/20 bg-emerald-500/5">
-          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span class="text-emerald-400 font-semibold">Entreprises Actives</span>
-            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i>
-          </div>
-          <div class="text-xl font-extrabold font-mono text-emerald-400">42 Actives</div>
-          <div class="text-[10px] text-emerald-500/80 mt-1">Taux d'activité : 87.5%</div>
-        </div>
-
-        <!-- KPI 5: Employés Actifs sous Licence -->
-        <div class="glass-panel p-4 interactive-card border-cyan-500/20 bg-cyan-500/5">
-          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span class="text-cyan-300 font-semibold">Employés Actifs</span>
-            <i data-lucide="users" class="w-4 h-4 text-cyan-400"></i>
-          </div>
-          <div class="text-xl font-extrabold font-mono text-cyan-400">1.840 emp.</div>
-          <div class="text-[10px] text-cyan-400/80 mt-1">Moyenne : 43 / entreprise</div>
-        </div>
-
-        <!-- KPI 6: Essais Expirés -->
-        <div class="glass-panel p-4 interactive-card border-orange-500/20 bg-orange-500/5">
-          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span class="text-orange-300 font-semibold">Essais Expirés</span>
-            <i data-lucide="clock" class="w-4 h-4 text-orange-400"></i>
-          </div>
-          <div class="text-xl font-extrabold font-mono text-orange-400">4 Essais</div>
-          <div class="text-[10px] text-orange-400/80 mt-1">Relance commerciale à faire</div>
-        </div>
-
-        <!-- KPI 7: Comptes Suspendus -->
-        <div class="glass-panel p-4 interactive-card border-red-500/20 bg-red-500/5">
-          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span class="text-red-400 font-semibold">Comptes Suspendus</span>
-            <i data-lucide="shield-ban" class="w-4 h-4 text-red-400"></i>
-          </div>
-          <div class="text-xl font-extrabold font-mono text-red-400">2 Suspendus</div>
-          <div class="text-[10px] text-red-400/80 mt-1">Impayé / Non-respect CGU</div>
-        </div>
-
-        <!-- KPI 8: Tickets Support -->
-        <div class="glass-panel p-4 interactive-card border-purple-500/20 bg-purple-500/5">
-          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span class="text-purple-300 font-semibold">Tickets Support</span>
-            <i data-lucide="life-buoy" class="w-4 h-4 text-purple-400"></i>
-          </div>
-          <div class="text-xl font-extrabold font-mono text-purple-400">3 Ouverts</div>
-          <div class="text-[10px] text-purple-400/80 mt-1">24 Résolus ce mois (96%)</div>
-        </div>
-
-      </div>
-
-      <!-- SAAS SUB-SECTION SWITCHER TABS -->
-      <div class="flex items-center space-x-2 border-b border-slate-800/80 pb-2 overflow-x-auto">
-        <button onclick="switchSaasSection('overview')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-bold transition text-amber-400 bg-amber-500/10 border border-amber-500/30" data-saas-section="overview">
-          📊 Vue d'Ensemble & Revenus
-        </button>
-        <button onclick="switchSaasSection('companies')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-saas-section="companies">
-          🏢 Entreprises & Abonnements (48)
-        </button>
-        <button onclick="switchSaasSection('payments')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-saas-section="payments">
-          💳 Paiements & Factures
-        </button>
-        <button onclick="switchSaasSection('tickets')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-saas-section="tickets">
-          🎫 Tickets Support (3)
-        </button>
-        <button onclick="switchSaasSection('logs')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-saas-section="logs">
-          🖥️ Logs Système & Sécurité
-        </button>
-      </div>
-
-      <!-- ==================== SUB-SECTION 1: OVERVIEW & FINANCIALS ==================== -->
-      <div id="saas-section-overview" class="saas-sub-section space-y-6">
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-
-          <!-- Left Column: Repartition des Abonnements -->
-          <div class="lg:col-span-5 glass-panel p-6 border-slate-800 space-y-4">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
-                <i data-lucide="pie-chart" class="w-4 h-4 text-amber-400"></i>
-                Ventes par Formule d'Abonnement
-              </h3>
-              <span class="text-[10px] font-mono text-slate-400">42 Entreprises</span>
+        <!-- LATERAL SIDEBAR MENU (VISIBLE ON PC lg+) -->
+        <aside class="hidden lg:block lg:col-span-3 lg:sticky lg:top-24 glass-panel p-4 rounded-2xl border border-slate-800 space-y-4 shadow-xl">
+          <div class="border-b border-slate-800/80 pb-3 flex items-center gap-3">
+            <div class="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center font-bold glow-amber">
+              <i data-lucide="shield-check" class="w-5 h-5"></i>
             </div>
-
-            <div class="space-y-4 pt-1">
-              <!-- Formule Starter -->
-              <div class="space-y-1.5 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
-                <div class="flex items-center justify-between text-xs">
-                  <span class="font-bold text-white flex items-center gap-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
-                    Formule Starter (150.000 FCFA/m)
-                  </span>
-                  <span class="font-mono text-cyan-400 font-bold">18 Abonnés</span>
-                </div>
-                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                  <div class="bg-cyan-400 h-full rounded-full" style="width: 42.8%"></div>
-                </div>
-                <div class="flex justify-between text-[10px] text-slate-400 pt-0.5">
-                  <span>Part : 42.8% des abonnés</span>
-                  <span class="font-mono text-slate-300">2.700.000 FCFA / mois</span>
-                </div>
-              </div>
-
-              <!-- Formule Pro -->
-              <div class="space-y-1.5 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
-                <div class="flex items-center justify-between text-xs">
-                  <span class="font-bold text-white flex items-center gap-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-                    Formule Pro (350.000 FCFA/m)
-                  </span>
-                  <span class="font-mono text-amber-400 font-bold">19 Abonnés</span>
-                </div>
-                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                  <div class="bg-amber-400 h-full rounded-full" style="width: 45.2%"></div>
-                </div>
-                <div class="flex justify-between text-[10px] text-slate-400 pt-0.5">
-                  <span>Part : 45.2% des abonnés</span>
-                  <span class="font-mono text-slate-300">6.650.000 FCFA / mois</span>
-                </div>
-              </div>
-
-              <!-- Formule Sur-Mesure -->
-              <div class="space-y-1.5 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
-                <div class="flex items-center justify-between text-xs">
-                  <span class="font-bold text-white flex items-center gap-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-                    Formule Sur-Mesure / Groupe (~750k FCFA)
-                  </span>
-                  <span class="font-mono text-emerald-400 font-bold">5 Abonnés</span>
-                </div>
-                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                  <div class="bg-emerald-400 h-full rounded-full" style="width: 12.0%"></div>
-                </div>
-                <div class="flex justify-between text-[10px] text-slate-400 pt-0.5">
-                  <span>Part : 12.0% (Grands comptes)</span>
-                  <span class="font-mono text-slate-300">3.750.000 FCFA / mois</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Right Column: Résumé Récent des Ventes -->
-          <div class="lg:col-span-7 glass-panel p-6 border-slate-800 space-y-4">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
-                <i data-lucide="arrow-up-right" class="w-4 h-4 text-emerald-400"></i>
-                Croissance & Nouvelles Souscriptions
-              </h3>
-              <span class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">+4 Nouvelles Entreprises ce mois</span>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
-                <div class="text-xs text-slate-400">Taux d'Acquisition Client</div>
-                <div class="text-2xl font-bold font-mono text-white">+8.3% / mois</div>
-                <p class="text-[10px] text-slate-500">Moyenne de 4.2 nouveaux abonnements par mois.</p>
-              </div>
-              <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
-                <div class="text-xs text-slate-400">Taux de Rétention Net (NRR)</div>
-                <div class="text-2xl font-bold font-mono text-emerald-400">97.8%</div>
-                <p class="text-[10px] text-slate-500">Faible Churn (0.8%) compensé par l'upsell Pro/Entreprise.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ==================== SUB-SECTION 2: GESTION DES ENTREPRISES ==================== -->
-      <div id="saas-section-companies" class="saas-sub-section hidden space-y-4">
-        <div class="glass-panel p-6 border-slate-800 space-y-4">
-          
-          <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div>
-              <h3 class="font-bold text-white text-base flex items-center gap-2">
-                <i data-lucide="building" class="w-5 h-5 text-amber-400"></i>
-                Gestion des Entreprises & Abonnements Clients (48)
-              </h3>
-              <p class="text-xs text-slate-400">Supervision des comptes client, statut des essais, formules souscrites et contrôles d'accès.</p>
-            </div>
-
-            <div class="flex items-center space-x-2">
-              <select id="company-status-filter" onchange="filterCompanyTable()" class="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-amber-500">
-                <option value="all">Tous les Statuts (48)</option>
-                <option value="active" selected>Actives (42)</option>
-                <option value="expired">Essais Expirés (4)</option>
-                <option value="suspended">Comptes Suspendus (2)</option>
-              </select>
-              <button onclick="showToast('Nouvelle Entreprise', 'Ouverture du formulaire d\'onboarding d\'une nouvelle entreprise.', 'info')" class="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs transition">
-                + Ajouter une Entreprise
-              </button>
+              <h3 class="font-bold text-white text-xs">Super Admin SaaS</h3>
+              <p class="text-[10px] text-slate-400 font-mono">Cockpit Propriétaire</p>
             </div>
           </div>
 
-          <!-- TABLEAU DES ENTREPRISES -->
-          <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs">
-              <thead>
-                <tr class="text-slate-400 border-b border-slate-800/80 font-mono text-[11px]">
-                  <th class="pb-2.5 font-semibold">Nom de l'Entreprise</th>
-                  <th class="pb-2.5 font-semibold">Formule</th>
-                  <th class="pb-2.5 font-semibold">Employés Actifs</th>
-                  <th class="pb-2.5 font-semibold">Revenu Mensuel</th>
-                  <th class="pb-2.5 font-semibold">Statut du Compte</th>
-                  <th class="pb-2.5 font-semibold text-right">Actions Admin</th>
-                </tr>
-              </thead>
-              <tbody id="company-table-body" class="divide-y divide-slate-800/40 text-slate-300">
-                <tr class="hover:bg-slate-800/30 transition">
-                  <td class="py-3 font-bold text-white flex items-center gap-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-                    Winner Digital SARL
-                  </td>
-                  <td><span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono text-[10px] border border-amber-500/20">Pro</span></td>
-                  <td class="font-mono">85 emp.</td>
-                  <td class="font-mono text-emerald-400 font-bold">350.000 FCFA</td>
-                  <td><span class="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold text-[10px] border border-emerald-500/20">Active</span></td>
-                  <td class="text-right space-x-2">
-                    <button onclick="toggleCompanyStatus('Winner Digital SARL', 'suspend')" class="px-2 py-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 font-semibold text-[10px] border border-red-500/20 transition">Suspendre</button>
-                  </td>
-                </tr>
-                <tr class="hover:bg-slate-800/30 transition">
-                  <td class="py-3 font-bold text-white flex items-center gap-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-                    Ivoire BTP & Construction
-                  </td>
-                  <td><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono text-[10px] border border-emerald-500/20">Entreprise</span></td>
-                  <td class="font-mono">320 emp.</td>
-                  <td class="font-mono text-emerald-400 font-bold">750.000 FCFA</td>
-                  <td><span class="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold text-[10px] border border-emerald-500/20">Active</span></td>
-                  <td class="text-right space-x-2">
-                    <button onclick="toggleCompanyStatus('Ivoire BTP', 'suspend')" class="px-2 py-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 font-semibold text-[10px] border border-red-500/20 transition">Suspendre</button>
-                  </td>
-                </tr>
-                <tr class="hover:bg-slate-800/30 transition">
-                  <td class="py-3 font-bold text-white flex items-center gap-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-orange-400"></span>
-                    Batimat Côte d'Ivoire
-                  </td>
-                  <td><span class="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-mono text-[10px] border border-cyan-500/20">Starter (Essai)</span></td>
-                  <td class="font-mono">18 emp.</td>
-                  <td class="font-mono text-slate-400 font-bold">0 FCFA (Essai)</td>
-                  <td><span class="px-2.5 py-0.5 rounded-full bg-orange-500/10 text-orange-400 font-semibold text-[10px] border border-orange-500/20">Essai Expiré</span></td>
-                  <td class="text-right space-x-2">
-                    <button onclick="showToast('Relance Commerciale', 'Email et appel de relance envoyés à Batimat.', 'info')" class="px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-semibold text-[10px] border border-amber-500/20 transition">Relancer</button>
-                  </td>
-                </tr>
-                <tr class="hover:bg-slate-800/30 transition">
-                  <td class="py-3 font-bold text-white flex items-center gap-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-red-400"></span>
-                    Trans-Afrique Transit & Fret
-                  </td>
-                  <td><span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono text-[10px] border border-amber-500/20">Pro</span></td>
-                  <td class="font-mono">45 emp.</td>
-                  <td class="font-mono text-red-400 font-bold">350.000 FCFA</td>
-                  <td><span class="px-2.5 py-0.5 rounded-full bg-red-500/10 text-red-400 font-semibold text-[10px] border border-red-500/20">Suspendu (Impayé)</span></td>
-                  <td class="text-right space-x-2">
-                    <button onclick="toggleCompanyStatus('Trans-Afrique', 'activate')" class="px-2 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-semibold text-[10px] border border-emerald-500/20 transition">Réactiver</button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+          <div class="text-[10px] font-mono font-semibold text-slate-500 uppercase tracking-wider px-1">Navigation Générale</div>
 
-      <!-- ==================== SUB-SECTION 3: PAIEMENTS & FACTURES ==================== -->
-      <div id="saas-section-payments" class="saas-sub-section hidden space-y-4">
-        <div class="glass-panel p-6 border-slate-800 space-y-4">
-          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-            <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
-              <i data-lucide="credit-card" class="w-4 h-4 text-emerald-400"></i>
-              Historique des Paiements & Transactions SaaS
-            </h3>
-            <span class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Recouvrement : 98.2%</span>
+          <nav class="space-y-1 text-xs">
+            <button onclick="switchSaasSection('overview')" class="saas-subtab-btn w-full text-left px-3 py-2.5 rounded-xl font-bold transition text-amber-400 bg-amber-500/10 border border-amber-500/30 flex items-center justify-between" data-saas-section="overview">
+              <span class="flex items-center gap-2">
+                <i data-lucide="bar-chart-3" class="w-4 h-4 text-amber-400"></i>
+                Vue d'Ensemble
+              </span>
+              <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-amber-400"></i>
+            </button>
+
+            <button onclick="switchSaasSection('companies')" class="saas-subtab-btn w-full text-left px-3 py-2.5 rounded-xl font-semibold text-slate-400 hover:text-white hover:bg-slate-800/80 transition flex items-center justify-between" data-saas-section="companies">
+              <span class="flex items-center gap-2">
+                <i data-lucide="building-2" class="w-4 h-4"></i>
+                Entreprises
+              </span>
+              <span class="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-slate-800 text-amber-400 border border-slate-700">48</span>
+            </button>
+
+            <button onclick="switchSaasSection('payments')" class="saas-subtab-btn w-full text-left px-3 py-2.5 rounded-xl font-semibold text-slate-400 hover:text-white hover:bg-slate-800/80 transition flex items-center justify-between" data-saas-section="payments">
+              <span class="flex items-center gap-2">
+                <i data-lucide="credit-card" class="w-4 h-4"></i>
+                Paiements
+              </span>
+              <span class="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">98%</span>
+            </button>
+
+            <button onclick="switchSaasSection('tickets')" class="saas-subtab-btn w-full text-left px-3 py-2.5 rounded-xl font-semibold text-slate-400 hover:text-white hover:bg-slate-800/80 transition flex items-center justify-between" data-saas-section="tickets">
+              <span class="flex items-center gap-2">
+                <i data-lucide="life-buoy" class="w-4 h-4"></i>
+                Support Client
+              </span>
+              <span class="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">3</span>
+            </button>
+
+            <button onclick="switchSaasSection('logs')" class="saas-subtab-btn w-full text-left px-3 py-2.5 rounded-xl font-semibold text-slate-400 hover:text-white hover:bg-slate-800/80 transition flex items-center justify-between" data-saas-section="logs">
+              <span class="flex items-center gap-2">
+                <i data-lucide="terminal" class="w-4 h-4"></i>
+                Logs Système
+              </span>
+              <span class="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Live</span>
+            </button>
+          </nav>
+
+          <div class="border-t border-slate-800/80 pt-3 space-y-2">
+            <button onclick="showToast('Nouvelle Entreprise', 'Ouverture du formulaire d\'onboarding client.', 'info')" class="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs flex items-center justify-center gap-2 shadow-md transition">
+              <i data-lucide="plus-circle" class="w-4 h-4"></i>
+              Ajouter Entreprise
+            </button>
+          </div>
+        </aside>
+
+        <!-- MAIN RIGHT DASHBOARD CONTENT (lg:col-span-9) -->
+        <div class="lg:col-span-9 space-y-6">
+
+          <!-- MOBILE SUB-SECTION SWITCHER TABS (VISIBLE ON MOBILE lg:hidden) -->
+          <div class="lg:hidden flex items-center space-x-2 border-b border-slate-800/80 pb-2 overflow-x-auto">
+            <button onclick="switchSaasSection('overview')" class="saas-subtab-btn px-3 py-1.5 rounded-lg text-xs font-bold transition text-amber-400 bg-amber-500/10 border border-amber-500/30 shrink-0" data-saas-section="overview">
+              📊 Vue d'Ensemble
+            </button>
+            <button onclick="switchSaasSection('companies')" class="saas-subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0" data-saas-section="companies">
+              🏢 Entreprises (48)
+            </button>
+            <button onclick="switchSaasSection('payments')" class="saas-subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0" data-saas-section="payments">
+              💳 Paiements
+            </button>
+            <button onclick="switchSaasSection('tickets')" class="saas-subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0" data-saas-section="tickets">
+              🎫 Support (3)
+            </button>
+            <button onclick="switchSaasSection('logs')" class="saas-subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0" data-saas-section="logs">
+              🖥️ Logs
+            </button>
           </div>
 
-          <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs">
-              <thead>
-                <tr class="text-slate-400 border-b border-slate-800/80 font-mono text-[11px]">
-                  <th class="pb-2 font-semibold">N° Transaction</th>
-                  <th class="pb-2 font-semibold">Client</th>
-                  <th class="pb-2 font-semibold">Moyen de Paiement</th>
-                  <th class="pb-2 font-semibold">Montant</th>
-                  <th class="pb-2 font-semibold text-right">Statut</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-800/40 text-slate-300">
-                <tr class="hover:bg-slate-800/30 transition">
-                  <td class="py-2.5 font-mono text-amber-400">#TX-94012</td>
-                  <td class="font-bold text-white">Winner Digital SARL</td>
-                  <td>Orange Money / Wave</td>
-                  <td class="font-mono text-emerald-400 font-bold">350.000 FCFA</td>
-                  <td class="text-right"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-semibold">Succès • Reçu émis</span></td>
-                </tr>
-                <tr class="hover:bg-slate-800/30 transition">
-                  <td class="py-2.5 font-mono text-amber-400">#TX-94011</td>
-                  <td class="font-bold text-white">Ivoire BTP & Construction</td>
-                  <td>Virement Bancaire (NSIA)</td>
-                  <td class="font-mono text-emerald-400 font-bold">750.000 FCFA</td>
-                  <td class="text-right"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-semibold">Succès • Reçu émis</span></td>
-                </tr>
-                <tr class="hover:bg-slate-800/30 transition">
-                  <td class="py-2.5 font-mono text-amber-400">#TX-94010</td>
-                  <td class="font-bold text-white">Sahel Logistique Abidjan</td>
-                  <td>MTN Mobile Money</td>
-                  <td class="font-mono text-emerald-400 font-bold">150.000 FCFA</td>
-                  <td class="text-right"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-semibold">Succès • Reçu émis</span></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <!-- ==================== SUB-SECTION 4: TICKETS SUPPORT ==================== -->
-      <div id="saas-section-tickets" class="saas-sub-section hidden space-y-4">
-        <div class="glass-panel p-6 border-slate-800 space-y-4">
-          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-            <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
-              <i data-lucide="life-buoy" class="w-4 h-4 text-purple-400"></i>
-              Tickets de Support Client & Assistance Technique (3 Ouverts)
-            </h3>
-            <span class="text-[10px] font-mono text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">Temps Réponse Moyen : 8 min</span>
-          </div>
-
-          <div class="space-y-3">
-            <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <div class="flex items-center gap-2 text-xs font-bold text-white">
-                  <span class="px-2 py-0.5 rounded bg-red-500/20 text-red-400 font-mono text-[10px]">Urgent</span>
-                  [#TK-1082] Demande d'ajout de 50 licences supplémentaires
-                </div>
-                <div class="text-[11px] text-slate-400 mt-1">Client: Ivoire BTP • Il y a 14 min par M. Touré (Directeur RH)</div>
+          <!-- MAIN FINANCIAL & OPERATIONAL KPI GRID (ALL 11 METRICS SUMMARY) -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-3.5">
+            
+            <!-- KPI 1: Revenus Annuels (ARR) -->
+            <div class="glass-panel p-4 interactive-card border-amber-500/30 bg-amber-500/5">
+              <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+                <span class="font-semibold text-amber-300">ARR (Revenu Annuel)</span>
+                <i data-lucide="trending-up" class="w-4 h-4 text-amber-400"></i>
               </div>
-              <button onclick="showToast('Ticket Résolu', 'Licences ajoutées et notification envoyée au client.', 'success')" class="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition">
-                Répondre & Traiter
-              </button>
+              <div class="text-xl font-extrabold font-mono text-white tracking-tight">48.600.000 F</div>
+              <div class="text-[10px] text-emerald-400 font-bold mt-1">+18.4% YoY • Objectif 50M</div>
             </div>
 
-            <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between flex-wrap gap-3">
-              <div>
-                <div class="flex items-center gap-2 text-xs font-bold text-white">
-                  <span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono text-[10px]">Moyen</span>
-                  [#TK-1081] Question sur la configuration des heures supplémentaires
-                </div>
-                <div class="text-[11px] text-slate-400 mt-1">Client: Winner Digital • Il y a 45 min par Mme Koné</div>
+            <!-- KPI 2: Revenus Mensuels (MRR) -->
+            <div class="glass-panel p-4 interactive-card border-emerald-500/30 bg-emerald-500/5">
+              <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+                <span class="font-semibold text-emerald-300">MRR (Revenu Mensuel)</span>
+                <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
               </div>
-              <button onclick="showToast('Ticket Résolu', 'Guide envoyé au client.', 'success')" class="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition">
-                Répondre & Traiter
-              </button>
+              <div class="text-xl font-extrabold font-mono text-emerald-400 tracking-tight">4.050.000 F</div>
+              <div class="text-[10px] text-emerald-400/80 mt-1">+12.1% ce mois</div>
+            </div>
+
+            <!-- KPI 3: Nombre total d'entreprises -->
+            <div class="glass-panel p-4 interactive-card border-slate-700">
+              <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+                <span>Total Entreprises</span>
+                <i data-lucide="building-2" class="w-4 h-4 text-slate-400"></i>
+              </div>
+              <div class="text-xl font-extrabold font-mono text-white">48 Clientèle</div>
+              <div class="text-[10px] text-slate-400 mt-1">Inscrites sur la plateforme</div>
+            </div>
+
+            <!-- KPI 4: Entreprises Actives -->
+            <div class="glass-panel p-4 interactive-card border-emerald-500/20 bg-emerald-500/5">
+              <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+                <span class="text-emerald-400 font-semibold">Entreprises Actives</span>
+                <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i>
+              </div>
+              <div class="text-xl font-extrabold font-mono text-emerald-400">42 Actives</div>
+              <div class="text-[10px] text-emerald-500/80 mt-1">Taux d'activité : 87.5%</div>
+            </div>
+
+            <!-- KPI 5: Employés Actifs sous Licence -->
+            <div class="glass-panel p-4 interactive-card border-cyan-500/20 bg-cyan-500/5">
+              <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+                <span class="text-cyan-300 font-semibold">Employés Actifs</span>
+                <i data-lucide="users" class="w-4 h-4 text-cyan-400"></i>
+              </div>
+              <div class="text-xl font-extrabold font-mono text-cyan-400">1.840 emp.</div>
+              <div class="text-[10px] text-cyan-400/80 mt-1">Moyenne : 43 / entreprise</div>
+            </div>
+
+            <!-- KPI 6: Essais Expirés -->
+            <div class="glass-panel p-4 interactive-card border-orange-500/20 bg-orange-500/5">
+              <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+                <span class="text-orange-300 font-semibold">Essais Expirés</span>
+                <i data-lucide="clock" class="w-4 h-4 text-orange-400"></i>
+              </div>
+              <div class="text-xl font-extrabold font-mono text-orange-400">4 Essais</div>
+              <div class="text-[10px] text-orange-400/80 mt-1">Relance commerciale à faire</div>
+            </div>
+
+            <!-- KPI 7: Comptes Suspendus -->
+            <div class="glass-panel p-4 interactive-card border-red-500/20 bg-red-500/5">
+              <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+                <span class="text-red-400 font-semibold">Comptes Suspendus</span>
+                <i data-lucide="shield-ban" class="w-4 h-4 text-red-400"></i>
+              </div>
+              <div class="text-xl font-extrabold font-mono text-red-400">2 Suspendus</div>
+              <div class="text-[10px] text-red-400/80 mt-1">Impayé / Non-respect CGU</div>
+            </div>
+
+            <!-- KPI 8: Tickets Support -->
+            <div class="glass-panel p-4 interactive-card border-purple-500/20 bg-purple-500/5">
+              <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+                <span class="text-purple-300 font-semibold">Tickets Support</span>
+                <i data-lucide="life-buoy" class="w-4 h-4 text-purple-400"></i>
+              </div>
+              <div class="text-xl font-extrabold font-mono text-purple-400">3 Ouverts</div>
+              <div class="text-[10px] text-purple-400/80 mt-1">24 Résolus ce mois (96%)</div>
+            </div>
+
+          </div>
+
+          <!-- ==================== SUB-SECTION 1: OVERVIEW & FINANCIALS ==================== -->
+          <div id="saas-section-overview" class="saas-sub-section space-y-6">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+              <!-- Left Column: Repartition des Abonnements -->
+              <div class="lg:col-span-5 glass-panel p-6 border-slate-800 space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+                    <i data-lucide="pie-chart" class="w-4 h-4 text-amber-400"></i>
+                    Ventes par Formule d'Abonnement
+                  </h3>
+                  <span class="text-[10px] font-mono text-slate-400">42 Entreprises</span>
+                </div>
+
+                <div class="space-y-4 pt-1">
+                  <!-- Formule Starter -->
+                  <div class="space-y-1.5 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                    <div class="flex items-center justify-between text-xs">
+                      <span class="font-bold text-white flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+                        Formule Starter (150.000 FCFA/m)
+                      </span>
+                      <span class="font-mono text-cyan-400 font-bold">18 Abonnés</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                      <div class="bg-cyan-400 h-full rounded-full" style="width: 42.8%"></div>
+                    </div>
+                    <div class="flex justify-between text-[10px] text-slate-400 pt-0.5">
+                      <span>Part : 42.8% des abonnés</span>
+                      <span class="font-mono text-slate-300">2.700.000 FCFA / mois</span>
+                    </div>
+                  </div>
+
+                  <!-- Formule Pro -->
+                  <div class="space-y-1.5 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                    <div class="flex items-center justify-between text-xs">
+                      <span class="font-bold text-white flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+                        Formule Pro (350.000 FCFA/m)
+                      </span>
+                      <span class="font-mono text-amber-400 font-bold">19 Abonnés</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                      <div class="bg-amber-400 h-full rounded-full" style="width: 45.2%"></div>
+                    </div>
+                    <div class="flex justify-between text-[10px] text-slate-400 pt-0.5">
+                      <span>Part : 45.2% des abonnés</span>
+                      <span class="font-mono text-slate-300">6.650.000 FCFA / mois</span>
+                    </div>
+                  </div>
+
+                  <!-- Formule Sur-Mesure -->
+                  <div class="space-y-1.5 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+                    <div class="flex items-center justify-between text-xs">
+                      <span class="font-bold text-white flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                        Formule Sur-Mesure / Groupe (~750k FCFA)
+                      </span>
+                      <span class="font-mono text-emerald-400 font-bold">5 Abonnés</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                      <div class="bg-emerald-400 h-full rounded-full" style="width: 12.0%"></div>
+                    </div>
+                    <div class="flex justify-between text-[10px] text-slate-400 pt-0.5">
+                      <span>Part : 12.0% (Grands comptes)</span>
+                      <span class="font-mono text-slate-300">3.750.000 FCFA / mois</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Right Column: Résumé Récent des Ventes -->
+              <div class="lg:col-span-7 glass-panel p-6 border-slate-800 space-y-4">
+                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+                    <i data-lucide="arrow-up-right" class="w-4 h-4 text-emerald-400"></i>
+                    Croissance & Nouvelles Souscriptions
+                  </h3>
+                  <span class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">+4 Nouvelles Entreprises ce mois</span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
+                    <div class="text-xs text-slate-400">Taux d'Acquisition Client</div>
+                    <div class="text-2xl font-bold font-mono text-white">+8.3% / mois</div>
+                    <p class="text-[10px] text-slate-500">Moyenne de 4.2 nouveaux abonnements par mois.</p>
+                  </div>
+                  <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
+                    <div class="text-xs text-slate-400">Taux de Rétention Net (NRR)</div>
+                    <div class="text-2xl font-bold font-mono text-emerald-400">97.8%</div>
+                    <p class="text-[10px] text-slate-500">Faible Churn (0.8%) compensé par l'upsell Pro/Entreprise.</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      <!-- ==================== SUB-SECTION 5: LOGS SYSTÈME ==================== -->
-      <div id="saas-section-logs" class="saas-sub-section hidden space-y-4">
-        <div class="glass-panel p-6 border-slate-800 space-y-4">
-          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-            <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
-              <i data-lucide="terminal" class="w-4 h-4 text-emerald-400"></i>
-              Journaux Système & Audit de Sécurité en Direct
-            </h3>
-            <span class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Flux WebSocket Actif</span>
+          <!-- ==================== SUB-SECTION 2: GESTION DES ENTREPRISES ==================== -->
+          <div id="saas-section-companies" class="saas-sub-section hidden space-y-4">
+            <div class="glass-panel p-6 border-slate-800 space-y-4">
+              
+              <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                <div>
+                  <h3 class="font-bold text-white text-base flex items-center gap-2">
+                    <i data-lucide="building" class="w-5 h-5 text-amber-400"></i>
+                    Gestion des Entreprises & Abonnements Clients (48)
+                  </h3>
+                  <p class="text-xs text-slate-400">Supervision des comptes client, statut des essais, formules souscrites et contrôles d'accès.</p>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                  <select id="company-status-filter" onchange="filterCompanyTable()" class="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-amber-500">
+                    <option value="all">Tous les Statuts (48)</option>
+                    <option value="active" selected>Actives (42)</option>
+                    <option value="expired">Essais Expirés (4)</option>
+                    <option value="suspended">Comptes Suspendus (2)</option>
+                  </select>
+                  <button onclick="showToast('Nouvelle Entreprise', 'Ouverture du formulaire d\'onboarding d\'une nouvelle entreprise.', 'info')" class="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs transition">
+                    + Ajouter une Entreprise
+                  </button>
+                </div>
+              </div>
+
+              <!-- TABLEAU DES ENTREPRISES -->
+              <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                  <thead>
+                    <tr class="text-slate-400 border-b border-slate-800/80 font-mono text-[11px]">
+                      <th class="pb-2.5 font-semibold">Nom de l'Entreprise</th>
+                      <th class="pb-2.5 font-semibold">Formule</th>
+                      <th class="pb-2.5 font-semibold">Employés Actifs</th>
+                      <th class="pb-2.5 font-semibold">Revenu Mensuel</th>
+                      <th class="pb-2.5 font-semibold">Statut du Compte</th>
+                      <th class="pb-2.5 font-semibold text-right">Actions Admin</th>
+                    </tr>
+                  </thead>
+                  <tbody id="company-table-body" class="divide-y divide-slate-800/40 text-slate-300">
+                    <tr class="hover:bg-slate-800/30 transition">
+                      <td class="py-3 font-bold text-white flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                        Winner Digital SARL
+                      </td>
+                      <td><span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono text-[10px] border border-amber-500/20">Pro</span></td>
+                      <td class="font-mono">85 emp.</td>
+                      <td class="font-mono text-emerald-400 font-bold">350.000 FCFA</td>
+                      <td><span class="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold text-[10px] border border-emerald-500/20">Active</span></td>
+                      <td class="text-right space-x-2">
+                        <button onclick="toggleCompanyStatus('Winner Digital SARL', 'suspend')" class="px-2 py-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 font-semibold text-[10px] border border-red-500/20 transition">Suspendre</button>
+                      </td>
+                    </tr>
+                    <tr class="hover:bg-slate-800/30 transition">
+                      <td class="py-3 font-bold text-white flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                        Ivoire BTP & Construction
+                      </td>
+                      <td><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono text-[10px] border border-emerald-500/20">Entreprise</span></td>
+                      <td class="font-mono">320 emp.</td>
+                      <td class="font-mono text-emerald-400 font-bold">750.000 FCFA</td>
+                      <td><span class="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold text-[10px] border border-emerald-500/20">Active</span></td>
+                      <td class="text-right space-x-2">
+                        <button onclick="toggleCompanyStatus('Ivoire BTP', 'suspend')" class="px-2 py-1 rounded bg-red-500/10 hover:bg-red-500/20 text-red-400 font-semibold text-[10px] border border-red-500/20 transition">Suspendre</button>
+                      </td>
+                    </tr>
+                    <tr class="hover:bg-slate-800/30 transition">
+                      <td class="py-3 font-bold text-white flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-orange-400"></span>
+                        Batimat Côte d'Ivoire
+                      </td>
+                      <td><span class="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 font-mono text-[10px] border border-cyan-500/20">Starter (Essai)</span></td>
+                      <td class="font-mono">18 emp.</td>
+                      <td class="font-mono text-slate-400 font-bold">0 FCFA (Essai)</td>
+                      <td><span class="px-2.5 py-0.5 rounded-full bg-orange-500/10 text-orange-400 font-semibold text-[10px] border border-orange-500/20">Essai Expiré</span></td>
+                      <td class="text-right space-x-2">
+                        <button onclick="showToast('Relance Commerciale', 'Email et appel de relance envoyés à Batimat.', 'info')" class="px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-semibold text-[10px] border border-amber-500/20 transition">Relancer</button>
+                      </td>
+                    </tr>
+                    <tr class="hover:bg-slate-800/30 transition">
+                      <td class="py-3 font-bold text-white flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-red-400"></span>
+                        Trans-Afrique Transit & Fret
+                      </td>
+                      <td><span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono text-[10px] border border-amber-500/20">Pro</span></td>
+                      <td class="font-mono">45 emp.</td>
+                      <td class="font-mono text-red-400 font-bold">350.000 FCFA</td>
+                      <td><span class="px-2.5 py-0.5 rounded-full bg-red-500/10 text-red-400 font-semibold text-[10px] border border-red-500/20">Suspendu (Impayé)</span></td>
+                      <td class="text-right space-x-2">
+                        <button onclick="toggleCompanyStatus('Trans-Afrique', 'activate')" class="px-2 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-semibold text-[10px] border border-emerald-500/20 transition">Réactiver</button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
 
-          <div class="bg-black/90 p-4 rounded-xl border border-slate-800 font-mono text-xs text-slate-300 space-y-2 max-h-72 overflow-y-auto">
-            <div class="text-emerald-400">[SYSTEM 13:19:02] NestJS API Server: Healthcheck OK (0.4ms latency)</div>
-            <div class="text-cyan-400">[PRISMA 13:18:44] Database Query: SELECT * FROM "Tenant" WHERE status = 'ACTIVE' (1.2ms)</div>
-            <div class="text-slate-400">[AUTH 13:17:10] Session Refresh for RH Admin rh@votreentreprise.com</div>
-            <div class="text-emerald-400">[SECURITY 13:15:30] Anti-GPS Spoofing Shield: 0 fraudulent requests detected</div>
-            <div class="text-amber-400">[REDIS 13:10:00] Cache Purged & Synchronized for 42 Tenants</div>
+          <!-- ==================== SUB-SECTION 3: PAIEMENTS & FACTURES ==================== -->
+          <div id="saas-section-payments" class="saas-sub-section hidden space-y-4">
+            <div class="glass-panel p-6 border-slate-800 space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+                  <i data-lucide="credit-card" class="w-4 h-4 text-emerald-400"></i>
+                  Historique des Paiements & Transactions SaaS
+                </h3>
+                <span class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Recouvrement : 98.2%</span>
+              </div>
+
+              <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                  <thead>
+                    <tr class="text-slate-400 border-b border-slate-800/80 font-mono text-[11px]">
+                      <th class="pb-2 font-semibold">N° Transaction</th>
+                      <th class="pb-2 font-semibold">Client</th>
+                      <th class="pb-2 font-semibold">Moyen de Paiement</th>
+                      <th class="pb-2 font-semibold">Montant</th>
+                      <th class="pb-2 font-semibold text-right">Statut</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-800/40 text-slate-300">
+                    <tr class="hover:bg-slate-800/30 transition">
+                      <td class="py-2.5 font-mono text-amber-400">#TX-94012</td>
+                      <td class="font-bold text-white">Winner Digital SARL</td>
+                      <td>Orange Money / Wave</td>
+                      <td class="font-mono text-emerald-400 font-bold">350.000 FCFA</td>
+                      <td class="text-right"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-semibold">Succès • Reçu émis</span></td>
+                    </tr>
+                    <tr class="hover:bg-slate-800/30 transition">
+                      <td class="py-2.5 font-mono text-amber-400">#TX-94011</td>
+                      <td class="font-bold text-white">Ivoire BTP & Construction</td>
+                      <td>Virement Bancaire (NSIA)</td>
+                      <td class="font-mono text-emerald-400 font-bold">750.000 FCFA</td>
+                      <td class="text-right"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-semibold">Succès • Reçu émis</span></td>
+                    </tr>
+                    <tr class="hover:bg-slate-800/30 transition">
+                      <td class="py-2.5 font-mono text-amber-400">#TX-94010</td>
+                      <td class="font-bold text-white">Sahel Logistique Abidjan</td>
+                      <td>MTN Mobile Money</td>
+                      <td class="font-mono text-emerald-400 font-bold">150.000 FCFA</td>
+                      <td class="text-right"><span class="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-semibold">Succès • Reçu émis</span></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
+
+          <!-- ==================== SUB-SECTION 4: TICKETS SUPPORT ==================== -->
+          <div id="saas-section-tickets" class="saas-sub-section hidden space-y-4">
+            <div class="glass-panel p-6 border-slate-800 space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+                  <i data-lucide="life-buoy" class="w-4 h-4 text-purple-400"></i>
+                  Tickets de Support Client & Assistance Technique (3 Ouverts)
+                </h3>
+                <span class="text-[10px] font-mono text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">Temps Réponse Moyen : 8 min</span>
+              </div>
+
+              <div class="space-y-3">
+                <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <div class="flex items-center gap-2 text-xs font-bold text-white">
+                      <span class="px-2 py-0.5 rounded bg-red-500/20 text-red-400 font-mono text-[10px]">Urgent</span>
+                      [#TK-1082] Demande d'ajout de 50 licences supplémentaires
+                    </div>
+                    <div class="text-[11px] text-slate-400 mt-1">Client: Ivoire BTP • Il y a 14 min par M. Touré (Directeur RH)</div>
+                  </div>
+                  <button onclick="showToast('Ticket Résolu', 'Licences ajoutées et notification envoyée au client.', 'success')" class="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition">
+                    Répondre & Traiter
+                  </button>
+                </div>
+
+                <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <div class="flex items-center gap-2 text-xs font-bold text-white">
+                      <span class="px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono text-[10px]">Moyen</span>
+                      [#TK-1081] Question sur la configuration des heures supplémentaires
+                    </div>
+                    <div class="text-[11px] text-slate-400 mt-1">Client: Winner Digital • Il y a 45 min par Mme Koné</div>
+                  </div>
+                  <button onclick="showToast('Ticket Résolu', 'Guide envoyé au client.', 'success')" class="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition">
+                    Répondre & Traiter
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================== SUB-SECTION 5: LOGS SYSTÈME ==================== -->
+          <div id="saas-section-logs" class="saas-sub-section hidden space-y-4">
+            <div class="glass-panel p-6 border-slate-800 space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+                  <i data-lucide="terminal" class="w-4 h-4 text-emerald-400"></i>
+                  Journaux Système & Audit de Sécurité en Direct
+                </h3>
+                <span class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Flux WebSocket Actif</span>
+              </div>
+
+              <div class="bg-black/90 p-4 rounded-xl border border-slate-800 font-mono text-xs text-slate-300 space-y-2 max-h-72 overflow-y-auto">
+                <div class="text-emerald-400">[SYSTEM 13:19:02] NestJS API Server: Healthcheck OK (0.4ms latency)</div>
+                <div class="text-cyan-400">[PRISMA 13:18:44] Database Query: SELECT * FROM "Tenant" WHERE status = 'ACTIVE' (1.2ms)</div>
+                <div class="text-slate-400">[AUTH 13:17:10] Session Refresh for RH Admin rh@votreentreprise.com</div>
+                <div class="text-emerald-400">[SECURITY 13:15:30] Anti-GPS Spoofing Shield: 0 fraudulent requests detected</div>
+                <div class="text-amber-400">[REDIS 13:10:00] Cache Purged & Synchronized for 42 Tenants</div>
+              </div>
+            </div>
+          </div>
+
         </div>
+
       </div>
 
     </section>
