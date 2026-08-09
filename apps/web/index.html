@@ -90,38 +90,39 @@
     </div>
   </header>
 
-  <!-- MAIN NAVIGATION BAR -->
-  <nav class="max-w-7xl mx-auto px-4 mt-4 sticky top-12 z-40">
-    <div class="glass-pill px-4 py-2.5 flex items-center justify-between shadow-2xl border border-[var(--border-subtle)] flex-wrap gap-2">
-      <div class="flex items-center space-x-3 cursor-pointer" onclick="switchView('hero')">
-        <div class="w-9 h-9 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 glow-amber">
-          <i data-lucide="shield-check" class="w-5 h-5"></i>
+  <!-- MAIN NAVIGATION BAR (RESPONSIVE WITH BURGER MENU) -->
+  <nav class="max-w-6xl mx-auto px-4 mt-3 sticky top-12 z-40">
+    <div class="glass-pill px-4 py-2 flex items-center justify-between shadow-xl border border-[var(--border-subtle)] relative">
+      <!-- Logo & Brand -->
+      <div class="flex items-center space-x-2.5 cursor-pointer" onclick="switchView('hero')">
+        <div class="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 glow-amber shrink-0">
+          <i data-lucide="shield-check" class="w-4 h-4"></i>
         </div>
         <div>
-          <h1 class="font-bold text-sm tracking-tight text-[var(--color-offwhite)] flex items-center gap-1.5">
+          <h1 class="font-bold text-xs sm:text-sm tracking-tight text-[var(--color-offwhite)] flex items-center gap-1.5">
             Winner Pointage
-            <span class="text-[10px] font-mono font-normal text-emerald-400 px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">Production</span>
+            <span class="text-[9px] font-mono font-normal text-emerald-400 px-1.5 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/20">v2.4</span>
           </h1>
-          <p class="text-[10px] text-[var(--color-muted)] font-mono">Plateforme SaaS de Pointage Anti-Fraude</p>
+          <p class="text-[9px] text-[var(--color-muted)] font-mono hidden sm:block">Plateforme SaaS Anti-Fraude</p>
         </div>
       </div>
 
-      <!-- Navigation Views Selector -->
-      <div class="flex items-center space-x-1.5 bg-slate-900/90 p-1 rounded-full border border-slate-800">
+      <!-- DESKTOP NAVIGATION VIEWS (hidden on mobile, visible on md+) -->
+      <div class="hidden md:flex items-center space-x-1 bg-slate-900/90 p-1 rounded-full border border-slate-800/80">
         <button id="btn-view-hero" onclick="switchView('hero')" class="nav-view-btn px-3 py-1 rounded-full text-xs font-semibold text-slate-300 hover:text-white transition">
           Accueil Vitrine
         </button>
-        <button id="btn-view-saas" onclick="switchView('saas')" class="nav-view-btn px-3 py-1 rounded-full text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 transition flex items-center gap-1.5 glow-amber">
+        <button id="btn-view-saas" onclick="switchView('saas')" class="nav-view-btn px-3 py-1 rounded-full text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 transition flex items-center gap-1.5">
           <i data-lucide="line-chart" class="w-3.5 h-3.5"></i>
-          Mon Dashboard SaaS (ARR/CA)
+          Mon Dashboard SaaS
         </button>
         <button id="btn-view-dashboard" onclick="switchView('dashboard')" class="nav-view-btn px-3 py-1 rounded-full text-xs font-semibold text-slate-300 hover:text-white transition">
           Cockpit Client RH
         </button>
       </div>
 
-      <!-- Action Buttons -->
-      <div class="flex items-center space-x-2">
+      <!-- DESKTOP ACTION BUTTONS (hidden on mobile, visible on md+) -->
+      <div class="hidden md:flex items-center space-x-2">
         <button id="nav-login-btn" onclick="openAuthModal('login')" class="px-3.5 py-1.5 rounded-full bg-[var(--border-subtle)] hover:bg-[var(--border-accent)] text-[var(--color-offwhite)] text-xs font-semibold border border-[var(--border-subtle)] transition">
           Se Connecter
         </button>
@@ -129,11 +130,44 @@
           Inscription
         </button>
       </div>
+
+      <!-- MOBILE HAMBURGER BUTTON (visible on mobile only) -->
+      <button id="mobile-menu-btn" onclick="toggleMobileMenu()" class="md:hidden p-2 rounded-lg bg-slate-900/90 text-amber-400 border border-slate-800 hover:bg-slate-800 transition focus:outline-none" aria-label="Menu Mobile">
+        <i data-lucide="menu" class="w-5 h-5"></i>
+      </button>
+    </div>
+
+    <!-- MOBILE BURGER MENU DROPDOWN -->
+    <div id="mobile-menu" class="hidden md:hidden mt-2 glass-panel p-4 space-y-3 border border-slate-800/80 shadow-2xl rounded-2xl animate-in fade-in slide-in-from-top-2 duration-200">
+      <div class="text-[10px] font-mono font-semibold text-slate-500 uppercase tracking-wider px-2">Vues Principales</div>
+      <div class="space-y-1">
+        <button onclick="switchView('hero')" class="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-slate-800/80 flex items-center justify-between">
+          <span>Accueil Vitrine</span>
+          <i data-lucide="home" class="w-4 h-4 text-slate-400"></i>
+        </button>
+        <button onclick="switchView('saas')" class="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 flex items-center justify-between">
+          <span>Mon Dashboard SaaS (ARR/CA)</span>
+          <i data-lucide="line-chart" class="w-4 h-4 text-amber-400"></i>
+        </button>
+        <button onclick="switchView('dashboard')" class="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-slate-800/80 flex items-center justify-between">
+          <span>Cockpit Client RH</span>
+          <i data-lucide="layout-dashboard" class="w-4 h-4 text-slate-400"></i>
+        </button>
+      </div>
+
+      <div class="border-t border-slate-800 pt-3 space-y-2">
+        <button id="mobile-nav-login-btn" onclick="openAuthModal('login'); closeMobileMenu();" class="w-full py-2.5 rounded-xl bg-slate-800/90 text-slate-200 text-xs font-semibold border border-slate-700 text-center block">
+          Se Connecter
+        </button>
+        <button id="mobile-nav-register-btn" onclick="openAuthModal('register'); closeMobileMenu();" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-emerald-500 text-white text-xs font-bold text-center block shadow-lg shadow-amber-500/20">
+          Inscription
+        </button>
+      </div>
     </div>
   </nav>
 
   <!-- CONTAINER MAIN CONTENT -->
-  <main class="max-w-7xl mx-auto px-4 py-6">
+  <main class="max-w-6xl mx-auto px-4 sm:px-6 py-6 overflow-x-hidden">
 
     <!-- ==================== VIEW 1: HERO LANDING PAGE SAAS ==================== -->
     <section id="view-hero" class="view-section space-y-16 py-6">

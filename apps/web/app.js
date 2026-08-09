@@ -188,12 +188,29 @@ function switchView(viewName) {
     targetBtn.classList.remove('text-slate-300');
   }
 
+  closeMobileMenu();
+
   if (window.lucide) {
     window.lucide.createIcons();
   }
 
   // Smooth scroll top
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function toggleMobileMenu() {
+  const menu = document.getElementById('mobile-menu');
+  if (menu) {
+    menu.classList.toggle('hidden');
+    if (window.lucide) window.lucide.createIcons();
+  }
+}
+
+function closeMobileMenu() {
+  const menu = document.getElementById('mobile-menu');
+  if (menu) {
+    menu.classList.add('hidden');
+  }
 }
 
 // Section Switcher within Super Admin SaaS Dashboard
@@ -840,9 +857,12 @@ function handleAuthSubmit(e) {
   
   closeAuthModal();
   
-  // Update Nav Login & Register Buttons state
+  // Update Nav Login & Register Buttons state (Desktop & Mobile)
   const loginBtn = document.getElementById('nav-login-btn');
   const registerBtn = document.getElementById('nav-register-btn');
+  const mobileLoginBtn = document.getElementById('mobile-nav-login-btn');
+  const mobileRegisterBtn = document.getElementById('mobile-nav-register-btn');
+
   if (loginBtn) {
     loginBtn.innerText = 'Déconnexion RH';
     loginBtn.onclick = handleLogout;
@@ -850,6 +870,14 @@ function handleAuthSubmit(e) {
   }
   if (registerBtn) {
     registerBtn.classList.add('hidden');
+  }
+  if (mobileLoginBtn) {
+    mobileLoginBtn.innerText = 'Déconnexion RH';
+    mobileLoginBtn.onclick = () => { handleLogout(); closeMobileMenu(); };
+    mobileLoginBtn.className = 'w-full py-2.5 rounded-xl bg-red-500/20 text-red-400 text-xs font-semibold border border-red-500/30 text-center block';
+  }
+  if (mobileRegisterBtn) {
+    mobileRegisterBtn.classList.add('hidden');
   }
 
   switchView('dashboard');
@@ -862,6 +890,9 @@ function handleLogout() {
   
   const loginBtn = document.getElementById('nav-login-btn');
   const registerBtn = document.getElementById('nav-register-btn');
+  const mobileLoginBtn = document.getElementById('mobile-nav-login-btn');
+  const mobileRegisterBtn = document.getElementById('mobile-nav-register-btn');
+
   if (loginBtn) {
     loginBtn.innerText = 'Se Connecter';
     loginBtn.onclick = () => openAuthModal('login');
@@ -869,6 +900,14 @@ function handleLogout() {
   }
   if (registerBtn) {
     registerBtn.classList.remove('hidden');
+  }
+  if (mobileLoginBtn) {
+    mobileLoginBtn.innerText = 'Se Connecter';
+    mobileLoginBtn.onclick = () => { openAuthModal('login'); closeMobileMenu(); };
+    mobileLoginBtn.className = 'w-full py-2.5 rounded-xl bg-slate-800/90 text-slate-200 text-xs font-semibold border border-slate-700 text-center block';
+  }
+  if (mobileRegisterBtn) {
+    mobileRegisterBtn.classList.remove('hidden');
   }
 
   switchView('hero');
