@@ -7,6 +7,9 @@ import { PrismaService } from './common/prisma/prisma.service.js';
 import { RequestContextMiddleware } from './common/middleware/request-context.middleware.js';
 import { HealthController } from './health/health.controller.js';
 
+import { SupabaseModule } from './common/supabase/supabase.module.js';
+import { SupabaseService } from './common/supabase/supabase.service.js';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -23,10 +26,11 @@ import { HealthController } from './health/health.controller.js';
     // 20/min/employe) sont poses par route en phase 1, avec un stockage Redis
     // pour qu'ils tiennent sur plusieurs instances.
     ThrottlerModule.forRoot([{ name: 'global', ttl: 60_000, limit: 100 }]),
+    SupabaseModule,
   ],
   controllers: [HealthController],
-  providers: [PrismaService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
-  exports: [PrismaService],
+  providers: [PrismaService, SupabaseService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
+  exports: [PrismaService, SupabaseService],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {

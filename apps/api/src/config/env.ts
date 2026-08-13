@@ -70,6 +70,11 @@ const envSchema = z
 
     MAPTILER_API_KEY: z.string().optional(),
 
+    SUPABASE_URL: z.string().optional(),
+    SUPABASE_ANON_KEY: z.string().optional(),
+    SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+    SUPABASE_ACCESS_TOKEN: z.string().optional(),
+
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   })
   .superRefine((env, ctx) => {

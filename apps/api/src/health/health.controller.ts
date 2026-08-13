@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service.js';
+import { SupabaseService } from '../common/supabase/supabase.service.js';
 
 /**
  * Sondes de sante.
@@ -13,7 +14,10 @@ import { PrismaService } from '../common/prisma/prisma.service.js';
  */
 @Controller('health')
 export class HealthController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly supabase: SupabaseService,
+  ) {}
 
   @Get('live')
   live(): { status: 'ok' } {
@@ -22,12 +26,18 @@ export class HealthController {
 
   @Get('ready')
   async ready(): Promise<{ status: 'ok' | 'degraded'; checks: Record<string, boolean> }> {
-    const checks: Record<string, boolean> = { database: false };
+    const checks: Record<string, boolean> = { database: false, supabase: false };
 
     try {
       checks.database = await this.prisma.ping();
     } catch {
       checks.database = false;
+    }
+
+    try {
+      checks.supabase = this.supabase.isConfigured() ? await this.supabase.ping() : false;
+    } catch {
+      checks.supabase = false;
     }
 
     const allUp = Object.values(checks).every(Boolean);

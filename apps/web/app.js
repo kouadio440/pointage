@@ -15,57 +15,115 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
-// Production Application State
+// Supabase Client Initialization (if window.supabase is loaded)
+let supabaseClient = null;
+const SUPABASE_URL = 'https://hwfcshufofzfjinlvdya.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh3ZmNzaHVmb2Z6Zmppbmx2ZHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYzMDUyOTcsImV4cCI6MjEwMTg4MTI5N30.5oJlwVaoGXTAqMccIDaK4HRPv4w4-sqL4XJT1mWSsZk';
+
+if (window.supabase && typeof window.supabase.createClient === 'function') {
+  try {
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    console.log('[Supabase] Initialisé avec succès sur Winner Pointage Web.');
+  } catch (err) {
+    console.warn('[Supabase] Erreur d\'initialisation client :', err);
+  }
+}
+
+// Production Application State (Supabase Single Source of Truth)
 const state = {
   activeView: 'hero',
   activeSection: 'overview',
   isAuthenticated: false,
   currentUser: null,
   company: {
-    name: 'SaaS Entreprise (Exemple)',
+    name: 'SaaS Entreprise',
     sector: 'Services, Industrie & Commerce',
     siteName: 'Siège Social — Zone Principale',
     coordinates: { lat: 5.359942, lng: -4.008311 },
     geofenceRadius: 150
   },
-  employees: [
-    { id: 1, name: 'Marc KOUASSI', role: 'Chef d\'Atelier & Production', site: 'Siège Principal', status: 'Présent', arriveTime: '07:58', method: 'GPS + Selfie', distance: '14m', confidence: 99.2, avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80' },
-    { id: 2, name: 'Awa KONE', role: 'Responsable Qualité', site: 'Siège Principal', status: 'Présent', arriveTime: '08:02', method: 'GPS + Selfie', distance: '12m', confidence: 98.4, avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80' },
-    { id: 3, name: 'Jean-Luc BAMBA', role: 'Commercial Terrain', site: 'Missions Client', status: 'Retard', arriveTime: '08:18', method: 'GPS Mobile Client', distance: 'Site Client Plateau', confidence: 96.0, avatar: 'https://images.unsplash.com/photo-1531384441138-2736e62e0919?w=150&auto=format&fit=crop&q=80' },
-    { id: 4, name: 'Sarah DIABATE', role: 'Designer & Marketing', site: 'Siège Principal', status: 'Présent', arriveTime: '07:50', method: 'GPS + Selfie', distance: '8m', confidence: 99.5, avatar: 'https://images.unsplash.com/photo-1589156280159-27698a70f29e?w=150&auto=format&fit=crop&q=80' },
-    { id: 5, name: 'Koffi YAO', role: 'Technicien de Maintenance', site: 'Siège Principal', status: 'Présent', arriveTime: '07:55', method: 'QR Kiosque', distance: '0m (Kiosque)', confidence: 100.0, avatar: 'https://images.unsplash.com/photo-1522529599102-193c0d76b5b6?w=150&auto=format&fit=crop&q=80' },
-    { id: 6, name: 'Grace TOURE', role: 'Comptable & RH', site: 'Siège Principal', status: 'En Congé', arriveTime: '-', method: '-', distance: '-', confidence: 0, avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=150&auto=format&fit=crop&q=80' },
-    { id: 7, name: 'Ibrahim SANOGO', role: 'Logistique & Expédition', site: 'Siège Principal', status: 'Présent', arriveTime: '07:45', method: 'GPS + Selfie', distance: '22m', confidence: 97.8, avatar: 'https://images.unsplash.com/photo-1542385151-efd9000785a0?w=150&auto=format&fit=crop&q=80' },
-    { id: 8, name: 'Patricia EHOUNOU', role: 'Assistante Commerciale', site: 'Siège Principal', status: 'Présent', arriveTime: '07:59', method: 'GPS + Selfie', distance: '10m', confidence: 98.9, avatar: 'https://images.unsplash.com/photo-1567186937675-a5131c8a89ea?w=150&auto=format&fit=crop&q=80' },
-    { id: 9, name: 'Emmanuel ADOU', role: 'Opérateur Découpe', site: 'Siège Principal', status: 'Présent', arriveTime: '08:00', method: 'QR Kiosque', distance: '0m', confidence: 100.0, avatar: 'https://images.unsplash.com/photo-1507152832244-10d45c7eda57?w=150&auto=format&fit=crop&q=80' },
-    { id: 10, name: 'Fatou CISSE', role: 'Stagiaire Marketing', site: 'Siège Principal', status: 'Absent', arriveTime: '-', method: '-', distance: '-', confidence: 0, avatar: 'https://images.unsplash.com/photo-1534751516642-a171e261452a?w=150&auto=format&fit=crop&q=80' }
-  ],
-  leaves: [
-    { id: 101, employee: 'Grace TOURE', type: 'Congé Payé Annuel', period: '04/08/2026 au 08/08/2026', days: 5, reason: 'Congé annuel légal', status: 'Approuvé' },
-    { id: 102, employee: 'Jean-Luc BAMBA', type: 'Permission Exceptionnelle', period: '12/08/2026', days: 1, reason: 'Rendez-vous administratif', status: 'En attente' }
-  ],
-  overtimes: [
-    { id: 201, employee: 'Marc KOUASSI', date: '05/08/2026', slot: '17:00 - 19:30', duration: '2.5 h', multiplier: '+25%', reason: 'Surcroît production coffrets cadeaux', status: 'Validé' },
-    { id: 202, employee: 'Koffi YAO', date: '04/08/2026', slot: '17:00 - 19:00', duration: '2.0 h', multiplier: '+25%', reason: 'Maintenance presse d\'impression', status: 'Validé' },
-    { id: 203, employee: 'Sarah DIABATE', date: '06/08/2026', slot: '17:00 - 18:30', duration: '1.5 h', multiplier: '+25%', reason: 'Finalisation Maquettes Packaging Luxe', status: 'En attente' }
-  ],
-  latenesses: [
-    { id: 301, employee: 'Jean-Luc BAMBA', date: '06/08/2026', scheduled: '08:00', actual: '08:18', minutes: 18, justification: 'Embouteillage axe Yopougon - Plateau', status: 'En attente validation' }
-  ],
+  employees: [],
+  companies: [],
+  leaves: [],
+  overtimes: [],
+  latenesses: [],
   qrTimer: 30
 };
 
 // Initialize Application
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   initIcons();
   startLiveClock();
   startQRCountdown();
-  switchView('hero');
+  
+  const initialHash = window.location.hash.replace('#', '');
+  if (['hero', 'saas', 'dashboard', 'employee'].includes(initialHash)) {
+    switchView(initialHash);
+  } else {
+    switchView('hero');
+  }
+
   renderDashboard();
   renderStaffGrid();
   renderSaasCalendar();
+  renderSaasDashboard();
   setTheme('terracotta');
   updateRoiCalculator();
+
+  // Restaurer la session et charger les données réelles Supabase au démarrage
+  if (supabaseClient) {
+    try {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (session && session.user) {
+        state.isAuthenticated = true;
+        const userId = session.user.id;
+        const email = session.user.email;
+
+        // Récupérer le rôle réel de l'utilisateur dans Supabase (company_memberships ou users)
+        const { data: memberships } = await supabaseClient
+          .from('company_memberships')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('status', 'ACTIVE');
+
+        if (memberships && memberships.length > 0) {
+          const m = memberships[0];
+          state.currentUser = { id: userId, email: email, fullName: email.split('@')[0].toUpperCase() };
+
+          let compName = state.company.name;
+          if (m.company_id) {
+            const { data: comp } = await supabaseClient.from('companies').select('name').eq('id', m.company_id).maybeSingle();
+            if (comp && comp.name) compName = comp.name;
+          }
+
+          selectCompanyWorkspace(m.company_id, m.role, m.attendance_required, compName);
+        } else {
+          const { data: dbUser } = await supabaseClient
+            .from('users')
+            .select('*')
+            .eq('id', userId)
+            .maybeSingle();
+
+          const companyId = dbUser ? dbUser.company_id : null;
+          const userRole = dbUser ? (dbUser.role || 'EMPLOYEE') : 'EMPLOYEE';
+          const attReq = dbUser ? (dbUser.attendance_required !== false) : true;
+          let compName = state.company.name;
+
+          if (companyId) {
+            const { data: comp } = await supabaseClient.from('companies').select('name').eq('id', companyId).maybeSingle();
+            if (comp && comp.name) compName = comp.name;
+          }
+
+          state.currentUser = { id: userId, email: email, fullName: (dbUser && dbUser.full_name) ? dbUser.full_name : email.split('@')[0].toUpperCase() };
+          selectCompanyWorkspace(companyId, userRole, attReq, compName);
+        }
+        console.log('[Supabase Auth] Session restaurée pour :', email, 'Rôle:', state.currentUserRole);
+      }
+    } catch (e) {
+      console.warn('[Supabase Auth] Erreur vérification session :', e);
+    }
+    loadSupabaseData();
+  }
 });
 
 // Toast Notification System (Replaces native browser alerts)
@@ -165,14 +223,46 @@ function startLiveClock() {
 
 // View Switcher (Landing vs Dashboard vs Employee vs Manager)
 function switchView(viewName) {
-  // Security Gatekeeper: Require authenticated session for RH Cockpit (CWE-306 / CWE-602)
-  if (viewName === 'dashboard' && !state.isAuthenticated) {
-    showToast('Accès Restreint', 'Veuillez vous connecter à votre Espace Client RH pour accéder au Cockpit.', 'info');
+  const userRole = (state.currentUserRole || '').toUpperCase();
+  const isEmployee = userRole === 'EMPLOYEE';
+
+  // Security Gatekeeper 1: Require authenticated session for RH Cockpit & Employee Dashboard (CWE-306 / CWE-602)
+  if ((viewName === 'dashboard' || viewName === 'employee') && !state.isAuthenticated) {
+    showToast('Accès Sécurisé', `Veuillez vous connecter à votre compte ${viewName === 'employee' ? 'Employé' : 'RH/CEO'} pour accéder à cet espace.`, 'info');
     openAuthModal('login');
+    if (viewName === 'employee') setAuthRole('employee');
+    return;
+  }
+
+  // Security Gatekeeper 2: Cockpit Client RH (dashboard) est STRICTEMENT réservé aux CEO / RH / Managers
+  if (viewName === 'dashboard' && state.isAuthenticated && isEmployee) {
+    showToast(
+      'Accès Restreint ⛔',
+      'Le Cockpit Client RH est exclusivement réservé aux Dirigeants (CEO) et Responsables RH. Vous avez été réorienté vers votre Espace Employé.',
+      'warning',
+      6000
+    );
+    switchView('employee');
+    return;
+  }
+
+  // Security Gatekeeper 3: Espace Employé (employee) est STRICTEMENT réservé aux Employés
+  // Les CEO / RH / Managers doivent IMPÉRATIVEMENT utiliser le Cockpit Client RH (#dashboard)
+  if (viewName === 'employee' && state.isAuthenticated && !isEmployee) {
+    showToast(
+      'Espace Dirigeant 👑',
+      'En tant que CEO / Responsable RH, votre espace de travail principal est le Cockpit Client RH (#dashboard).',
+      'info',
+      6000
+    );
+    switchView('dashboard');
     return;
   }
 
   state.activeView = viewName;
+  if (window.location.hash !== `#${viewName}`) {
+    window.history.replaceState(null, '', `#${viewName}`);
+  }
 
   document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
   document.querySelectorAll('.nav-view-btn').forEach(btn => {
@@ -191,6 +281,8 @@ function switchView(viewName) {
 
   if (viewName === 'saas') {
     renderSaasCalendar();
+  } else if (viewName === 'employee') {
+    renderEmployeeDashboard();
   }
 
   closeMobileMenu();
@@ -218,26 +310,13 @@ function closeMobileMenu() {
   }
 }
 
-// SAAS CALENDAR STATE & DATA
+// SAAS CALENDAR STATE & DATA (Supabase Single Source of Truth)
 const calendarState = {
-  currentDate: new Date(2026, 7, 9), // August 9, 2026
-  selectedDate: 9,
+  currentDate: new Date(),
+  selectedDate: new Date().getDate(),
   activeFilter: 'all',
-  viewMode: 'list', // 'list' or 'timeline'
-  events: [
-    { id: 1, day: 2, timeStart: "08:30", timeEnd: "09:30", title: "Prélèvement Mensuel Starter", client: "Sahel Logistique Abidjan", amount: "150.000 FCFA", type: "billing", badge: "Encaissé", color: "emerald", status: "Done" },
-    { id: 2, day: 3, timeStart: "10:00", timeEnd: "11:30", title: "Expiration Offre Découverte", client: "Société Ivoirienne de Négoce", amount: "Relance à faire", type: "trial", badge: "Essai Expiré", color: "orange", status: "Pending" },
-    { id: 3, day: 5, timeStart: "14:00", timeEnd: "15:30", title: "Expiration Période d'Essai", client: "Batimat Côte d'Ivoire", amount: "Convertir 150k", type: "trial", badge: "Urgent", color: "orange", status: "Pending" },
-    { id: 4, day: 8, timeStart: "09:00", timeEnd: "10:00", title: "Prélèvement Formule Starter", client: "ProTech Solutions", amount: "150.000 FCFA", type: "billing", badge: "Payé", color: "emerald", status: "Done" },
-    { id: 5, day: 9, timeStart: "11:00", timeEnd: "12:30", title: "Paiement Abonnement Formule Pro", client: "Winner Digital SARL", amount: "350.000 FCFA", type: "billing", badge: "Aujourd'hui", color: "amber", status: "Pending" },
-    { id: 6, day: 12, timeStart: "08:00", timeEnd: "10:00", title: "Maintenance & Déploiement Serveurs v2.5", client: "Plateforme Global SaaS", amount: "Système", type: "maintenance", badge: "Planifié GMT", color: "cyan", status: "System" },
-    { id: 7, day: 15, timeStart: "15:00", timeEnd: "16:30", title: "Renouvellement Contrat Annuel Groupe", client: "Ivoire BTP & Construction", amount: "750.000 FCFA", type: "contract", badge: "Grand Compte", color: "purple", status: "Pending" },
-    { id: 8, day: 18, timeStart: "10:30", timeEnd: "12:00", title: "Relance Impayé Facture #TK-840", client: "Trans-Afrique Transit", amount: "350.000 FCFA", type: "trial", badge: "Compte Suspendu", color: "orange", status: "Pending" },
-    { id: 9, day: 20, timeStart: "13:00", timeEnd: "14:30", title: "Audit Trimestriel Détection Faux GPS", client: "Tous les 42 Tenants", amount: "Sécurité", type: "audit", badge: "Automatique", color: "emerald", status: "Done" },
-    { id: 10, day: 22, timeStart: "16:00", timeEnd: "17:30", title: "Demande d'Extension +50 Licences", client: "Grands Moulins d'Abidjan", amount: "250.000 FCFA", type: "contract", badge: "Upsell", color: "purple", status: "Pending" },
-    { id: 11, day: 25, timeStart: "09:30", timeEnd: "11:00", title: "Mise à Jour Certificats SSL & Domaines", client: "Infrastructure Cloud", amount: "Sécurité", type: "maintenance", badge: "Récurrence", color: "cyan", status: "System" },
-    { id: 12, day: 28, timeStart: "17:00", timeEnd: "18:00", title: "Génération Automatique des Factures M+1", client: "42 Entreprises Actives", amount: "4.050.000 FCFA", type: "billing", badge: "Automatique", color: "amber", status: "Pending" }
-  ]
+  viewMode: 'list',
+  events: []
 };
 
 function switchCalendarViewMode(mode) {
@@ -289,7 +368,7 @@ function closeAddEventModal() {
   if (modal) modal.classList.add('hidden');
 }
 
-function handleCreateEventSubmit(e) {
+async function handleCreateEventSubmit(e) {
   if (e) e.preventDefault();
   
   const title = document.getElementById('event-title-input')?.value || 'Nouvelle Échéance';
@@ -323,10 +402,31 @@ function handleCreateEventSubmit(e) {
   calendarState.events.push(newEvent);
   calendarState.selectedDate = day;
 
+  // Persister dans Supabase si disponible
+  if (supabaseClient) {
+    try {
+      await supabaseClient.from('calendar_events').insert({
+        day,
+        time_start: timeStart,
+        time_end: timeEnd,
+        title,
+        client,
+        amount,
+        type,
+        badge,
+        color,
+        status: 'Pending'
+      });
+      console.log('[Supabase] Événement enregistré dans public.calendar_events');
+    } catch (err) {
+      console.warn('[Supabase] Erreur d\'enregistrement d\'événement:', err);
+    }
+  }
+
   closeAddEventModal();
   renderSaasCalendar();
 
-  showToast('Échéance Programmée', `L'événement "${escapeHtml(title)}" (${timeStart} - ${timeEnd}) a été réservé avec succès.`, 'success');
+  showToast('Échéance Programmée (Supabase)', `L'événement "${escapeHtml(title)}" (${timeStart} - ${timeEnd}) a été réservé avec succès.`, 'success');
 }
 
 function deleteCalendarEvent(eventId) {
@@ -635,26 +735,36 @@ function renderDashboard() {
   // Render Live Feed Table
   const tableBody = document.getElementById('live-punch-table');
   if (tableBody) {
-    tableBody.innerHTML = state.employees.map(emp => {
-      let statusBadge = '';
-      if (emp.status === 'Présent') statusBadge = '<span class="badge-verified px-2 py-0.5 rounded text-[10px]">Présent (À l\'heure)</span>';
-      else if (emp.status === 'Retard') statusBadge = '<span class="badge-alert px-2 py-0.5 rounded text-[10px]">Retard (18m)</span>';
-      else if (emp.status === 'En Congé') statusBadge = '<span class="badge-info px-2 py-0.5 rounded text-[10px]">En Congé</span>';
-      else statusBadge = '<span class="badge-danger px-2 py-0.5 rounded text-[10px]">Absent</span>';
-
-      return `
-        <tr class="hover:bg-slate-800/40 transition">
-          <td class="p-2.5 flex items-center space-x-2">
-            <img src="${escapeHtml(emp.avatar)}" class="w-6 h-6 rounded-full object-cover border border-slate-700" alt="${escapeHtml(emp.name)}" />
-            <span class="font-bold text-white">${escapeHtml(emp.name)}</span>
+    if (state.employees.length === 0) {
+      tableBody.innerHTML = `
+        <tr>
+          <td colspan="5" class="p-6 text-center text-slate-500 text-xs font-mono">
+            Aucun pointage en direct enregistré dans Supabase. Les nouveaux pointages s'afficheront ici.
           </td>
-          <td class="p-2.5 font-mono text-slate-300">${escapeHtml(emp.arriveTime)}</td>
-          <td class="p-2.5 text-slate-400">${escapeHtml(emp.method)}</td>
-          <td class="p-2.5 text-emerald-400">${escapeHtml(emp.distance)}</td>
-          <td class="p-2.5">${statusBadge}</td>
         </tr>
       `;
-    }).join('');
+    } else {
+      tableBody.innerHTML = state.employees.map(emp => {
+        let statusBadge = '';
+        if (emp.status === 'Présent') statusBadge = '<span class="badge-verified px-2 py-0.5 rounded text-[10px]">Présent (À l\'heure)</span>';
+        else if (emp.status === 'Retard') statusBadge = '<span class="badge-alert px-2 py-0.5 rounded text-[10px]">Retard</span>';
+        else if (emp.status === 'En Congé') statusBadge = '<span class="badge-info px-2 py-0.5 rounded text-[10px]">En Congé</span>';
+        else statusBadge = '<span class="badge-danger px-2 py-0.5 rounded text-[10px]">Absent</span>';
+
+        return `
+          <tr class="hover:bg-slate-800/40 transition">
+            <td class="p-2.5 flex items-center space-x-2">
+              <img src="${escapeHtml(emp.avatar)}" class="w-6 h-6 rounded-full object-cover border border-slate-700" alt="${escapeHtml(emp.name)}" />
+              <span class="font-bold text-white">${escapeHtml(emp.name)}</span>
+            </td>
+            <td class="p-2.5 font-mono text-slate-300">${escapeHtml(emp.arriveTime)}</td>
+            <td class="p-2.5 text-slate-400">${escapeHtml(emp.method)}</td>
+            <td class="p-2.5 text-emerald-400">${escapeHtml(emp.distance)}</td>
+            <td class="p-2.5">${statusBadge}</td>
+          </tr>
+        `;
+      }).join('');
+    }
   }
 
   renderLeaveRequestsTable();
@@ -727,6 +837,11 @@ function renderLeaveRequestsTable() {
   const tbody = document.getElementById('leave-requests-table');
   if (!tbody) return;
 
+  if (state.leaves.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-500 text-xs font-mono">Aucune demande de congé enregistrée.</td></tr>`;
+    return;
+  }
+
   tbody.innerHTML = state.leaves.map(req => `
     <tr class="hover:bg-slate-800/40 transition">
       <td class="p-3 font-bold text-white">${escapeHtml(req.employee)}</td>
@@ -754,6 +869,11 @@ function renderOvertimeTable() {
   const tbody = document.getElementById('overtime-table');
   if (!tbody) return;
 
+  if (state.overtimes.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-500 text-xs font-mono">Aucune déclaration d'heures supplémentaires.</td></tr>`;
+    return;
+  }
+
   tbody.innerHTML = state.overtimes.map(ot => `
     <tr class="hover:bg-slate-800/40 transition">
       <td class="p-3 font-bold text-white">${escapeHtml(ot.employee)}</td>
@@ -780,6 +900,11 @@ function renderOvertimeTable() {
 function renderLatenessTable() {
   const tbody = document.getElementById('lateness-table');
   if (!tbody) return;
+
+  if (state.latenesses.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-500 text-xs font-mono">Aucun retard enregistré.</td></tr>`;
+    return;
+  }
 
   tbody.innerHTML = state.latenesses.map(lat => `
     <tr class="hover:bg-slate-800/40 transition">
@@ -1011,6 +1136,21 @@ function submitPunch(type) {
       6500
     );
 
+    // Persister le pointage dans la table public.attendances sur Supabase
+    if (supabaseClient) {
+      supabaseClient.from('attendances').insert({
+        method: 'face_id',
+        status: 'on_time',
+        latitude: 5.359942,
+        longitude: -4.008311,
+        gps_accuracy_meters: 14.0,
+        is_fake_gps_detected: false,
+        face_confidence_score: 99.4,
+      }).then(res => {
+        if (!res.error) console.log('[Supabase] Pointage enregistré dans public.attendances !');
+      }).catch(err => console.warn('[Supabase] Erreur pointage:', err));
+    }
+
     closePunchModal();
 
     // Update employee status in state
@@ -1184,36 +1324,137 @@ function togglePricingBilling(period) {
     if (btnAnnual) btnAnnual.className = 'px-4 py-1.5 rounded-full text-xs font-medium text-[var(--color-muted)] hover:text-white transition';
     if (starterPrice) starterPrice.innerText = '25.000 FCFA';
     if (proPrice) proPrice.innerText = '65.000 FCFA';
+}
+}
+
+// Extra state parameters for Multi-Tenant RBAC
+state.currentCompanyId = null;
+state.currentCompanyName = '';
+state.currentUserRole = 'EMPLOYEE';
+state.currentUserAttendanceRequired = true;
+state.userMemberships = [];
+state.pendingInvitation = null;
+
+let authMode = 'login';
+let selectedAuthRole = 'company_admin';
+
+function togglePasswordVisibility(inputId, btnId) {
+  const input = document.getElementById(inputId);
+  const btn = document.getElementById(btnId);
+  if (!input) return;
+
+  if (input.type === 'password') {
+    input.type = 'text';
+    if (btn) {
+      btn.innerHTML = `<i data-lucide="eye-off" class="w-4 h-4 text-amber-400"></i>`;
+    }
+  } else {
+    input.type = 'password';
+    if (btn) {
+      btn.innerHTML = `<i data-lucide="eye" class="w-4 h-4 text-slate-400 hover:text-white"></i>`;
+    }
+  }
+  if (window.lucide && typeof window.lucide.createIcons === 'function') {
+    window.lucide.createIcons();
   }
 }
 
-function toggleFaq(id) {
-  const answer = document.getElementById(`faq-answer-${id}`);
-  const icon = document.getElementById(`faq-icon-${id}`);
+function setAuthRole(role) {
+  selectedAuthRole = role;
+  const adminBtn = document.getElementById('auth-role-admin-btn');
+  const empBtn = document.getElementById('auth-role-emp-btn');
+  const companyBox = document.getElementById('auth-company-container');
 
-  if (answer) {
-    answer.classList.toggle('hidden');
-  }
-  if (icon) {
-    icon.classList.toggle('rotate-180');
+  if (role === 'employee') {
+    if (adminBtn) adminBtn.className = 'py-2 rounded-lg text-slate-400 hover:text-white transition';
+    if (empBtn) empBtn.className = 'py-2 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold transition';
+    if (companyBox) companyBox.classList.add('hidden');
+  } else {
+    if (adminBtn) adminBtn.className = 'py-2 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold transition';
+    if (empBtn) empBtn.className = 'py-2 rounded-lg text-slate-400 hover:text-white transition';
+    if (authMode === 'register' && companyBox) companyBox.classList.remove('hidden');
   }
 }
 
-// Authentication Modal Logic (Production Ready)
 function openAuthModal(mode = 'login') {
+  authMode = mode;
   const modal = document.getElementById('modal-auth');
   const title = document.getElementById('auth-modal-title');
+  const subtitle = document.getElementById('auth-modal-subtitle');
   const submitBtn = document.getElementById('auth-submit-btn');
+  const toggleBtn = document.getElementById('auth-toggle-mode-btn');
+  const companyBox = document.getElementById('auth-company-container');
+  const fullnameBox = document.getElementById('auth-fullname-container');
+  const confirmPassBox = document.getElementById('auth-confirm-password-container');
+  const employeeNotice = document.getElementById('auth-employee-notice');
 
   if (modal) modal.classList.remove('hidden');
 
   if (mode === 'register') {
-    if (title) title.innerText = 'Souscrire un Abonnement Entreprise';
-    if (submitBtn) submitBtn.innerText = 'Valider mon abonnement';
+    if (title) title.innerText = 'Inscription Entreprise (Compte CEO / Admin)';
+    if (subtitle) subtitle.innerText = 'La création de compte entreprise initialise votre fiche Company unique et vous attribue le rôle de CEO.';
+    if (submitBtn) submitBtn.innerText = 'Créer l\'Entreprise & Valider (Compte CEO)';
+    if (toggleBtn) toggleBtn.innerText = 'Déjà un compte ? Se connecter';
+    if (companyBox) companyBox.classList.remove('hidden');
+    if (fullnameBox) fullnameBox.classList.remove('hidden');
+    if (confirmPassBox) confirmPassBox.classList.remove('hidden');
+    if (employeeNotice) employeeNotice.classList.remove('hidden');
   } else {
-    if (title) title.innerText = 'Connexion à votre Espace Client RH';
-    if (submitBtn) submitBtn.innerText = 'Se Connecter';
+    if (title) title.innerText = 'Connexion Sécurisée Supabase';
+    if (subtitle) subtitle.innerText = 'Accédez à votre espace d\'entreprise (Cockpit Client RH) ou collaborateur (Dashboard Employé).';
+    if (submitBtn) submitBtn.innerText = 'Se Connecter à Mon Espace';
+    if (toggleBtn) toggleBtn.innerText = 'Créer un Compte Entreprise (CEO)';
+    if (companyBox) companyBox.classList.add('hidden');
+    if (fullnameBox) fullnameBox.classList.add('hidden');
+    if (confirmPassBox) confirmPassBox.classList.add('hidden');
+    if (employeeNotice) employeeNotice.classList.add('hidden');
   }
+}
+
+function openInviteCodePrompt() {
+  closeAuthModal();
+  const modal = document.getElementById('modal-invite-activation');
+  const codeStep = document.getElementById('act-code-step');
+  const form = document.getElementById('act-form');
+
+  if (codeStep) codeStep.classList.remove('hidden');
+  if (form) form.classList.add('hidden');
+  if (modal) modal.classList.remove('hidden');
+}
+
+async function verifyActivationCodeManual() {
+  const codeInput = document.getElementById('act-code-input');
+  const codeVal = codeInput ? codeInput.value.trim() : '';
+
+  if (!codeVal) {
+    showToast('Code Requis', 'Veuillez saisir votre code d\'activation (ex: INV-XXXX-YYYY).', 'info');
+    return;
+  }
+
+  if (supabaseClient) {
+    try {
+      const { data: membership, error } = await supabaseClient
+        .from('company_memberships')
+        .select('*')
+        .eq('invitation_code', codeVal)
+        .maybeSingle();
+
+      if (error || !membership) {
+        showToast('Code Invalide', 'Ce code d\'activation est invalide ou expiré.', 'info');
+        return;
+      }
+
+      state.pendingInvitation = membership;
+      openInviteActivationModal(membership);
+      showToast('Code Validé', `Invitation reconnue pour l'entreprise ${membership.companies ? membership.companies.name : ''}.`, 'success');
+    } catch (e) {
+      showToast('Erreur', 'Impossible de vérifier le code d\'activation.', 'info');
+    }
+  }
+}
+
+function toggleAuthMode() {
+  openAuthModal(authMode === 'login' ? 'register' : 'login');
 }
 
 function closeAuthModal() {
@@ -1221,69 +1462,922 @@ function closeAuthModal() {
   if (modal) modal.classList.add('hidden');
 }
 
-function handleAuthSubmit(e) {
+async function handleAuthSubmit(e) {
   if (e) e.preventDefault();
-  const emailInput = document.querySelector('#modal-auth input[type="email"]');
-  const emailVal = emailInput ? emailInput.value : 'rh@entreprise.com';
+  const emailInput = document.getElementById('auth-email-input');
+  const passwordInput = document.getElementById('auth-password-input');
+  const confirmPasswordInput = document.getElementById('auth-confirm-password-input');
+  const companyInput = document.getElementById('auth-company-input');
   
-  state.isAuthenticated = true;
-  state.currentUser = { email: emailVal, role: 'Manager RH' };
-  
+  const fullNameInput = document.getElementById('auth-fullname-input');
+  const fullNameVal = fullNameInput ? fullNameInput.value.trim() : '';
+  const emailVal = emailInput ? emailInput.value.trim() : '';
+  const passwordVal = passwordInput ? passwordInput.value : '';
+  const confirmPasswordVal = confirmPasswordInput ? confirmPasswordInput.value : '';
+  const companyVal = companyInput ? companyInput.value.trim() : '';
+
+  if (!emailVal || !passwordVal) {
+    showToast('Champs Requis', 'Veuillez saisir votre adresse e-mail et votre mot de passe.', 'info');
+    return;
+  }
+
+  if (authMode === 'register') {
+    if (!companyVal || !fullNameVal) {
+      showToast('Champs Requis', 'Veuillez indiquer le nom de votre entreprise et votre nom complet.', 'info');
+      return;
+    }
+    if (passwordVal !== confirmPasswordVal) {
+      showToast('Erreur Mot de Passe', 'La confirmation du mot de passe ne correspond pas au mot de passe saisi.', 'info');
+      return;
+    }
+    if (passwordVal.length < 6) {
+      showToast('Mot de Passe Trop Court', 'Le mot de passe doit comporter au moins 6 caractères.', 'info');
+      return;
+    }
+  }
+
+  const submitBtn = document.getElementById('auth-submit-btn');
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerText = 'Traitement Supabase...';
+  }
+
+  try {
+    if (supabaseClient) {
+      if (authMode === 'register') {
+        let userId = null;
+        const { data: authData, error: authErr } = await supabaseClient.auth.signUp({
+          email: emailVal,
+          password: passwordVal,
+        });
+
+        if (authErr) {
+          if (authErr.message && authErr.message.toLowerCase().includes('rate limit')) {
+            showToast(
+              'Limite d\'Emails Supabase ⚠️',
+              'Le quota d\'envoi d\'e-mails de Supabase Cloud a été atteint temporairement (sécurité anti-spam). Veuillez réessayer dans quelques minutes ou utiliser une autre adresse email.',
+              'warning',
+              12000
+            );
+            return;
+          }
+          throw authErr;
+        }
+
+        if (authData && authData.user) {
+          userId = authData.user.id;
+        } else {
+          userId = crypto.randomUUID();
+        }
+
+        // 2. Création de la fiche Company unique
+        const { data: compData, error: compErr } = await supabaseClient
+          .from('companies')
+          .insert({ name: companyVal, plan: 'pro', status: 'active' })
+          .select()
+          .single();
+
+        if (compErr) throw compErr;
+
+        const companyId = compData.id;
+
+        // 3. Création de l'utilisateur CEO dans public.users
+        await supabaseClient.from('users').insert({
+          id: userId,
+          company_id: companyId,
+          email: emailVal,
+          full_name: fullNameVal || emailVal.split('@')[0].toUpperCase(),
+          role: 'CEO',
+          job_title: 'Directeur Général / CEO',
+          attendance_required: false,
+          is_active: true,
+        });
+
+        // 4. Rattachement dans public.company_memberships
+        await supabaseClient.from('company_memberships').insert({
+          user_id: userId,
+          company_id: companyId,
+          role: 'CEO',
+          attendance_required: false,
+          status: 'ACTIVE',
+        });
+
+        state.isAuthenticated = true;
+        state.currentUser = {
+          id: userId,
+          email: emailVal,
+          fullName: fullNameVal || emailVal.split('@')[0].toUpperCase(),
+          role: 'CEO',
+        };
+
+        selectCompanyWorkspace(companyId, 'CEO', false, companyVal);
+        showToast(
+          'Compte CEO Activé 🎉',
+          `Entreprise <strong>${escapeHtml(companyVal)}</strong> et compte CEO créés avec succès ! Bienvenue sur votre Dashboard Employeur.`,
+          'success',
+          10000
+        );
+        return;
+      } else {
+        // Mode Connexion
+        const { data: authData, error } = await supabaseClient.auth.signInWithPassword({
+          email: emailVal,
+          password: passwordVal,
+        });
+
+        if (error) throw error;
+
+        const userId = authData.user.id;
+
+        // Récupération des appartenances d'entreprises (Company Memberships)
+        const { data: memberships } = await supabaseClient
+          .from('company_memberships')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('status', 'ACTIVE');
+
+        state.isAuthenticated = true;
+        state.currentUser = {
+          id: userId,
+          email: emailVal,
+          fullName: authData.user.email.split('@')[0].toUpperCase(),
+        };
+
+        if (memberships && memberships.length > 1) {
+          // L'utilisateur appartient à plusieurs entreprises -> Choix d'espace
+          state.userMemberships = memberships;
+          openSelectWorkspaceModal(memberships);
+          showToast('Sélection d\'Espace', 'Veuillez choisir votre espace de travail.', 'info');
+        } else if (memberships && memberships.length === 1) {
+          const m = memberships[0];
+          let compName = state.company.name;
+          if (m.company_id) {
+            const { data: comp } = await supabaseClient.from('companies').select('name').eq('id', m.company_id).maybeSingle();
+            if (comp && comp.name) compName = comp.name;
+          }
+          selectCompanyWorkspace(m.company_id, m.role, m.attendance_required, compName);
+        } else {
+          // Fallback user unique
+          const { data: dbUser } = await supabaseClient
+            .from('users')
+            .select('*')
+            .eq('id', userId)
+            .maybeSingle();
+
+          const companyId = dbUser ? dbUser.company_id : null;
+          const userRole = dbUser ? (dbUser.role || 'EMPLOYEE') : 'EMPLOYEE';
+          const attReq = dbUser ? (dbUser.attendance_required !== false) : true;
+          let compName = state.company.name;
+
+          if (companyId) {
+            const { data: comp } = await supabaseClient.from('companies').select('name').eq('id', companyId).maybeSingle();
+            if (comp && comp.name) compName = comp.name;
+          }
+
+          selectCompanyWorkspace(companyId, userRole, attReq, compName);
+        }
+      }
+    } else {
+      // Offline fallback
+      state.isAuthenticated = true;
+      state.currentUser = { email: emailVal, role: 'CEO' };
+      selectCompanyWorkspace(null, 'CEO', false, companyVal || 'SaaS Entreprise');
+    }
+  } catch (err) {
+    console.error('Erreur Supabase Auth:', err);
+    showToast('Erreur Authentification', err.message || 'Communication Supabase échouée.', 'info');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerText = authMode === 'register' ? 'Créer l\'Entreprise & Valider' : 'Se Connecter via Supabase';
+    }
+  }
+}
+
+function selectCompanyWorkspace(companyId, role, attendanceRequired, companyName) {
+  state.currentCompanyId = companyId;
+  state.currentUserRole = role || 'EMPLOYEE';
+  state.currentUserAttendanceRequired = attendanceRequired !== false;
+  state.currentCompanyName = companyName || state.company.name;
+
+  state.currentUser.role = state.currentUserRole;
+  state.currentUser.companyId = companyId;
+
   closeAuthModal();
-  
-  // Update Nav Login & Register Buttons state (Desktop & Mobile)
+  closeSelectWorkspaceModal();
+  updateUiAfterLogin(state.currentUser.email, state.currentUserRole);
+
+  // Redirection post-connexion basée sur le Rôle :
+  // - CEO, HR, MANAGER -> Dashboard Employeur (Vue 2 - Cockpit de Présence)
+  // - EMPLOYEE -> Dashboard Employé (Vue 4)
+  if (state.currentUserRole === 'EMPLOYEE') {
+    switchView('employee');
+    showToast('Espace Collaborateur', `Bienvenue sur votre Dashboard Employé (${escapeHtml(state.currentCompanyName)}).`, 'success');
+  } else {
+    // CEO, HR ou MANAGER
+    switchView('dashboard');
+    showToast('Espace Employeur', `Bienvenue sur votre Dashboard Employeur (${escapeHtml(state.currentCompanyName)} - Rôle: ${state.currentUserRole}).`, 'success');
+  }
+
+  adaptCockpitRhPermissions();
+  loadSupabaseData();
+}
+
+function adaptCockpitRhPermissions() {
+  const roleBadge = document.getElementById('rh-cockpit-role-badge');
+  const compTitleEl = document.getElementById('dash-company-name');
+
+  if (compTitleEl && state.currentCompanyName) {
+    compTitleEl.innerText = state.currentCompanyName;
+  }
+
+  if (roleBadge) {
+    let badgeHtml = '';
+    if (state.currentUserRole === 'CEO') {
+      badgeHtml = '<span class="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-mono font-bold border border-amber-500/30">👑 CEO / Admin Principal</span>';
+    } else if (state.currentUserRole === 'HR') {
+      badgeHtml = '<span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-mono font-bold border border-emerald-500/30">🏢 Responsable RH</span>';
+    } else if (state.currentUserRole === 'MANAGER') {
+      badgeHtml = '<span class="px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 text-xs font-mono font-bold border border-cyan-500/30">👔 Manager / Chef d\'Équipe</span>';
+    }
+    roleBadge.innerHTML = badgeHtml;
+  }
+}
+
+function updateUiAfterLogin(emailVal, role = 'company_admin') {
   const loginBtn = document.getElementById('nav-login-btn');
   const registerBtn = document.getElementById('nav-register-btn');
   const mobileLoginBtn = document.getElementById('mobile-nav-login-btn');
   const mobileRegisterBtn = document.getElementById('mobile-nav-register-btn');
 
+  const normalizedRole = (role || '').toUpperCase();
+  const isEmp = normalizedRole === 'EMPLOYEE';
+  const roleText = isEmp ? 'Déconnexion Employé' : 'Déconnexion RH';
+
   if (loginBtn) {
-    loginBtn.innerText = 'Déconnexion RH';
+    loginBtn.innerText = roleText;
     loginBtn.onclick = handleLogout;
     loginBtn.className = 'px-3.5 py-1.5 rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/30 text-xs font-semibold border border-red-500/30 transition';
   }
-  if (registerBtn) {
-    registerBtn.classList.add('hidden');
-  }
+  if (registerBtn) registerBtn.classList.add('hidden');
   if (mobileLoginBtn) {
-    mobileLoginBtn.innerText = 'Déconnexion RH';
+    mobileLoginBtn.innerText = roleText;
     mobileLoginBtn.onclick = () => { handleLogout(); closeMobileMenu(); };
     mobileLoginBtn.className = 'w-full py-2.5 rounded-xl bg-red-500/20 text-red-400 text-xs font-semibold border border-red-500/30 text-center block';
   }
-  if (mobileRegisterBtn) {
-    mobileRegisterBtn.classList.add('hidden');
-  }
+  if (mobileRegisterBtn) mobileRegisterBtn.classList.add('hidden');
 
-  switchView('dashboard');
-  showToast('Connexion Sécurisée', `Bienvenue ${escapeHtml(emailVal)} sur votre Cockpit RH.`, 'success');
+  // Ajustement visuel des boutons de la barre de navigation selon le Rôle
+  const dashBtn = document.getElementById('btn-view-dashboard');
+  const empBtn = document.getElementById('btn-view-employee');
+
+  if (isEmp) {
+    if (dashBtn) dashBtn.classList.add('hidden');
+    if (empBtn) empBtn.classList.remove('hidden');
+  } else {
+    // CEO / HR / MANAGER
+    if (dashBtn) dashBtn.classList.remove('hidden');
+    if (empBtn) empBtn.classList.add('hidden');
+  }
 }
 
-function handleLogout() {
+async function handleLogout() {
+  if (supabaseClient) {
+    await supabaseClient.auth.signOut();
+  }
+  
   state.isAuthenticated = false;
   state.currentUser = null;
+  state.currentUserRole = null;
   
   const loginBtn = document.getElementById('nav-login-btn');
   const registerBtn = document.getElementById('nav-register-btn');
   const mobileLoginBtn = document.getElementById('mobile-nav-login-btn');
   const mobileRegisterBtn = document.getElementById('mobile-nav-register-btn');
+
+  const dashBtn = document.getElementById('btn-view-dashboard');
+  const empBtn = document.getElementById('btn-view-employee');
+
+  if (dashBtn) dashBtn.classList.remove('hidden');
+  if (empBtn) empBtn.classList.remove('hidden');
 
   if (loginBtn) {
     loginBtn.innerText = 'Se Connecter';
     loginBtn.onclick = () => openAuthModal('login');
     loginBtn.className = 'px-3.5 py-1.5 rounded-full bg-[var(--border-subtle)] hover:bg-[var(--border-accent)] text-[var(--color-offwhite)] text-xs font-semibold border border-[var(--border-subtle)] transition';
   }
-  if (registerBtn) {
-    registerBtn.classList.remove('hidden');
-  }
+  if (registerBtn) registerBtn.classList.remove('hidden');
   if (mobileLoginBtn) {
     mobileLoginBtn.innerText = 'Se Connecter';
     mobileLoginBtn.onclick = () => { openAuthModal('login'); closeMobileMenu(); };
     mobileLoginBtn.className = 'w-full py-2.5 rounded-xl bg-slate-800/90 text-slate-200 text-xs font-semibold border border-slate-700 text-center block';
   }
-  if (mobileRegisterBtn) {
-    mobileRegisterBtn.classList.remove('hidden');
-  }
+  if (mobileRegisterBtn) mobileRegisterBtn.classList.remove('hidden');
 
   switchView('hero');
-  showToast('Déconnexion Réussie', 'Vous avez été déconnecté de la session RH.', 'info');
 }
+
+/* ==================== LOGIQUE DU DASHBOARD EMPLOYÉ ==================== */
+
+function switchEmployeeSection(sectionName) {
+  document.querySelectorAll('.emp-sub-section').forEach(el => el.classList.add('hidden'));
+  document.querySelectorAll('.emp-subtab-btn').forEach(btn => {
+    btn.classList.remove('text-emerald-400', 'bg-emerald-500/10', 'border-emerald-500/30', 'font-bold');
+    btn.classList.add('text-slate-400');
+  });
+
+  const targetSec = document.getElementById(`emp-section-${sectionName}`);
+  const targetBtn = document.querySelector(`.emp-subtab-btn[data-emp-section="${sectionName}"]`);
+
+  if (targetSec) targetSec.classList.remove('hidden');
+  if (targetBtn) {
+    targetBtn.classList.add('text-emerald-400', 'bg-emerald-500/10', 'border-emerald-500/30', 'font-bold');
+    targetBtn.classList.remove('text-slate-400');
+  }
+}
+
+let empWorkedTimerInterval = null;
+
+function renderEmployeeDashboard() {
+  if (!state.currentUser) return;
+
+  const nameEl = document.getElementById('emp-dash-name');
+  const jobEl = document.getElementById('emp-dash-job');
+  
+  if (nameEl) nameEl.innerText = state.currentUser.fullName || state.currentUser.email || 'Collaborateur';
+  if (jobEl) jobEl.innerText = `${state.currentUser.jobTitle || 'Agent Terrain'} • Matricule: EMP-2026-04`;
+
+  // 1. Rendu de l'historique des pointages employé
+  const historyBody = document.getElementById('emp-history-table-body');
+  if (historyBody) {
+    if (state.employees && state.employees.length > 0) {
+      historyBody.innerHTML = state.employees.map(att => `
+        <tr class="hover:bg-slate-800/30 transition">
+          <td class="py-2.5 font-bold text-white">${escapeHtml(att.date || new Date().toLocaleDateString('fr-FR'))}</td>
+          <td class="py-2.5 text-emerald-400 font-bold">${escapeHtml(att.clockIn || '07:58')}</td>
+          <td class="py-2.5 text-slate-400">${escapeHtml(att.clockOut || '--:--')}</td>
+          <td class="py-2.5 text-slate-300 font-mono">08h 00m</td>
+          <td class="py-2.5 text-slate-400 text-[11px]">
+            <span class="text-emerald-400 flex items-center gap-1">
+              <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> GPS OK (${escapeHtml(att.distance || '12m')})
+            </span>
+          </td>
+          <td class="py-2.5 text-right font-bold text-emerald-400">Présent</td>
+        </tr>
+      `).join('');
+    } else {
+      historyBody.innerHTML = `
+        <tr>
+          <td colspan="6" class="py-6 text-center text-slate-500 italic">
+            Aucun pointage récent enregistré sur Supabase. Utilisez le bouton "Pointer Maintenant" ci-dessus !
+          </td>
+        </tr>
+      `;
+    }
+  }
+
+  // 2. Rendu des Retards Employé
+  const latenessBody = document.getElementById('emp-lateness-table-body');
+  if (latenessBody) {
+    if (state.latenesses && state.latenesses.length > 0) {
+      latenessBody.innerHTML = state.latenesses.map(l => `
+        <tr class="hover:bg-slate-800/30 transition">
+          <td class="py-2.5 font-bold text-white">${escapeHtml(l.date || 'Aujourd\'hui')}</td>
+          <td class="py-2.5 text-amber-400 font-bold">${escapeHtml(l.time || '08:24')}</td>
+          <td class="py-2.5 text-rose-400 font-bold">+${escapeHtml(l.minutes || '24')} min</td>
+          <td class="py-2.5 text-slate-300">${escapeHtml(l.reason || 'Embouteillage axe Yopougon-Plateau')}</td>
+          <td class="py-2.5 text-right font-bold text-emerald-400">Transmis au RH</td>
+        </tr>
+      `).join('');
+    } else {
+      latenessBody.innerHTML = `
+        <tr>
+          <td colspan="5" class="py-6 text-center text-emerald-400/80 italic font-mono">
+            🎉 Aucun retard enregistré ce mois-ci ! Félicitations pour votre ponctualité.
+          </td>
+        </tr>
+      `;
+    }
+  }
+
+  // 3. Rendu des Congés Employé
+  const leavesBody = document.getElementById('emp-leaves-table-body');
+  if (leavesBody) {
+    if (state.leaves && state.leaves.length > 0) {
+      leavesBody.innerHTML = state.leaves.map(lv => `
+        <tr class="hover:bg-slate-800/30 transition">
+          <td class="py-2.5 font-bold text-white">${escapeHtml(lv.type || 'Congé Payé Annuel')}</td>
+          <td class="py-2.5 text-slate-300">${escapeHtml(lv.startDate || '15/08')} au ${escapeHtml(lv.endDate || '25/08')}</td>
+          <td class="py-2.5 text-cyan-400 font-bold">${escapeHtml(lv.days || '10')} jours</td>
+          <td class="py-2.5 text-slate-400">${escapeHtml(lv.reason || 'Repos annuel autorisé')}</td>
+          <td class="py-2.5 text-right font-bold text-amber-400">${escapeHtml(lv.status || 'En Attente RH')}</td>
+        </tr>
+      `).join('');
+    } else {
+      leavesBody.innerHTML = `
+        <tr>
+          <td colspan="5" class="py-6 text-center text-slate-500 italic">
+            Aucune demande de congé enregistrée. Cliquez sur "+ Nouvelle Demande de Congé".
+          </td>
+        </tr>
+      `;
+    }
+  }
+
+  // 4. Rendu des Heures Supp Employé
+  const overtimeBody = document.getElementById('emp-overtime-table-body');
+  if (overtimeBody) {
+    if (state.overtimes && state.overtimes.length > 0) {
+      overtimeBody.innerHTML = state.overtimes.map(ot => `
+        <tr class="hover:bg-slate-800/30 transition">
+          <td class="py-2.5 font-bold text-white">${escapeHtml(ot.date || 'Hier')}</td>
+          <td class="py-2.5 text-slate-300">${escapeHtml(ot.slot || '18:00 - 20:30')}</td>
+          <td class="py-2.5 text-emerald-400 font-bold">${escapeHtml(ot.hours || '2.5h')}</td>
+          <td class="py-2.5 text-amber-400 font-mono">+25%</td>
+          <td class="py-2.5 text-slate-400">${escapeHtml(ot.reason || 'Inventaire mensuel magasin')}</td>
+          <td class="py-2.5 text-right font-bold text-emerald-400">Validé en Paie</td>
+        </tr>
+      `).join('');
+    } else {
+      overtimeBody.innerHTML = `
+        <tr>
+          <td colspan="6" class="py-6 text-center text-slate-500 italic">
+            Aucune heure supplémentaire enregistrée. Cliquez sur "+ Déclarer Heures Supp."
+          </td>
+        </tr>
+      `;
+    }
+  }
+
+  // 5. Rendu des Notifications
+  const notifContainer = document.getElementById('emp-notifications-container');
+  if (notifContainer) {
+    notifContainer.innerHTML = `
+      <div class="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-3">
+        <i data-lucide="check-circle" class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5"></i>
+        <div class="space-y-0.5 text-xs">
+          <div class="font-bold text-emerald-300">Pointage Arrivée Confirmé</div>
+          <p class="text-slate-300">Votre pointage de 07:58 GMT a été validé par la reconnaissance faciale IA et le périmètre GPS HQ.</p>
+          <span class="text-[10px] text-slate-400 font-mono">Aujourd'hui à 07:58</span>
+        </div>
+      </div>
+      <div class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
+        <i data-lucide="bell-ring" class="w-5 h-5 text-amber-400 shrink-0 mt-0.5"></i>
+        <div class="space-y-0.5 text-xs">
+          <div class="font-bold text-amber-300">Rappel Clôture de Paie Mensuelle</div>
+          <p class="text-slate-300">Veuillez soumettre vos demandes d'heures supplémentaires avant le 25 du mois en cours.</p>
+          <span class="text-[10px] text-slate-400 font-mono">Direction RH • Il y a 2h</span>
+        </div>
+      </div>
+    `;
+  }
+
+  startEmployeeWorkedTimer();
+
+  if (window.lucide) {
+    window.lucide.createIcons();
+  }
+}
+
+function startEmployeeWorkedTimer() {
+  if (empWorkedTimerInterval) clearInterval(empWorkedTimerInterval);
+
+  let secondsCounter = 27735; // ~07h 42m 15s
+
+  empWorkedTimerInterval = setInterval(() => {
+    secondsCounter++;
+    const hrs = String(Math.floor(secondsCounter / 3600)).padStart(2, '0');
+    const mins = String(Math.floor((secondsCounter % 3600) / 60)).padStart(2, '0');
+    const secs = String(secondsCounter % 60).padStart(2, '0');
+
+    const workedEl = document.getElementById('emp-kpi-worked-time');
+    if (workedEl) {
+      workedEl.innerText = `${hrs}h ${mins}m ${secs}s`;
+    }
+  }, 1000);
+}
+
+// Supabase Data Loaders & Management
+function openAddEmployeeModal() {
+  const modal = document.getElementById('modal-add-employee');
+  const compBadge = document.getElementById('emp-add-company-badge');
+  if (compBadge) compBadge.innerText = state.currentCompanyName || 'Entreprise Connectée';
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeAddEmployeeModal() {
+  const modal = document.getElementById('modal-add-employee');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function handleAddEmployeeSubmit(e) {
+  if (e) e.preventDefault();
+  const fullName = document.getElementById('emp-fullname-input')?.value.trim();
+  const phone = document.getElementById('emp-phone-input')?.value.trim();
+  const email = document.getElementById('emp-email-input')?.value.trim();
+  const matricule = document.getElementById('emp-matricule-input')?.value.trim();
+  const job = document.getElementById('emp-job-input')?.value.trim();
+  const site = document.getElementById('emp-site-input')?.value.trim();
+  const role = document.getElementById('emp-role-select')?.value || 'EMPLOYEE';
+  const attendanceReq = document.getElementById('emp-attendance-required-select')?.value === 'true';
+
+  if (!fullName || !phone || !job) {
+    showToast('Champs Requis', 'Veuillez saisir au minimum le nom, le téléphone et le poste.', 'info');
+    return;
+  }
+
+  const btn = document.getElementById('add-emp-submit-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = 'Génération de l\'invitation...';
+  }
+
+  try {
+    const inviteCode = `INV-${Math.random().toString(36).substring(2, 8).toUpperCase()}-${Date.now().toString().slice(-4)}`;
+    
+    if (supabaseClient && state.currentCompanyId) {
+      // 1. Créer le profil employé dans public.users
+      const { data: newUser, error: userErr } = await supabaseClient.from('users').insert({
+        company_id: state.currentCompanyId,
+        email: email || `${phone.replace(/\+/g, '')}@temp.winnerpointage.com`,
+        full_name: fullName,
+        phone_number: phone,
+        job_title: job,
+        site_name: site || 'Siège',
+        registration_number: matricule || `MAT-${Date.now().toString().slice(-4)}`,
+        role: role,
+        attendance_required: attendanceReq,
+        is_active: true
+      }).select().single();
+
+      if (userErr) throw userErr;
+
+      // 2. Créer l'entrée dans public.company_memberships
+      await supabaseClient.from('company_memberships').insert({
+        user_id: newUser.id,
+        company_id: state.currentCompanyId,
+        role: role,
+        attendance_required: attendanceReq,
+        invitation_code: inviteCode,
+        status: 'INVITED'
+      });
+    }
+
+    closeAddEmployeeModal();
+    openInviteCreatedModal(fullName, state.currentCompanyName || 'Votre Entreprise', inviteCode);
+    loadSupabaseData();
+  } catch (err) {
+    console.error('Erreur création membre Supabase:', err);
+    showToast('Erreur d\'Enregistrement', err.message || 'Impossible d\'enregistrer le membre.', 'info');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = 'GÉNÉRER L\'INVITATION & ENREGISTRER';
+    }
+  }
+}
+
+/* ==================== GESTION DES INVITATIONS & ACTIVATIONS ==================== */
+
+function openInviteCreatedModal(name, companyName, inviteCode) {
+  const modal = document.getElementById('modal-invite-created');
+  const nameEl = document.getElementById('inv-created-name');
+  const compEl = document.getElementById('inv-created-company');
+  const linkInput = document.getElementById('inv-created-link');
+  const codeEl = document.getElementById('inv-created-code');
+
+  const fullLink = `${window.location.origin}${window.location.pathname}#invite?code=${inviteCode}`;
+
+  if (nameEl) nameEl.innerText = name;
+  if (compEl) compEl.innerText = companyName;
+  if (linkInput) linkInput.value = fullLink;
+  if (codeEl) codeEl.innerText = inviteCode;
+
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeInviteCreatedModal() {
+  const modal = document.getElementById('modal-invite-created');
+  if (modal) modal.classList.add('hidden');
+}
+
+function copyInviteLink() {
+  const linkInput = document.getElementById('inv-created-link');
+  if (linkInput) {
+    linkInput.select();
+    navigator.clipboard.writeText(linkInput.value);
+    showToast('Copié !', 'Lien d\'invitation copié dans le presse-papier.', 'success');
+  }
+}
+
+async function checkUrlInvitation() {
+  const hash = window.location.hash;
+  if (hash.includes('invite') || hash.includes('code=')) {
+    const params = new URLSearchParams(hash.replace('#invite?', '').replace('#', ''));
+    const code = params.get('code');
+
+    if (code && supabaseClient) {
+      try {
+        const { data: membership, error } = await supabaseClient
+          .from('company_memberships')
+          .select('*')
+          .eq('invitation_code', code)
+          .maybeSingle();
+
+        if (!error && membership) {
+          state.pendingInvitation = membership;
+          openInviteActivationModal(membership);
+        }
+      } catch (e) {
+        console.warn('Erreur vérification invitation:', e);
+      }
+    }
+  }
+}
+
+function openInviteActivationModal(membership) {
+  const modal = document.getElementById('modal-invite-activation');
+  const compInput = document.getElementById('act-company-name');
+  const nameInput = document.getElementById('act-fullname-input');
+  const emailInput = document.getElementById('act-email-input');
+
+  const compName = membership.companies ? membership.companies.name : 'Votre Entreprise';
+  const userName = membership.users ? membership.users.full_name : '';
+  const userEmail = membership.users ? membership.users.email : '';
+
+  if (compInput) compInput.value = compName;
+  if (nameInput) nameInput.value = userName;
+  if (emailInput) emailInput.value = userEmail;
+
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeInviteActivationModal() {
+  const modal = document.getElementById('modal-invite-activation');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function handleInviteActivationSubmit(e) {
+  if (e) e.preventDefault();
+  const nameVal = document.getElementById('act-fullname-input')?.value.trim();
+  const emailVal = document.getElementById('act-email-input')?.value.trim();
+  const passwordVal = document.getElementById('act-password-input')?.value;
+  const confirmVal = document.getElementById('act-confirm-password-input')?.value;
+
+  if (!emailVal || !passwordVal) {
+    showToast('Champs Requis', 'Veuillez saisir votre e-mail et créer un mot de passe.', 'info');
+    return;
+  }
+  if (passwordVal !== confirmVal) {
+    showToast('Erreur Mot de Passe', 'Les mots de passe ne correspondent pas.', 'info');
+    return;
+  }
+
+  const btn = document.getElementById('act-submit-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = 'Activation en cours...';
+  }
+
+  try {
+    if (supabaseClient && state.pendingInvitation) {
+      // 1. SignUp Supabase Auth
+      const { data: authData, error: authErr } = await supabaseClient.auth.signUp({
+        email: emailVal,
+        password: passwordVal,
+      });
+
+      if (authErr) {
+        if (authErr.message && authErr.message.toLowerCase().includes('rate limit')) {
+          showToast(
+            'Limite d\'Emails Supabase ⚠️',
+            'Le quota temporaire d\'envoi d\'e-mails Supabase est atteint. Veuillez patienter quelques minutes avant de réactiver votre compte.',
+            'warning',
+            10000
+          );
+          return;
+        }
+        throw authErr;
+      }
+
+      // 2. Mettre à jour l'utilisateur et le statut d'invitation
+      if (authData.user) {
+        await supabaseClient.from('users').update({
+          id: authData.user.id,
+          full_name: nameVal,
+          email: emailVal,
+          is_active: true
+        }).eq('id', state.pendingInvitation.user_id);
+
+        await supabaseClient.from('company_memberships').update({
+          user_id: authData.user.id,
+          status: 'ACTIVE'
+        }).eq('id', state.pendingInvitation.id);
+      }
+
+      showToast('Compte Activé !', 'Votre compte employé a été activé. Vous pouvez vous connecter.', 'success', 8000);
+      closeInviteActivationModal();
+      openAuthModal('login');
+    }
+  } catch (err) {
+    console.error('Erreur activation invitation:', err);
+    showToast('Erreur Activation', err.message || 'Impossible d\'activer l\'invitation.', 'info');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = 'ACTIVATION & ACCÈS DASHBOARD EMPLOYÉ';
+    }
+  }
+}
+
+/* ==================== SÉLECTEUR MULTI-ENTREPRISES ==================== */
+
+function openSelectWorkspaceModal(memberships) {
+  const modal = document.getElementById('modal-select-workspace');
+  const container = document.getElementById('workspace-cards-container');
+
+  if (container && memberships) {
+    container.innerHTML = memberships.map(m => `
+      <div onclick="selectCompanyWorkspace('${m.company_id}', '${m.role}', ${m.attendance_required}, '${escapeHtml(m.companies ? m.companies.name : 'Entreprise')}')" class="p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-amber-500/50 hover:bg-slate-800/80 cursor-pointer transition flex items-center justify-between group">
+        <div class="space-y-1">
+          <div class="font-bold text-white group-hover:text-amber-400 transition">${escapeHtml(m.companies ? m.companies.name : 'Entreprise')}</div>
+          <div class="text-xs text-slate-400 font-mono">Rôle: <strong class="text-emerald-400">${m.role}</strong></div>
+        </div>
+        <i data-lucide="chevron-right" class="w-5 h-5 text-slate-500 group-hover:text-amber-400 transition"></i>
+      </div>
+    `).join('');
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeSelectWorkspaceModal() {
+  const modal = document.getElementById('modal-select-workspace');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function loadSupabaseData() {
+  if (!supabaseClient) return;
+
+  try {
+    // 1. Charger les utilisateurs / employés de l'entreprise connectée
+    let userQuery = supabaseClient.from('users').select('*');
+    if (state.currentCompanyId) {
+      userQuery = userQuery.eq('company_id', state.currentCompanyId);
+    }
+
+    const { data: users, error: usersErr } = await userQuery;
+    if (!usersErr) {
+      state.employees = (users || []).map((u, i) => ({
+        id: u.id || i + 1,
+        name: u.full_name || u.email,
+        role: u.job_title || u.role || 'Employé',
+        site: u.site_name || 'Siège Principal',
+        status: u.is_active ? 'Présent' : 'Absent',
+        arriveTime: u.created_at ? new Date(u.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '--:--',
+        method: 'GPS Supabase',
+        distance: '0m',
+        confidence: 99.0,
+        avatar: u.avatar_url || 'https://images.unsplash.com/photo-1507152832244-10d45c7eda57?w=150&auto=format&fit=crop&q=80'
+      }));
+      renderStaffGrid();
+      renderDashboard();
+    }
+
+    // 2. Charger les événements de calendrier de l'entreprise
+    let calQuery = supabaseClient.from('calendar_events').select('*');
+    if (state.currentCompanyId) {
+      calQuery = calQuery.eq('company_id', state.currentCompanyId);
+    }
+    const { data: events, error: evErr } = await calQuery;
+    if (!evErr) {
+      calendarState.events = (events || []).map(e => ({
+        id: e.id,
+        day: e.day,
+        timeStart: e.time_start || '09:00',
+        timeEnd: e.time_end || '10:00',
+        title: e.title,
+        client: e.client,
+        amount: e.amount,
+        type: e.type,
+        badge: e.badge,
+        color: e.color,
+        status: e.status
+      }));
+      renderSaasCalendar();
+    }
+
+    // 3. Charger toutes les entreprises pour le Dashboard SaaS
+    const { data: comps } = await supabaseClient.from('companies').select('*');
+    if (comps) {
+      state.companies = comps;
+    }
+
+    renderSaasDashboard();
+    renderEmployeeDashboard();
+  } catch (err) {
+    console.warn('Erreur lors du chargement des données Supabase:', err);
+  }
+}
+
+// Render SaaS Admin Dashboard KPIs & Tables
+function renderSaasDashboard() {
+  const companies = state.companies || [];
+  const employeesCount = state.employees ? state.employees.length : 0;
+  const totalCompanies = companies.length;
+  const activeCompanies = companies.filter(c => c.is_active !== false).length;
+  const suspendedCompanies = companies.filter(c => c.is_active === false).length;
+
+  const mrr = activeCompanies * 350000;
+  const arr = mrr * 12;
+
+  // KPIs
+  const arrEl = document.getElementById('saas-kpi-arr');
+  if (arrEl) arrEl.innerText = `${arr.toLocaleString('fr-FR')} F`;
+
+  const mrrEl = document.getElementById('saas-kpi-mrr');
+  if (mrrEl) mrrEl.innerText = `${mrr.toLocaleString('fr-FR')} F`;
+
+  const totalCompEl = document.getElementById('saas-kpi-total-companies');
+  if (totalCompEl) totalCompEl.innerText = `${totalCompanies} Clientèle`;
+
+  const activeCompEl = document.getElementById('saas-kpi-active-companies');
+  if (activeCompEl) activeCompEl.innerText = `${activeCompanies} Actives`;
+
+  const totalEmpEl = document.getElementById('saas-kpi-total-employees');
+  if (totalEmpEl) totalEmpEl.innerText = `${employeesCount} emp.`;
+
+  const expEl = document.getElementById('saas-kpi-expired-trials');
+  if (expEl) expEl.innerText = `0 Essais`;
+
+  const suspEl = document.getElementById('saas-kpi-suspended');
+  if (suspEl) suspEl.innerText = `${suspendedCompanies} Suspendus`;
+
+  const tickEl = document.getElementById('saas-kpi-tickets');
+  if (tickEl) tickEl.innerText = `0 Ouverts`;
+
+  const headerCompCount = document.getElementById('saas-header-comp-count');
+  if (headerCompCount) headerCompCount.innerText = totalCompanies;
+
+  const compCountLabel = document.getElementById('saas-companies-count-label');
+  if (compCountLabel) compCountLabel.innerText = `${totalCompanies} Entreprises`;
+
+  const totalRegComp = document.getElementById('saas-total-registered-companies');
+  if (totalRegComp) totalRegComp.innerText = `${totalCompanies} entreprise(s)`;
+
+  const totalRegEmp = document.getElementById('saas-total-registered-employees');
+  if (totalRegEmp) totalRegEmp.innerText = `${employeesCount} employé(s)`;
+
+  // Breakdowns
+  const planProCountEl = document.getElementById('saas-plan-pro-count');
+  if (planProCountEl) planProCountEl.innerText = `${totalCompanies} Abonnés`;
+
+  const planProBarEl = document.getElementById('saas-plan-pro-bar');
+  if (planProBarEl) planProBarEl.style.width = totalCompanies > 0 ? '100%' : '0%';
+
+  // Tableau des entreprises
+  const tbody = document.getElementById('company-table-body');
+  if (tbody) {
+    if (companies.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="6" class="p-6 text-center text-slate-500 text-xs font-mono">
+            Aucune entreprise enregistrée dans Supabase pour le moment.
+          </td>
+        </tr>
+      `;
+    } else {
+      tbody.innerHTML = companies.map(c => `
+        <tr class="hover:bg-slate-800/30 transition">
+          <td class="py-3 font-bold text-white flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full ${c.is_active !== false ? 'bg-emerald-400' : 'bg-red-400'}"></span>
+            ${escapeHtml(c.name)}
+          </td>
+          <td><span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono text-[10px] border border-amber-500/20">${escapeHtml(c.subscription_plan || 'Pro')}</span></td>
+          <td class="font-mono">${employeesCount} emp.</td>
+          <td class="font-mono text-emerald-400 font-bold">350.000 FCFA</td>
+          <td><span class="px-2.5 py-0.5 rounded-full ${c.is_active !== false ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'} font-semibold text-[10px] border">${c.is_active !== false ? 'Active' : 'Suspendue'}</span></td>
+          <td class="text-right space-x-2">
+            <button onclick="toggleCompanyStatus('${escapeHtml(c.name)}', '${c.is_active !== false ? 'suspend' : 'activate'}')" class="px-2 py-1 rounded ${c.is_active !== false ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20' : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/20'} font-semibold text-[10px] border transition">${c.is_active !== false ? 'Suspendre' : 'Réactiver'}</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+  }
+}
+
+// Initialisation globale au chargement
+window.addEventListener('DOMContentLoaded', () => {
+  checkUrlInvitation();
+});
+window.addEventListener('hashchange', () => {
+  checkUrlInvitation();
+  const hash = window.location.hash.replace('#', '');
+  if (['hero', 'saas', 'dashboard', 'employee'].includes(hash) && hash !== state.activeView) {
+    switchView(hash);
+  }
+});
+
+
+
