@@ -799,6 +799,12 @@ function switchSection(sectionName) {
     targetSubtab.classList.add('text-emerald-400', 'bg-emerald-500/10', 'border-emerald-500/30');
     targetSubtab.classList.remove('text-slate-400');
   }
+
+  // La configuration du pointage est chargée à l'ouverture de son onglet plutôt
+  // qu'au démarrage : elle interroge quatre tables et n'intéresse que le RH.
+  if (sectionName === 'punch-config' && typeof renderPunchConfig === 'function') {
+    renderPunchConfig();
+  }
 }
 
 // Render Dashboard Data & Live Feed
@@ -1310,12 +1316,126 @@ const empPunch = {
   selfieBlob: null,
 };
 
+/**
+ * Configuration applicable à l'employé, telle que définie par le RH.
+ * `null` tant qu'elle n'a pas été chargée.
+ */
+let empPunchConfig = null;
+
+/**
+ * Charge la configuration de pointage depuis le serveur et verrouille les
+ * boutons si elle est incomplète.
+ *
+ * Le Dashboard Employé n'invente aucune règle : rayon, précision et horaire
+ * viennent tous du Cockpit RH. Un bouton qui échoue sans explication est pire
+ * qu'un bouton désactivé qui dit pourquoi.
+ */
+async function chargerConfigPointageEmploye() {
+  if (!supabaseClient || !state.isAuthenticated) return null;
+
+  try {
+    const { data, error } = await supabaseClient.rpc('get_employee_punch_config');
+    if (error) throw error;
+    empPunchConfig = data;
+  } catch (err) {
+    // Migration non exécutée : on ne bloque pas l'écran, on l'indique.
+    console.warn('[Pointage] Configuration indisponible :', err);
+    empPunchConfig = null;
+  }
+
+  appliquerEtatBoutonsPointage();
+  return empPunchConfig;
+}
+
+function appliquerEtatBoutonsPointage() {
+  const btnIn = document.getElementById('btn-emp-check-in');
+  const btnOut = document.getElementById('btn-emp-check-out');
+  const banner = document.getElementById('emp-punch-config-banner');
+  if (!btnIn || !btnOut) return;
+
+  // Configuration inconnue : on laisse les boutons actifs. Le serveur reste
+  // l'autorité et refusera proprement si quelque chose manque.
+  if (!empPunchConfig) {
+    btnIn.disabled = false;
+    btnOut.disabled = false;
+    if (banner) banner.classList.add('hidden');
+    return;
+  }
+
+  const cfg = empPunchConfig;
+
+  // Employé non soumis au pointage : les boutons n'ont pas lieu d'exister.
+  if (cfg.attendance_required === false) {
+    btnIn.classList.add('hidden');
+    btnOut.classList.add('hidden');
+    if (banner) {
+      banner.classList.remove('hidden');
+      banner.className = 'rounded-xl border border-cyan-500/30 bg-cyan-500/10 p-3 text-xs text-cyan-200';
+      banner.innerText = "Votre poste n'est pas soumis au pointage.";
+    }
+    return;
+  }
+
+  btnIn.classList.remove('hidden');
+  btnOut.classList.remove('hidden');
+
+  const manquants = Array.isArray(cfg.missing) ? cfg.missing : [];
+  const pret = cfg.ready === true && manquants.length === 0;
+
+  btnIn.disabled = !pret;
+  btnOut.disabled = !pret;
+
+  if (!banner) return;
+
+  if (pret) {
+    banner.classList.add('hidden');
+    return;
+  }
+
+  // Message précis, orienté vers la personne qui peut agir : le responsable.
+  const messages = {
+    "Aucun site de travail ne vous est affecté":
+      "Pointage indisponible — Votre lieu de travail n'a pas encore été configuré par votre responsable. Contactez votre RH.",
+    "Votre site n'a pas de coordonnées GPS":
+      'Pointage indisponible — Votre site de travail existe mais sa position GPS n\'a pas été renseignée. Contactez votre RH.',
+    'Votre site de travail est désactivé':
+      'Pointage indisponible — Votre site de travail a été désactivé. Contactez votre RH.',
+    "Aucun horaire de travail ne vous est attribué":
+      "Pointage indisponible — Aucun horaire ne vous a encore été attribué. Contactez votre RH.",
+    'Votre compte est désactivé':
+      'Pointage indisponible — Votre compte est désactivé. Contactez votre RH.',
+    "Abonnement de l'entreprise inactif":
+      "Pointage indisponible — L'abonnement de votre entreprise est inactif. Contactez votre direction.",
+  };
+
+  const texte =
+    messages[manquants[0]] ||
+    'Pointage indisponible — Votre responsable doit terminer la configuration de votre profil.';
+
+  banner.classList.remove('hidden');
+  banner.className = 'rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200 leading-relaxed';
+  banner.innerText = texte;
+}
+
 function openEmployeePunch(type) {
   if (empPunch.submitting) return;
 
   if (!state.isAuthenticated || !state.currentUser) {
     showToast('Connexion requise', 'Reconnectez-vous pour pouvoir pointer.', 'info');
     openAuthModal('login');
+    return;
+  }
+
+  // Garde-fou : la configuration peut avoir changé depuis le chargement.
+  if (empPunchConfig && empPunchConfig.ready === false && empPunchConfig.attendance_required !== false) {
+    const manquants = Array.isArray(empPunchConfig.missing) ? empPunchConfig.missing : [];
+    showToast(
+      'Pointage indisponible',
+      escapeHtml(manquants[0] || 'Votre profil de pointage est incomplet.') +
+        ' Contactez votre service RH.',
+      'info',
+      8000
+    );
     return;
   }
 
@@ -1917,6 +2037,519 @@ function closeEmployeePunch() {
     modal.classList.add('hidden');
     modal.classList.remove('flex');
   }
+}
+
+// =============================================================================
+//  CONFIGURATION DU POINTAGE — Cockpit Client RH
+//
+//  Cette section est la SOURCE DE VÉRITÉ du pointage. Le Dashboard Employé lit
+//  ce qui est défini ici via get_employee_punch_config() et n'invente aucune
+//  règle : ni rayon, ni précision, ni horaire.
+//
+//  Tout est cloisonné par company_id, et les politiques RLS (migration 003)
+//  réservent l'écriture aux rôles CEO / RH : un employé ne peut pas déplacer
+//  un site ni élargir un rayon en manipulant une requête.
+// =============================================================================
+
+const JOURS_SEMAINE = [
+  { n: 1, label: 'Lun' }, { n: 2, label: 'Mar' }, { n: 3, label: 'Mer' },
+  { n: 4, label: 'Jeu' }, { n: 5, label: 'Ven' }, { n: 6, label: 'Sam' }, { n: 7, label: 'Dim' },
+];
+
+const punchConfig = { sites: [], schedules: [], readiness: [], attempts: [] };
+
+function minutesVersHeure(m) {
+  const h = String(Math.floor((m || 0) / 60)).padStart(2, '0');
+  const min = String((m || 0) % 60).padStart(2, '0');
+  return `${h}:${min}`;
+}
+
+function heureVersMinutes(v) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(v || '').trim());
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+
+/** Le rôle courant peut-il configurer le pointage ? */
+function peutConfigurerPointage() {
+  const r = String(state.currentUserRole || '').toUpperCase();
+  return ['CEO', 'HR', 'COMPANY_ADMIN', 'SUPER_ADMIN'].includes(r);
+}
+
+async function renderPunchConfig() {
+  if (!supabaseClient || !state.currentCompanyId) {
+    const list = document.getElementById('sites-list');
+    if (list) {
+      list.innerHTML =
+        '<p class="text-xs text-slate-400">Connectez-vous à votre espace entreprise pour configurer le pointage.</p>';
+    }
+    return;
+  }
+
+  const cid = state.currentCompanyId;
+
+  const [sitesRes, schedRes, usersRes] = await Promise.all([
+    supabaseClient.from('geofences').select('*').eq('company_id', cid).order('name'),
+    supabaseClient.from('work_schedules').select('*').eq('company_id', cid).order('name'),
+    supabaseClient.from('users').select('id,full_name,email,registration_number,is_active,site_id,schedule_id,attendance_required').eq('company_id', cid).order('full_name'),
+  ]);
+
+  // Les horaires n'existent qu'après la migration 003 : on ne casse pas l'écran
+  // si elle n'a pas encore été jouée, on le signale.
+  const migration003Absente =
+    schedRes.error && /work_schedules|does not exist|schema cache/i.test(String(schedRes.error.message || ''));
+
+  punchConfig.sites = sitesRes.data || [];
+  punchConfig.schedules = schedRes.data || [];
+  const employes = usersRes.data || [];
+
+  renderSitesList(migration003Absente);
+  renderSchedulesList(migration003Absente);
+  renderReadinessTable(employes, migration003Absente);
+  renderPunchAttempts();
+  renderPunchConfigKpis(employes);
+}
+
+function siteEtat(s) {
+  if (s.latitude == null || s.longitude == null) return { txt: 'Coordonnées manquantes', cls: 'badge-danger' };
+  if (!s.radius_meters) return { txt: 'Rayon non défini', cls: 'badge-alert' };
+  if (s.is_active === false) return { txt: 'Site désactivé', cls: 'badge-alert' };
+  return { txt: 'Zone configurée', cls: 'badge-verified' };
+}
+
+function renderSitesList(migrationAbsente) {
+  const box = document.getElementById('sites-list');
+  if (!box) return;
+
+  if (punchConfig.sites.length === 0) {
+    box.innerHTML = `<p class="text-xs text-slate-400 leading-relaxed">
+        Aucun site de travail n'est encore configuré. Vos employés ne peuvent pas pointer
+        tant qu'aucune zone GPS n'existe. Créez votre premier site avec « Ajouter un site ».
+      </p>`;
+    return;
+  }
+
+  box.innerHTML = punchConfig.sites
+    .map((s) => {
+      const e = siteEtat(s);
+      const coords = s.latitude != null
+        ? `${Number(s.latitude).toFixed(5)}, ${Number(s.longitude).toFixed(5)}`
+        : 'non renseignées';
+      return `<div class="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="font-bold text-slate-100 text-xs">${escapeHtml(s.name)}</span>
+              <span class="${e.cls} px-2 py-0.5 rounded text-[10px]">${e.txt}</span>
+            </div>
+            <p class="text-[11px] text-slate-400 font-mono mt-0.5">
+              ${escapeHtml(coords)} • rayon ${s.radius_meters || '—'} m
+              ${s.address ? ' • ' + escapeHtml(s.address) : ''}
+            </p>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <button onclick="openSiteForm('${escapeHtml(String(s.id))}')" class="min-h-tap px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold transition">Modifier</button>
+            <button onclick="toggleSiteActive('${escapeHtml(String(s.id))}')" class="min-h-tap px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-[11px] font-bold transition">
+              ${s.is_active === false ? 'Activer' : 'Désactiver'}
+            </button>
+          </div>
+        </div>`;
+    })
+    .join('');
+}
+
+function renderSchedulesList(migrationAbsente) {
+  const box = document.getElementById('schedules-list');
+  if (!box) return;
+
+  if (migrationAbsente) {
+    box.innerHTML = `<p class="text-xs text-amber-300 leading-relaxed">
+        La table des horaires n'existe pas encore sur le serveur.
+        Exécutez <span class="font-mono">services/supabase_migration_003_rh_config.sql</span>
+        dans l'éditeur SQL Supabase pour activer cette section.
+      </p>`;
+    return;
+  }
+
+  if (punchConfig.schedules.length === 0) {
+    box.innerHTML = `<p class="text-xs text-slate-400 leading-relaxed">
+        Aucun horaire défini. Sans horaire, les retards ne peuvent pas être calculés :
+        les pointages resteront enregistrés, mais sans distinction arrivée à l'heure / retard.
+      </p>`;
+    return;
+  }
+
+  box.innerHTML = punchConfig.schedules
+    .map((s) => {
+      const jours = (s.work_days || []).map((n) => (JOURS_SEMAINE.find((j) => j.n === n) || {}).label).filter(Boolean).join(' ');
+      return `<div class="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+          <div>
+            <span class="font-bold text-slate-100 text-xs">${escapeHtml(s.name)}</span>
+            <p class="text-[11px] text-slate-400 font-mono mt-0.5">
+              ${escapeHtml(jours)} • ${minutesVersHeure(s.start_minute)}–${minutesVersHeure(s.end_minute)}
+              • tolérance ${s.tolerance_minutes ?? 0} min
+            </p>
+          </div>
+          <button onclick="openScheduleForm('${escapeHtml(String(s.id))}')" class="min-h-tap px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold transition">Modifier</button>
+        </div>`;
+    })
+    .join('');
+}
+
+function renderReadinessTable(employes, migrationAbsente) {
+  const body = document.getElementById('readiness-table-body');
+  if (!body) return;
+
+  if (employes.length === 0) {
+    body.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-slate-500 text-xs">Aucun employé enregistré pour cette entreprise.</td></tr>`;
+    return;
+  }
+
+  const optionsSites = (sel) =>
+    ['<option value="">— Aucun —</option>']
+      .concat(punchConfig.sites.map((s) =>
+        `<option value="${escapeHtml(String(s.id))}" ${String(sel) === String(s.id) ? 'selected' : ''}>${escapeHtml(s.name)}</option>`))
+      .join('');
+
+  const optionsSched = (sel) =>
+    ['<option value="">— Aucun —</option>']
+      .concat(punchConfig.schedules.map((s) =>
+        `<option value="${escapeHtml(String(s.id))}" ${String(sel) === String(s.id) ? 'selected' : ''}>${escapeHtml(s.name)}</option>`))
+      .join('');
+
+  body.innerHTML = employes
+    .map((u) => {
+      const site = punchConfig.sites.find((s) => String(s.id) === String(u.site_id));
+      const doitPointer = u.attendance_required !== false;
+      const manque = [];
+      if (u.is_active === false) manque.push('compte désactivé');
+      if (!site) manque.push('aucun site');
+      else if (site.latitude == null) manque.push('site sans GPS');
+      else if (site.is_active === false) manque.push('site désactivé');
+
+      const pret = doitPointer && manque.length === 0;
+      const badge = !doitPointer
+        ? '<span class="badge-info px-2 py-0.5 rounded text-[10px]">Non soumis au pointage</span>'
+        : pret
+          ? '<span class="badge-verified px-2 py-0.5 rounded text-[10px]">PRÊT À POINTER</span>'
+          : `<span class="badge-danger px-2 py-0.5 rounded text-[10px]">INCOMPLET : ${escapeHtml(manque.join(', '))}</span>`;
+
+      const dis = peutConfigurerPointage() ? '' : 'disabled';
+      const id = escapeHtml(String(u.id));
+
+      return `<tr class="hover:bg-slate-800/30">
+          <td class="py-2 pr-2">
+            <div class="font-bold text-slate-100 text-xs">${escapeHtml(u.full_name || u.email)}</div>
+            <div class="text-[10px] text-slate-500 font-mono">${escapeHtml(u.registration_number || '')}</div>
+          </td>
+          <td class="py-2 pr-2">
+            <select ${dis} onchange="assignEmployeeConfig('${id}', 'site_id', this.value)"
+              class="bg-slate-950 border border-slate-700 rounded-lg p-1.5 text-[11px] text-slate-200 focus:outline-none focus:border-emerald-500 disabled:opacity-50">
+              ${optionsSites(u.site_id)}
+            </select>
+          </td>
+          <td class="py-2 pr-2">
+            <select ${dis} onchange="assignEmployeeConfig('${id}', 'schedule_id', this.value)"
+              class="bg-slate-950 border border-slate-700 rounded-lg p-1.5 text-[11px] text-slate-200 focus:outline-none focus:border-cyan-500 disabled:opacity-50">
+              ${optionsSched(u.schedule_id)}
+            </select>
+          </td>
+          <td class="py-2 pr-2">
+            <input type="checkbox" ${dis} ${doitPointer ? 'checked' : ''}
+              onchange="assignEmployeeConfig('${id}', 'attendance_required', this.checked)"
+              class="rounded bg-slate-950 border-slate-700 text-emerald-500 disabled:opacity-50" />
+          </td>
+          <td class="py-2 text-right">${badge}</td>
+        </tr>`;
+    })
+    .join('');
+}
+
+function renderPunchConfigKpis(employes) {
+  const sitesOk = punchConfig.sites.filter(
+    (s) => s.latitude != null && s.longitude != null && s.radius_meters && s.is_active !== false
+  ).length;
+
+  const prets = employes.filter((u) => {
+    if (u.attendance_required === false || u.is_active === false) return false;
+    const s = punchConfig.sites.find((x) => String(x.id) === String(u.site_id));
+    return !!(s && s.latitude != null && s.is_active !== false);
+  }).length;
+
+  const soumis = employes.filter((u) => u.attendance_required !== false && u.is_active !== false).length;
+
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
+  set('cfg-kpi-method', 'GPS + Selfie');
+  set('cfg-kpi-sites', `${sitesOk} / ${punchConfig.sites.length}`);
+  set('cfg-kpi-ready', String(prets));
+  set('cfg-kpi-notready', String(Math.max(0, soumis - prets)));
+
+  // Guide de démarrage : visible tant que l'essentiel manque.
+  const etapes = [
+    { ok: sitesOk > 0, txt: 'Créez votre site de travail (nom, position, rayon)' },
+    { ok: punchConfig.schedules.length > 0, txt: 'Définissez vos horaires (jours, heures, tolérance)' },
+    { ok: prets > 0, txt: 'Affectez vos employés à un site et à un horaire' },
+    { ok: true, txt: 'Méthode de pointage : GPS + Selfie (active)' },
+  ];
+  const onboarding = document.getElementById('punch-config-onboarding');
+  const liste = document.getElementById('punch-config-onboarding-steps');
+  if (onboarding && liste) {
+    const reste = etapes.filter((e) => !e.ok).length;
+    onboarding.classList.toggle('hidden', reste === 0);
+    liste.innerHTML = etapes
+      .map((e, i) => `<li class="flex items-start gap-2">
+          <span class="${e.ok ? 'text-emerald-400' : 'text-slate-500'} font-bold">${e.ok ? '✓' : i + 1 + '.'}</span>
+          <span class="${e.ok ? 'text-slate-500 line-through' : 'text-slate-200'}">${escapeHtml(e.txt)}</span>
+        </li>`)
+      .join('');
+  }
+}
+
+async function renderPunchAttempts() {
+  const box = document.getElementById('punch-attempts-list');
+  if (!box || !supabaseClient || !state.currentCompanyId) return;
+
+  const { data, error } = await supabaseClient
+    .from('attendance_attempts')
+    .select('*, users(full_name, registration_number)')
+    .eq('company_id', state.currentCompanyId)
+    .order('server_time', { ascending: false })
+    .limit(20);
+
+  if (error) {
+    box.innerHTML = `<p class="text-xs text-slate-500">Journal des tentatives indisponible (migration non exécutée ?).</p>`;
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    box.innerHTML = `<p class="text-xs text-slate-400">Aucune tentative refusée. Tous les pointages effectués ont été acceptés.</p>`;
+    return;
+  }
+
+  const libelles = {
+    OUTSIDE_GEOFENCE: 'Hors de la zone autorisée',
+    GPS_TOO_IMPRECISE: 'Position GPS trop imprécise',
+    NO_SITE_ASSIGNED: 'Aucun site affecté',
+    SITE_WITHOUT_COORDINATES: 'Site sans coordonnées GPS',
+    SELFIE_REQUIRED: 'Selfie manquant',
+    FACE_MISMATCH: 'Visage non reconnu',
+    ALREADY_CHECKED_IN: 'Double pointage d\'arrivée',
+    NO_OPEN_CHECK_IN: 'Départ sans arrivée',
+    DUPLICATE_PUNCH: 'Pointage trop rapproché',
+  };
+
+  punchConfig.attempts = data;
+  box.innerHTML = data
+    .map((a) => {
+      const nom = a.users ? (a.users.full_name || '—') : '—';
+      const quand = a.server_time
+        ? new Date(a.server_time).toLocaleString('fr-FR', { timeZone: 'Africa/Abidjan' })
+        : '';
+      return `<div class="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-slate-900/70 border border-red-500/20">
+          <div>
+            <span class="text-xs font-bold text-slate-100">${escapeHtml(nom)}</span>
+            <span class="text-[11px] text-red-300 ml-2">${escapeHtml(libelles[a.rejection_code] || a.rejection_code)}</span>
+            <p class="text-[10px] text-slate-500 font-mono mt-0.5">${escapeHtml(a.rejection_detail || '')}</p>
+          </div>
+          <span class="text-[10px] text-slate-500 font-mono">${escapeHtml(quand)}</span>
+        </div>`;
+    })
+    .join('');
+}
+
+// --- Formulaire site ---------------------------------------------------------
+
+function openSiteForm(siteId) {
+  if (!peutConfigurerPointage()) {
+    showToast('Action réservée', 'Seuls le CEO et le service RH peuvent configurer les sites.', 'info');
+    return;
+  }
+  const s = siteId ? punchConfig.sites.find((x) => String(x.id) === String(siteId)) : null;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+
+  set('site-form-id', s ? s.id : '');
+  set('site-form-name', s ? s.name : '');
+  set('site-form-address', s && s.address ? s.address : '');
+  set('site-form-lat', s && s.latitude != null ? s.latitude : '');
+  set('site-form-lng', s && s.longitude != null ? s.longitude : '');
+  set('site-form-radius', s && s.radius_meters ? s.radius_meters : 100);
+  const act = document.getElementById('site-form-active');
+  if (act) act.checked = s ? s.is_active !== false : true;
+
+  setNodeHidden('site-form', false);
+}
+
+function closeSiteForm() { setNodeHidden('site-form', true); }
+
+/** Renseigne les coordonnées depuis la position actuelle du responsable. */
+function useCurrentLocationForSite() {
+  if (!navigator.geolocation) {
+    showToast('Localisation indisponible', "Cet appareil ne fournit pas de position.", 'info');
+    return;
+  }
+  showToast('Localisation en cours', 'Récupération de votre position…', 'info', 4000);
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const lat = document.getElementById('site-form-lat');
+      const lng = document.getElementById('site-form-lng');
+      if (lat) lat.value = pos.coords.latitude.toFixed(6);
+      if (lng) lng.value = pos.coords.longitude.toFixed(6);
+      showToast(
+        'Position enregistrée',
+        `Précision ${Math.round(pos.coords.accuracy)} m. Vérifiez que vous êtes bien sur le site avant d'enregistrer.`,
+        'success'
+      );
+    },
+    () => showToast('Position introuvable', "Autorisez la localisation, ou saisissez les coordonnées à la main.", 'info'),
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+  );
+}
+
+async function saveSite() {
+  if (!peutConfigurerPointage() || !supabaseClient) return;
+
+  const val = (id) => (document.getElementById(id) || {}).value;
+  const id = val('site-form-id');
+  const name = String(val('site-form-name') || '').trim();
+  const lat = parseFloat(val('site-form-lat'));
+  const lng = parseFloat(val('site-form-lng'));
+  const radius = parseInt(val('site-form-radius'), 10);
+  const active = (document.getElementById('site-form-active') || {}).checked !== false;
+
+  // Une zone de pointage sans coordonnées exploitables n'est pas une zone.
+  if (!name) return showToast('Nom requis', 'Donnez un nom à ce site.', 'info');
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return showToast('Coordonnées invalides', 'Latitude et longitude doivent être des coordonnées GPS valides.', 'info');
+  }
+  if (!Number.isFinite(radius) || radius < 20 || radius > 5000) {
+    return showToast('Rayon invalide', 'Le rayon doit être compris entre 20 et 5000 mètres.', 'info');
+  }
+
+  const payload = {
+    company_id: state.currentCompanyId,
+    name,
+    address: val('site-form-address') || null,
+    latitude: lat,
+    longitude: lng,
+    radius_meters: radius,
+    is_active: active,
+  };
+
+  const { error } = id
+    ? await supabaseClient.from('geofences').update(payload).eq('id', id)
+    : await supabaseClient.from('geofences').insert(payload);
+
+  if (error) {
+    console.error('[Config] Enregistrement du site :', error);
+    return showToast('Enregistrement impossible', escapeHtml(error.message || 'Erreur serveur.'), 'info', 9000);
+  }
+
+  showToast('Site enregistré', `${escapeHtml(name)} — rayon ${radius} m.`, 'success');
+  closeSiteForm();
+  await renderPunchConfig();
+}
+
+async function toggleSiteActive(siteId) {
+  if (!peutConfigurerPointage() || !supabaseClient) return;
+  const s = punchConfig.sites.find((x) => String(x.id) === String(siteId));
+  if (!s) return;
+
+  const { error } = await supabaseClient
+    .from('geofences').update({ is_active: s.is_active === false }).eq('id', siteId);
+
+  if (error) return showToast('Modification impossible', escapeHtml(error.message || ''), 'info');
+  await renderPunchConfig();
+}
+
+// --- Formulaire horaire ------------------------------------------------------
+
+function openScheduleForm(schedId) {
+  if (!peutConfigurerPointage()) {
+    showToast('Action réservée', 'Seuls le CEO et le service RH peuvent définir les horaires.', 'info');
+    return;
+  }
+  const s = schedId ? punchConfig.schedules.find((x) => String(x.id) === String(schedId)) : null;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+
+  set('schedule-form-id', s ? s.id : '');
+  set('schedule-form-name', s ? s.name : '');
+  set('schedule-form-tolerance', s ? (s.tolerance_minutes ?? 10) : 10);
+  set('schedule-form-start', minutesVersHeure(s ? s.start_minute : 480));
+  set('schedule-form-end', minutesVersHeure(s ? s.end_minute : 1020));
+
+  const actifs = s ? s.work_days || [] : [1, 2, 3, 4, 5];
+  const box = document.getElementById('schedule-form-days');
+  if (box) {
+    box.innerHTML = JOURS_SEMAINE.map((j) =>
+      `<label class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-[11px] text-slate-200 cursor-pointer">
+         <input type="checkbox" class="sched-day rounded bg-slate-950 border-slate-700 text-cyan-500"
+                value="${j.n}" ${actifs.includes(j.n) ? 'checked' : ''} /> ${j.label}
+       </label>`).join('');
+  }
+
+  setNodeHidden('schedule-form', false);
+}
+
+function closeScheduleForm() { setNodeHidden('schedule-form', true); }
+
+async function saveSchedule() {
+  if (!peutConfigurerPointage() || !supabaseClient) return;
+
+  const val = (id) => (document.getElementById(id) || {}).value;
+  const id = val('schedule-form-id');
+  const name = String(val('schedule-form-name') || '').trim();
+  const start = heureVersMinutes(val('schedule-form-start'));
+  const end = heureVersMinutes(val('schedule-form-end'));
+  const tol = parseInt(val('schedule-form-tolerance'), 10);
+  const days = Array.from(document.querySelectorAll('.sched-day:checked')).map((c) => Number(c.value));
+
+  if (!name) return showToast('Nom requis', 'Donnez un nom à cet horaire.', 'info');
+  if (start == null || end == null) return showToast('Heures invalides', 'Renseignez une heure de début et de fin.', 'info');
+  if (days.length === 0) return showToast('Jours requis', 'Sélectionnez au moins un jour travaillé.', 'info');
+
+  const payload = {
+    company_id: state.currentCompanyId,
+    name,
+    work_days: days,
+    start_minute: start,
+    end_minute: end,
+    tolerance_minutes: Number.isFinite(tol) ? tol : 10,
+    is_active: true,
+  };
+
+  const { error } = id
+    ? await supabaseClient.from('work_schedules').update(payload).eq('id', id)
+    : await supabaseClient.from('work_schedules').insert(payload);
+
+  if (error) {
+    console.error('[Config] Enregistrement horaire :', error);
+    return showToast('Enregistrement impossible', escapeHtml(error.message || ''), 'info', 9000);
+  }
+
+  showToast('Horaire enregistré', escapeHtml(name), 'success');
+  closeScheduleForm();
+  await renderPunchConfig();
+}
+
+/** Affecte un site, un horaire ou l'obligation de pointer à un employé. */
+async function assignEmployeeConfig(userId, champ, valeur) {
+  if (!peutConfigurerPointage() || !supabaseClient) {
+    showToast('Action réservée', 'Seuls le CEO et le service RH peuvent modifier ces paramètres.', 'info');
+    return;
+  }
+
+  const patch = {};
+  patch[champ] = valeur === '' ? null : valeur;
+
+  const { error } = await supabaseClient
+    .from('users').update(patch).eq('id', userId).eq('company_id', state.currentCompanyId);
+
+  if (error) {
+    console.error('[Config] Affectation employé :', error);
+    return showToast('Modification impossible', escapeHtml(error.message || ''), 'info', 9000);
+  }
+
+  showToast('Configuration mise à jour', "L'employé utilisera ces paramètres à son prochain pointage.", 'success', 4000);
+  await renderPunchConfig();
 }
 
 // =============================================================================
@@ -4903,6 +5536,11 @@ async function loadSupabaseData() {
 
     renderSaasDashboard();
     renderEmployeeDashboard();
+
+    // La configuration de pointage vient du Cockpit RH. On la charge ici pour
+    // que les boutons du Dashboard Employé reflètent immédiatement l'état réel
+    // plutôt que d'échouer au clic.
+    chargerConfigPointageEmploye();
   } catch (err) {
     console.warn('Erreur lors du chargement des données Supabase:', err);
   }

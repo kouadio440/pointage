@@ -939,6 +939,9 @@
         <button onclick="switchSection('punch')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="punch">
           Pointage GPS & Geofence
         </button>
+        <button onclick="switchSection('punch-config')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-bold text-amber-400 hover:text-white hover:bg-slate-800 transition border border-amber-500/30" data-section="punch-config">
+          ⚙️ Configuration Pointage
+        </button>
         <button onclick="switchSection('leaves')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="leaves">
           Demandes de Congé
         </button>
@@ -1196,6 +1199,191 @@
       </div>
 
       <!-- SUB-SECTION 3: LEAVES (DEMANDES DE CONGÉ) -->
+      <!--
+        CONFIGURATION DU POINTAGE — source de vérité de l'entreprise.
+
+        Tout ce qui est défini ici est lu par le Dashboard Employé, qui n'a
+        aucune règle propre. Tant que la configuration est incomplète, le
+        pointage y est bloqué avec un message explicite.
+      -->
+      <div id="section-punch-config" class="sub-section hidden space-y-6">
+
+        <!-- Guide de démarrage, visible tant que l'essentiel manque -->
+        <div id="punch-config-onboarding" class="hidden glass-panel p-5 border border-amber-500/40 bg-amber-500/5 space-y-3">
+          <h3 class="font-bold text-white text-sm flex items-center gap-2">
+            <i data-lucide="rocket" class="w-4 h-4 text-amber-400"></i>
+            Mise en route du pointage
+          </h3>
+          <p class="text-xs text-slate-300">Vos équipes ne pourront pas pointer tant que ces étapes ne sont pas terminées.</p>
+          <ol id="punch-config-onboarding-steps" class="space-y-2 text-xs"></ol>
+        </div>
+
+        <!-- Synthèse -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1">
+            <div class="text-xs text-slate-400">Méthode de pointage</div>
+            <div id="cfg-kpi-method" class="text-base font-extrabold font-mono text-amber-400">—</div>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1">
+            <div class="text-xs text-slate-400">Sites géolocalisés</div>
+            <div id="cfg-kpi-sites" class="text-base font-extrabold font-mono text-emerald-400">—</div>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1">
+            <div class="text-xs text-slate-400">Employés prêts</div>
+            <div id="cfg-kpi-ready" class="text-base font-extrabold font-mono text-emerald-400">—</div>
+          </div>
+          <div class="p-4 rounded-xl bg-slate-900/90 border border-red-500/30 bg-red-500/5 space-y-1">
+            <div class="text-xs text-slate-400">Configuration incomplète</div>
+            <div id="cfg-kpi-notready" class="text-base font-extrabold font-mono text-red-400">—</div>
+          </div>
+        </div>
+
+        <!-- Sites & zones -->
+        <div class="glass-panel p-5 border-slate-800 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <h3 class="font-bold text-white text-sm flex items-center gap-2">
+              <i data-lucide="map-pin" class="w-4 h-4 text-emerald-400"></i>
+              Sites &amp; Zones de pointage
+            </h3>
+            <button onclick="openSiteForm()" class="min-h-tap px-3.5 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-bold text-xs transition flex items-center gap-1.5">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i> Ajouter un site
+            </button>
+          </div>
+
+          <div id="site-form" class="hidden rounded-xl bg-slate-900/80 border border-emerald-500/30 p-4 space-y-3">
+            <input type="hidden" id="site-form-id" />
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="text-[11px] text-slate-400 font-semibold block mb-1">Nom du site *</label>
+                <input id="site-form-name" type="text" placeholder="Siège Yopougon" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500" />
+              </div>
+              <div>
+                <label class="text-[11px] text-slate-400 font-semibold block mb-1">Adresse</label>
+                <input id="site-form-address" type="text" placeholder="Rue des Jardins, Abidjan" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500" />
+              </div>
+              <div>
+                <label class="text-[11px] text-slate-400 font-semibold block mb-1">Latitude *</label>
+                <input id="site-form-lat" type="number" step="0.000001" placeholder="5.359942" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-emerald-500" />
+              </div>
+              <div>
+                <label class="text-[11px] text-slate-400 font-semibold block mb-1">Longitude *</label>
+                <input id="site-form-lng" type="number" step="0.000001" placeholder="-4.008311" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-emerald-500" />
+              </div>
+              <div>
+                <label class="text-[11px] text-slate-400 font-semibold block mb-1">Rayon autorisé (mètres) *</label>
+                <input id="site-form-radius" type="number" min="20" max="5000" value="100" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-emerald-500" />
+                <p class="text-[10px] text-slate-500 mt-1">Entre 20 et 5000 m. Un rayon trop large vide le géofencing de son sens.</p>
+              </div>
+              <div class="flex items-end">
+                <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                  <input id="site-form-active" type="checkbox" checked class="rounded bg-slate-950 border-slate-700 text-emerald-500" />
+                  Site actif
+                </label>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap gap-2 pt-1">
+              <button onclick="useCurrentLocationForSite()" class="min-h-tap px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/40 font-bold text-xs transition flex items-center gap-1.5">
+                <i data-lucide="crosshair" class="w-3.5 h-3.5"></i> Utiliser ma position actuelle
+              </button>
+              <button onclick="saveSite()" class="min-h-tap px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs transition">
+                Enregistrer le site
+              </button>
+              <button onclick="closeSiteForm()" class="min-h-tap px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-bold text-xs transition">
+                Annuler
+              </button>
+            </div>
+          </div>
+
+          <div id="sites-list" class="space-y-2"></div>
+        </div>
+
+        <!-- Horaires -->
+        <div class="glass-panel p-5 border-slate-800 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <h3 class="font-bold text-white text-sm flex items-center gap-2">
+              <i data-lucide="clock" class="w-4 h-4 text-cyan-400"></i>
+              Horaires de travail
+            </h3>
+            <button onclick="openScheduleForm()" class="min-h-tap px-3.5 py-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 font-bold text-xs transition flex items-center gap-1.5">
+              <i data-lucide="plus" class="w-3.5 h-3.5"></i> Ajouter un horaire
+            </button>
+          </div>
+
+          <div id="schedule-form" class="hidden rounded-xl bg-slate-900/80 border border-cyan-500/30 p-4 space-y-3">
+            <input type="hidden" id="schedule-form-id" />
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="text-[11px] text-slate-400 font-semibold block mb-1">Nom *</label>
+                <input id="schedule-form-name" type="text" placeholder="Lundi-Vendredi 08:00-17:00" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-100 focus:outline-none focus:border-cyan-500" />
+              </div>
+              <div>
+                <label class="text-[11px] text-slate-400 font-semibold block mb-1">Tolérance retard (min)</label>
+                <input id="schedule-form-tolerance" type="number" min="0" max="120" value="10" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-cyan-500" />
+              </div>
+              <div>
+                <label class="text-[11px] text-slate-400 font-semibold block mb-1">Heure de début *</label>
+                <input id="schedule-form-start" type="time" value="08:00" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-cyan-500" />
+              </div>
+              <div>
+                <label class="text-[11px] text-slate-400 font-semibold block mb-1">Heure de fin *</label>
+                <input id="schedule-form-end" type="time" value="17:00" class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-cyan-500" />
+              </div>
+            </div>
+            <div>
+              <label class="text-[11px] text-slate-400 font-semibold block mb-1.5">Jours travaillés</label>
+              <div id="schedule-form-days" class="flex flex-wrap gap-2"></div>
+            </div>
+            <div class="flex flex-wrap gap-2 pt-1">
+              <button onclick="saveSchedule()" class="min-h-tap px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs transition">
+                Enregistrer l'horaire
+              </button>
+              <button onclick="closeScheduleForm()" class="min-h-tap px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-bold text-xs transition">
+                Annuler
+              </button>
+            </div>
+          </div>
+
+          <div id="schedules-list" class="space-y-2"></div>
+        </div>
+
+        <!-- État de préparation des employés -->
+        <div class="glass-panel p-5 border-slate-800 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <h3 class="font-bold text-white text-sm flex items-center gap-2">
+              <i data-lucide="user-check" class="w-4 h-4 text-amber-400"></i>
+              Affectation &amp; état de préparation
+            </h3>
+            <button onclick="renderPunchConfig()" class="min-h-tap px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-bold text-xs transition flex items-center gap-1.5">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Actualiser
+            </button>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+              <thead>
+                <tr class="text-slate-400 border-b border-slate-800/80 font-mono text-[11px]">
+                  <th class="pb-2 font-semibold">Employé</th>
+                  <th class="pb-2 font-semibold">Site de travail</th>
+                  <th class="pb-2 font-semibold">Horaire</th>
+                  <th class="pb-2 font-semibold">Doit pointer</th>
+                  <th class="pb-2 font-semibold text-right">État</th>
+                </tr>
+              </thead>
+              <tbody id="readiness-table-body" class="divide-y divide-slate-800/40 text-slate-300"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Anomalies de pointage -->
+        <div class="glass-panel p-5 border border-red-500/25 space-y-4">
+          <h3 class="font-bold text-white text-sm flex items-center gap-2 border-b border-slate-800 pb-3">
+            <i data-lucide="alert-triangle" class="w-4 h-4 text-red-400"></i>
+            Anomalies &amp; tentatives refusées
+          </h3>
+          <div id="punch-attempts-list" class="space-y-2"></div>
+        </div>
+      </div>
+
       <div id="section-leaves" class="sub-section hidden space-y-6">
         <div class="glass-panel p-6 space-y-6">
           <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
@@ -2626,6 +2814,10 @@
               Pointer mon départ
             </button>
           </div>
+        </div>
+
+        <!-- Message affiché quand la configuration RH est incomplète -->
+        <div id="emp-punch-config-banner" class="hidden">
         </div>
 
         <!-- 4 CARDS REQUISES : STATUT DU JOUR, ARRIVÉE, DÉPART, TEMPS TRAVAILLÉ -->
