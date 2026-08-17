@@ -53,6 +53,9 @@ jobs:
       - name: Aucune geolocalisation en arriere-plan
         run: node scripts/check-no-background-geolocation.mjs
 
+      - name: Aiguillage de vue au demarrage (anti-clignotement)
+        run: node scripts/check-boot-views.mjs
+
   qualite:
     name: Types, lint et tests
     runs-on: ubuntu-latest

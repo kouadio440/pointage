@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS public.companies (
     plan VARCHAR(50) DEFAULT 'pro' CHECK (plan IN ('starter', 'pro', 'enterprise')),
     status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'trial', 'suspended', 'expired')),
     max_employees INT DEFAULT 50,
+    company_code VARCHAR(50) UNIQUE, -- Code d'entreprise public pour auto-inscription (ex: WD-7K9P-X4M2)
+    employee_prefix VARCHAR(20) DEFAULT 'EMP', -- Préfixe personnalisé du matricule (ex: EMP, WD, SOC)
+    employee_counter INT DEFAULT 0, -- Compteur de matricules par entreprise
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -26,13 +29,14 @@ CREATE TABLE IF NOT EXISTS public.users (
     full_name VARCHAR(255) NOT NULL,
     role VARCHAR(50) NOT NULL DEFAULT 'employee' CHECK (role IN ('super_admin', 'company_admin', 'manager', 'employee', 'field_agent')),
     job_title VARCHAR(100),
-    registration_number VARCHAR(50), -- Matricule
+    registration_number VARCHAR(50), -- Matricule (ex: EMP-0001)
     phone_number VARCHAR(50),
     avatar_url TEXT,
     face_embedding TEXT, -- Vecteur d'empreinte faciale chiffré
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    CONSTRAINT unique_company_registration_number UNIQUE(company_id, registration_number)
 );
 
 -- 3. Zones de Géofencing (Autorisations GPS par entreprise)
@@ -125,7 +129,7 @@ CREATE TABLE IF NOT EXISTS public.company_memberships (
     role VARCHAR(50) NOT NULL DEFAULT 'EMPLOYEE' CHECK (role IN ('CEO', 'HR', 'MANAGER', 'EMPLOYEE')),
     attendance_required BOOLEAN DEFAULT TRUE,
     invitation_code VARCHAR(100) UNIQUE,
-    status VARCHAR(50) DEFAULT 'ACTIVE' CHECK (status IN ('INVITED', 'ACTIVE', 'SUSPENDED')),
+    status VARCHAR(50) DEFAULT 'ACTIVE' CHECK (status IN ('INVITED', 'PENDING_APPROVAL', 'ACTIVE', 'REJECTED', 'SUSPENDED')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE(user_id, company_id)
@@ -151,3 +155,85 @@ CREATE POLICY "Public & Anon access on audit_logs" ON public.audit_logs FOR ALL 
 CREATE POLICY "Public & Anon access on calendar_events" ON public.calendar_events FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Public & Anon access on company_memberships" ON public.company_memberships FOR ALL USING (true) WITH CHECK (true);
 
+-- =============================================================================
+-- Stockage des Photos de Profil (Supabase Storage)
+--
+-- IMPORTANT : un bucket de stockage ne se crée PAS avec un CREATE TABLE. Sans
+-- ce bloc, tout upload vers .storage.from('avatars') échoue, l'application
+-- retombe silencieusement sur une image encodée en base64, et la photo de
+-- profil disparaît à la reconnexion. C'était exactement le défaut constaté.
+-- =============================================================================
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+    'avatars',
+    'avatars',
+    TRUE,                                            -- lecture publique : une photo de profil s'affiche sans jeton
+    2097152,                                         -- plafond serveur de 2 Mo, indépendant du client
+    ARRAY['image/jpeg', 'image/png', 'image/webp']   -- le type est vérifié côté serveur, pas seulement dans le navigateur
+)
+ON CONFLICT (id) DO UPDATE
+SET public             = EXCLUDED.public,
+    file_size_limit    = EXCLUDED.file_size_limit,
+    allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+-- Politiques d'accès au bucket.
+-- ATTENTION : elles sont aussi permissives que celles des tables ci-dessus
+-- (accès anonyme), ce qui convient au développement mais PAS à la production :
+-- n'importe qui peut y déposer un fichier. À restreindre à auth.uid() dès que
+-- l'authentification Supabase sera obligatoire — voir docs/RUNBOOK.md.
+DROP POLICY IF EXISTS "avatars_public_read" ON storage.objects;
+CREATE POLICY "avatars_public_read" ON storage.objects
+    FOR SELECT USING (bucket_id = 'avatars');
+
+DROP POLICY IF EXISTS "avatars_insert" ON storage.objects;
+CREATE POLICY "avatars_insert" ON storage.objects
+    FOR INSERT WITH CHECK (bucket_id = 'avatars');
+
+DROP POLICY IF EXISTS "avatars_update" ON storage.objects;
+CREATE POLICY "avatars_update" ON storage.objects
+    FOR UPDATE USING (bucket_id = 'avatars') WITH CHECK (bucket_id = 'avatars');
+
+DROP POLICY IF EXISTS "avatars_delete" ON storage.objects;
+CREATE POLICY "avatars_delete" ON storage.objects
+    FOR DELETE USING (bucket_id = 'avatars');
+
+-- =============================================================================
+-- Fonction SQL Atomique : Génération Sécurisée de Matricule par Entreprise
+-- (Verrouillage FOR UPDATE pour garantir zéro collision lors des créations simultanées)
+-- =============================================================================
+CREATE OR REPLACE FUNCTION public.generate_next_employee_number(p_company_id UUID)
+RETURNS VARCHAR(50)
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_prefix VARCHAR(20);
+    v_counter INT;
+    v_next_matricule VARCHAR(50);
+BEGIN
+    -- Verrouillage de la ligne d'entreprise pour incrémentation atomique
+    SELECT COALESCE(employee_prefix, 'EMP'), COALESCE(employee_counter, 0) + 1
+    INTO v_prefix, v_counter
+    FROM public.companies
+    WHERE id = p_company_id
+    FOR UPDATE;
+
+    IF v_prefix IS NULL OR v_prefix = '' THEN
+        v_prefix := 'EMP';
+    END IF;
+    
+    IF v_counter IS NULL THEN
+        v_counter := 1;
+    END IF;
+
+    -- Formater le matricule avec 4 chiffres (ex: EMP-0001)
+    v_next_matricule := v_prefix || '-' || LPAD(v_counter::text, 4, '0');
+
+    -- Mettre à jour le compteur dans l'entreprise
+    UPDATE public.companies
+    SET employee_counter = v_counter
+    WHERE id = p_company_id;
+
+    RETURN v_next_matricule;
+END;
+$$;

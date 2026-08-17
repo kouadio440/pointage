@@ -10,10 +10,12 @@ export default defineConfig({
     server: {
         port: 5173,
         proxy: {
-            // En developpement, l'API est appelee en relatif : aucun CORS a traverser,
-            // et les cookies httpOnly du refresh token se comportent comme en production.
             '/api': {
                 target: 'http://localhost:3000',
+                changeOrigin: true,
+            },
+            '^/(?!app/|api).*': {
+                target: 'http://localhost:3001',
                 changeOrigin: true,
             },
         },

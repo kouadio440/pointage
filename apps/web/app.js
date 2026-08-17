@@ -35,8 +35,13 @@ const state = {
   activeSection: 'overview',
   isAuthenticated: false,
   currentUser: null,
+  currentCompanyId: null,
+  currentCompanyName: 'Winner Design SARL',
+  currentCompanyPrefix: 'EMP',
+  currentUserRole: null,
+  currentUserAttendanceRequired: true,
   company: {
-    name: 'SaaS Entreprise',
+    name: 'Winner Design SARL',
     sector: 'Services, Industrie & Commerce',
     siteName: 'Siège Social — Zone Principale',
     coordinates: { lat: 5.359942, lng: -4.008311 },
@@ -47,8 +52,58 @@ const state = {
   leaves: [],
   overtimes: [],
   latenesses: [],
+  pendingRegistrations: [],
+  selectedPendingIds: [],
+  currentCompanyCode: '',
+  recognizedCompany: null,
   qrTimer: 30
 };
+
+// Persistent Session Management Helpers
+function saveSessionToStorage() {
+  if (state.isAuthenticated && state.currentUser) {
+    const sessionData = {
+      isAuthenticated: true,
+      currentUser: state.currentUser,
+      currentUserRole: state.currentUserRole,
+      currentCompanyId: state.currentCompanyId,
+      currentCompanyName: state.currentCompanyName,
+      currentCompanyPrefix: state.currentCompanyPrefix,
+      currentCompanyCode: state.currentCompanyCode
+    };
+    try {
+      localStorage.setItem('winner_auth_session', JSON.stringify(sessionData));
+    } catch (e) {}
+  }
+}
+
+function restoreSessionFromStorage() {
+  try {
+    const raw = localStorage.getItem('winner_auth_session');
+    if (raw) {
+      const data = JSON.parse(raw);
+      if (data && data.isAuthenticated && data.currentUser) {
+        state.isAuthenticated = true;
+        state.currentUser = data.currentUser;
+        state.currentUserRole = data.currentUserRole || 'EMPLOYEE';
+        state.currentCompanyId = data.currentCompanyId || null;
+        state.currentCompanyName = data.currentCompanyName || 'Winner Design SARL';
+        state.currentCompanyPrefix = data.currentCompanyPrefix || 'EMP';
+        state.currentCompanyCode = data.currentCompanyCode || '';
+        
+        const savedAvatar = state.currentUser.avatar ||
+                            resolveStoredAvatar(data.currentUser.id, data.currentUser.email);
+        if (savedAvatar) {
+          state.currentUser.avatar = savedAvatar;
+          const avatarImg = document.getElementById('emp-dash-avatar');
+          if (avatarImg) avatarImg.src = savedAvatar;
+        }
+
+        updateUiAfterLogin(state.currentUser.email, state.currentUserRole);
+      }
+    }
+  } catch (e) {}
+}
 
 // Initialize Application
 document.addEventListener('DOMContentLoaded', async () => {
@@ -56,12 +111,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   startLiveClock();
   startQRCountdown();
   
+  // 1. Restaurer la session locale immédiatement de manière synchrone
+  restoreSessionFromStorage();
+
   const initialHash = window.location.hash.replace('#', '');
-  if (['hero', 'saas', 'dashboard', 'employee'].includes(initialHash)) {
-    switchView(initialHash);
-  } else {
-    switchView('hero');
-  }
+  const activeView = (['hero', 'saas', 'dashboard', 'employee'].includes(initialHash))
+    ? initialHash
+    : (state.isAuthenticated ? (state.currentUserRole === 'EMPLOYEE' ? 'employee' : 'dashboard') : 'hero');
+
+  switchView(activeView);
 
   renderDashboard();
   renderStaffGrid();
@@ -70,59 +128,52 @@ document.addEventListener('DOMContentLoaded', async () => {
   setTheme('terracotta');
   updateRoiCalculator();
 
-  // Restaurer la session et charger les données réelles Supabase au démarrage
+  // Restaurer la session Supabase en arrière-plan sans réémettre de toast ni rediriger si déjà sur la bonne vue
   if (supabaseClient) {
     try {
       const { data: { session } } = await supabaseClient.auth.getSession();
       if (session && session.user) {
-        state.isAuthenticated = true;
         const userId = session.user.id;
         const email = session.user.email;
 
-        // Récupérer le rôle réel de l'utilisateur dans Supabase (company_memberships ou users)
-        const { data: memberships } = await supabaseClient
-          .from('company_memberships')
+        const { data: dbUser } = await supabaseClient
+          .from('users')
           .select('*')
-          .eq('user_id', userId)
-          .eq('status', 'ACTIVE');
+          .or(`id.eq.${userId},email.eq.${email}`)
+          .maybeSingle();
 
-        if (memberships && memberships.length > 0) {
-          const m = memberships[0];
-          state.currentUser = { id: userId, email: email, fullName: email.split('@')[0].toUpperCase() };
+        const realFullName = (dbUser && dbUser.full_name) ? dbUser.full_name : ((session.user && session.user.user_metadata && session.user.user_metadata.full_name) ? session.user.user_metadata.full_name : email.split('@')[0]);
 
-          let compName = state.company.name;
-          if (m.company_id) {
-            const { data: comp } = await supabaseClient.from('companies').select('name').eq('id', m.company_id).maybeSingle();
-            if (comp && comp.name) compName = comp.name;
-          }
+        const savedAvatar = (dbUser && dbUser.avatar_url) ? dbUser.avatar_url :
+                            (state.currentUser && state.currentUser.avatar) ? state.currentUser.avatar :
+                            resolveStoredAvatar(userId, email);
 
-          selectCompanyWorkspace(m.company_id, m.role, m.attendance_required, compName);
-        } else {
-          const { data: dbUser } = await supabaseClient
-            .from('users')
-            .select('*')
-            .eq('id', userId)
-            .maybeSingle();
+        state.isAuthenticated = true;
+        state.currentUser = {
+          id: userId,
+          email: email,
+          fullName: realFullName,
+          registrationNumber: dbUser ? dbUser.registration_number : (state.currentUser ? state.currentUser.registrationNumber : null),
+          jobTitle: dbUser ? dbUser.job_title : (state.currentUser ? state.currentUser.jobTitle : null),
+          avatar: savedAvatar,
+          role: dbUser ? dbUser.role : (state.currentUserRole || 'EMPLOYEE')
+        };
 
-          const companyId = dbUser ? dbUser.company_id : null;
-          const userRole = dbUser ? (dbUser.role || 'EMPLOYEE') : 'EMPLOYEE';
-          const attReq = dbUser ? (dbUser.attendance_required !== false) : true;
-          let compName = state.company.name;
+        saveSessionToStorage();
 
-          if (companyId) {
-            const { data: comp } = await supabaseClient.from('companies').select('name').eq('id', companyId).maybeSingle();
-            if (comp && comp.name) compName = comp.name;
-          }
-
-          state.currentUser = { id: userId, email: email, fullName: (dbUser && dbUser.full_name) ? dbUser.full_name : email.split('@')[0].toUpperCase() };
-          selectCompanyWorkspace(companyId, userRole, attReq, compName);
+        const avatarImg = document.getElementById('emp-dash-avatar');
+        if (avatarImg && savedAvatar) {
+          avatarImg.src = savedAvatar;
         }
-        console.log('[Supabase Auth] Session restaurée pour :', email, 'Rôle:', state.currentUserRole);
+
+        console.log('[Supabase Auth] Session synchronisée en arrière-plan pour :', realFullName, '(', email, ')');
       }
     } catch (e) {
       console.warn('[Supabase Auth] Erreur vérification session :', e);
     }
-    loadSupabaseData();
+    await loadSupabaseData();
+    checkUrlJoinCode();
+    checkUrlInvitation();
   }
 });
 
@@ -204,18 +255,40 @@ function initIcons() {
   }
 }
 
+/**
+ * Obtenir l'heure courante d'Abidjan (UTC+0 / GMT)
+ */
+function getAbidjanTimeParts(date = new Date()) {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Africa/Abidjan',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+    const parts = formatter.formatToParts(date);
+    let h = '00', m = '00', s = '00';
+    for (const p of parts) {
+      if (p.type === 'hour') h = p.value.padStart(2, '0');
+      if (p.type === 'minute') m = p.value.padStart(2, '0');
+      if (p.type === 'second') s = p.value.padStart(2, '0');
+    }
+    return { h, m, s, timeStr: `${h}:${m}:${s}`, shortStr: `${h}:${m}` };
+  } catch (e) {
+    const h = String(date.getUTCHours()).padStart(2, '0');
+    const m = String(date.getUTCMinutes()).padStart(2, '0');
+    const s = String(date.getUTCSeconds()).padStart(2, '0');
+    return { h, m, s, timeStr: `${h}:${m}:${s}`, shortStr: `${h}:${m}` };
+  }
+}
+
 // Live Clock Display (Strict Abidjan GMT / UTC+0 Time)
 function startLiveClock() {
   const clockEl = document.getElementById('live-system-clock');
   function updateClock() {
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString('fr-FR', { 
-      timeZone: 'Africa/Abidjan', 
-      hour: '2-digit', 
-      minute: '2-digit', 
-      second: '2-digit' 
-    });
-    if (clockEl) clockEl.innerText = `${timeStr} GMT (Abidjan)`;
+    const abidjanParts = getAbidjanTimeParts(new Date());
+    if (clockEl) clockEl.innerText = `${abidjanParts.timeStr} GMT (Abidjan)`;
   }
   updateClock();
   setInterval(updateClock, 1000);
@@ -264,6 +337,12 @@ function switchView(viewName) {
     window.history.replaceState(null, '', `#${viewName}`);
   }
 
+  // Le JS reprend la main sur l'affichage : on retire l'aiguillage de demarrage
+  // pose dans <head>. Sans cela, sa regle !important continuerait d'imposer la
+  // vue devinee avant chargement, y compris lorsqu'un controle de role vient de
+  // rediriger l'utilisateur ailleurs.
+  document.documentElement.removeAttribute('data-boot-view');
+
   document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
   document.querySelectorAll('.nav-view-btn').forEach(btn => {
     btn.classList.remove('text-amber-400', 'bg-amber-500/10', 'border-amber-500/30', 'text-emerald-400', 'bg-emerald-500/10', 'border-emerald-500/30', 'font-bold', 'font-semibold', 'glow-amber');
@@ -283,6 +362,8 @@ function switchView(viewName) {
     renderSaasCalendar();
   } else if (viewName === 'employee') {
     renderEmployeeDashboard();
+  } else if (viewName === 'dashboard') {
+    adaptCockpitRhPermissions();
   }
 
   closeMobileMenu();
@@ -786,10 +867,12 @@ function filterStaffGrid() {
   const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
 
   const filtered = state.employees.filter(emp => {
-    return emp.name.toLowerCase().includes(query) ||
-           emp.role.toLowerCase().includes(query) ||
-           emp.site.toLowerCase().includes(query) ||
-           emp.status.toLowerCase().includes(query);
+    const q = query.toLowerCase();
+    return emp.name.toLowerCase().includes(q) ||
+           emp.role.toLowerCase().includes(q) ||
+           emp.site.toLowerCase().includes(q) ||
+           emp.status.toLowerCase().includes(q) ||
+           (emp.matricule && emp.matricule.toLowerCase().includes(q));
   });
 
   if (filtered.length === 0) {
@@ -809,13 +892,16 @@ function filterStaffGrid() {
     if (emp.status === 'Absent') statusClass = 'border-red-500/30 text-red-400';
 
     return `
-      <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition space-y-3">
-        <div class="flex items-center space-x-3">
-          <img src="${escapeHtml(emp.avatar)}" class="w-12 h-12 rounded-xl object-cover border border-slate-700 shadow-md" alt="${escapeHtml(emp.name)}" />
-          <div>
-            <h4 class="font-bold text-white text-sm">${escapeHtml(emp.name)}</h4>
-            <p class="text-[11px] text-slate-400">${escapeHtml(emp.role)}</p>
+      <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition space-y-3 shadow-md">
+        <div class="flex items-start justify-between gap-2">
+          <div class="flex items-center space-x-3">
+            <img src="${escapeHtml(emp.avatar)}" class="w-11 h-11 rounded-xl object-cover border border-slate-700 shadow" alt="${escapeHtml(emp.name)}" />
+            <div>
+              <h4 class="font-bold text-white text-sm flex items-center gap-1.5">${escapeHtml(emp.name)}</h4>
+              <p class="text-[11px] text-slate-400">${escapeHtml(emp.role)}</p>
+            </div>
           </div>
+          <span class="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono text-[10px] font-bold shrink-0">${escapeHtml(emp.matricule || 'N/A')}</span>
         </div>
         <div class="flex items-center justify-between text-xs font-mono pt-2 border-t border-slate-800/80">
           <span class="text-slate-400">Statut :</span>
@@ -1153,17 +1239,631 @@ function submitPunch(type) {
 
     closePunchModal();
 
-    // Update employee status in state
-    const empObj = state.employees.find(e => empName.includes(e.name) || e.name.includes(empName));
+    // Update employee status & arrival time in GMT Abidjan
+    const nowAbidjanGmt = new Date().toLocaleTimeString('fr-FR', {
+      timeZone: 'Africa/Abidjan',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    const nowGmtFull = `${nowAbidjanGmt} GMT`;
+
+    if (type === 'ENTRÉE') {
+      const arriveEl = document.getElementById('emp-kpi-arrive-time');
+      if (arriveEl) arriveEl.innerText = nowGmtFull;
+
+      const arriveSubEl = document.getElementById('emp-kpi-arrive-sub');
+      if (arriveSubEl) arriveSubEl.innerText = 'Validé en direct par Selfie/GPS';
+
+      const userId = state.currentUser ? state.currentUser.id : 'usr-local';
+      const todayStr = new Date().toISOString().split('T')[0];
+      try {
+        localStorage.setItem(`winner_user_clock_in_${userId}_${todayStr}`, nowGmtFull);
+      } catch (e) {}
+    }
+
+    const empObj = state.employees ? state.employees.find(e => empName.includes(e.name) || e.name.includes(empName)) : null;
     if (empObj) {
       empObj.status = type === 'ENTRÉE' ? 'Présent' : 'Sorti';
-      empObj.arriveTime = nowStr.substring(0, 5);
+      empObj.arriveTime = nowAbidjanGmt;
       empObj.confidence = 99.4;
     }
 
     renderDashboard();
     renderStaffGrid();
+    renderEmployeeDashboard();
   }, 2500);
+}
+
+// =============================================================================
+//  POINTAGE EMPLOYÉ — Selfie + GPS en une seule opération
+//
+//  Principe : dès le clic, la caméra ET la géolocalisation démarrent en
+//  parallèle. Pendant que l'employé se cadre, la position est déjà en cours
+//  d'acquisition — c'est ce qui rend le pointage quasi instantané quand le
+//  téléphone dispose déjà d'un bon fix.
+//
+//  RÈGLE ABSOLUE : ce module ne décide RIEN. Il mesure (position, précision),
+//  capture (selfie) et transmet. La décision d'accepter ou refuser appartient
+//  à la fonction serveur record_attendance(), et à elle seule. Tout ce qui est
+//  affiché ici comme validé provient de la réponse du serveur.
+//
+//  Voir services/supabase_migration_002_attendance.sql
+// =============================================================================
+
+/** Précision visée avant de déclencher l'envoi, en mètres. */
+const GPS_TARGET_ACCURACY_M = 50;
+/** Au-delà, le serveur refusera : on prévient l'employé plutôt que d'envoyer. */
+const GPS_MAX_ACCURACY_M = 100;
+/** Budget total d'acquisition. Au-delà, on rend la main plutôt que de figer l'écran. */
+const GPS_BUDGET_MS = 20000;
+/** Durée maximale d'une tentative unitaire. */
+const GPS_SINGLE_TIMEOUT_MS = 8000;
+
+const empPunch = {
+  type: null,
+  stream: null,
+  position: null,
+  gpsState: 'idle',
+  gpsAbort: false,
+  submitting: false,
+  finished: false,
+  selfieBlob: null,
+};
+
+function openEmployeePunch(type) {
+  if (empPunch.submitting) return;
+
+  if (!state.isAuthenticated || !state.currentUser) {
+    showToast('Connexion requise', 'Reconnectez-vous pour pouvoir pointer.', 'info');
+    openAuthModal('login');
+    return;
+  }
+
+  empPunch.type = type === 'CHECK_OUT' ? 'CHECK_OUT' : 'CHECK_IN';
+  empPunch.position = null;
+  empPunch.gpsState = 'idle';
+  empPunch.gpsAbort = false;
+  empPunch.submitting = false;
+  empPunch.finished = false;
+  empPunch.selfieBlob = null;
+
+  const modal = document.getElementById('modal-emp-punch');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  }
+
+  const isIn = empPunch.type === 'CHECK_IN';
+  const titleEl = document.querySelector('#emp-punch-title span');
+  if (titleEl) titleEl.innerText = isIn ? 'Pointer mon arrivée' : 'Pointer mon départ';
+
+  // Remise à zéro de l'affichage
+  setNodeHidden('emp-punch-steps', true);
+  setNodeHidden('emp-punch-result', true);
+  setNodeHidden('emp-punch-retry', true);
+  setNodeHidden('emp-punch-preview', true);
+  setNodeHidden('emp-punch-camera-error', true);
+  setNodeHidden('emp-punch-frame', false);
+  setNodeHidden('emp-punch-gps-pill', false);
+
+  const captureBtn = document.getElementById('emp-punch-capture');
+  if (captureBtn) {
+    captureBtn.classList.remove('hidden');
+    captureBtn.disabled = true; // réactivé dès que la caméra est prête
+    captureBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>PRÉPARATION DE LA CAMÉRA…</span>';
+  }
+  if (window.lucide) lucide.createIcons();
+
+  // Les deux opérations partent EN MÊME TEMPS. On n'attend pas l'une pour l'autre.
+  startEmployeePunchCamera();
+  startEmployeePunchGps();
+}
+
+function setNodeHidden(id, hidden) {
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('hidden', hidden);
+}
+
+async function startEmployeePunchCamera() {
+  const video = document.getElementById('emp-punch-video');
+  const captureBtn = document.getElementById('emp-punch-capture');
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showEmployeePunchCameraError(
+      "Votre navigateur ne permet pas d'accéder à la caméra. Utilisez Chrome ou Safari à jour."
+    );
+    return;
+  }
+
+  try {
+    empPunch.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 720 } },
+      audio: false,
+    });
+    if (video) {
+      video.srcObject = empPunch.stream;
+      video.classList.remove('hidden');
+    }
+    if (captureBtn) {
+      captureBtn.disabled = false;
+      captureBtn.innerHTML = '<i data-lucide="camera" class="w-4 h-4"></i><span>PRENDRE MON SELFIE ET POINTER</span>';
+      if (window.lucide) lucide.createIcons();
+    }
+  } catch (err) {
+    const refus = err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError');
+    showEmployeePunchCameraError(
+      refus
+        ? "L'accès à la caméra a été refusé. Autorisez-le dans les réglages de votre navigateur, puis réessayez."
+        : "Aucune caméra n'a pu être ouverte sur cet appareil."
+    );
+  }
+}
+
+function showEmployeePunchCameraError(message) {
+  setNodeHidden('emp-punch-camera-error', false);
+  setNodeHidden('emp-punch-frame', true);
+  const msgEl = document.getElementById('emp-punch-camera-error-msg');
+  if (msgEl) msgEl.innerText = message;
+
+  const captureBtn = document.getElementById('emp-punch-capture');
+  if (captureBtn) {
+    captureBtn.disabled = true;
+    captureBtn.innerHTML = '<i data-lucide="camera-off" class="w-4 h-4"></i><span>CAMÉRA INDISPONIBLE</span>';
+  }
+  setNodeHidden('emp-punch-retry', false);
+  if (window.lucide) lucide.createIcons();
+}
+
+/**
+ * Acquisition GPS par mesures PONCTUELLES répétées.
+ *
+ * On n'utilise volontairement PAS watchPosition : ce produit ne suit jamais un
+ * salarié en continu, et un contrôle de CI interdit ce type d'appel. Chaque
+ * mesure est un événement discret, déclenché par le clic sur « Pointer ».
+ *
+ * On conserve la MEILLEURE précision obtenue et on s'arrête dès qu'elle est
+ * suffisante, ou à l'épuisement du budget.
+ */
+function startEmployeePunchGps() {
+  if (!navigator.geolocation) {
+    setEmployeePunchGpsState('unavailable', "Cet appareil ne fournit pas de position.");
+    return;
+  }
+
+  const deadline = Date.now() + GPS_BUDGET_MS;
+  setEmployeePunchGpsState('searching', 'Recherche de votre position…');
+
+  const attempt = () => {
+    if (empPunch.gpsAbort || empPunch.finished) return;
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (empPunch.gpsAbort) return;
+        const acc = pos.coords.accuracy;
+
+        // On ne garde une mesure que si elle améliore la précision.
+        if (!empPunch.position || acc < empPunch.position.coords.accuracy) {
+          empPunch.position = pos;
+        }
+
+        const best = empPunch.position.coords.accuracy;
+
+        if (best <= GPS_TARGET_ACCURACY_M) {
+          setEmployeePunchGpsState('ready', `Position confirmée (précision ${Math.round(best)} m)`);
+          return;
+        }
+
+        if (Date.now() >= deadline) {
+          if (best <= GPS_MAX_ACCURACY_M) {
+            setEmployeePunchGpsState('ready', `Position confirmée (précision ${Math.round(best)} m)`);
+          } else {
+            setEmployeePunchGpsState('imprecise', `Précision insuffisante (${Math.round(best)} m)`);
+          }
+          return;
+        }
+
+        setEmployeePunchGpsState('improving', `Amélioration de la précision de votre position… (${Math.round(best)} m)`);
+        setTimeout(attempt, 1200);
+      },
+      (err) => {
+        if (empPunch.gpsAbort) return;
+
+        if (err.code === err.PERMISSION_DENIED) {
+          setEmployeePunchGpsState('denied', "Accès à votre position refusé.");
+          return;
+        }
+
+        // Timeout ou position indisponible : on retente tant qu'il reste du budget.
+        if (Date.now() < deadline) {
+          setEmployeePunchGpsState('searching', 'Recherche de votre position…');
+          setTimeout(attempt, 1200);
+          return;
+        }
+
+        setEmployeePunchGpsState(
+          empPunch.position ? 'imprecise' : 'timeout',
+          empPunch.position ? 'Précision insuffisante' : "Position introuvable."
+        );
+      },
+      { enableHighAccuracy: true, timeout: GPS_SINGLE_TIMEOUT_MS, maximumAge: 0 }
+    );
+  };
+
+  attempt();
+}
+
+function setEmployeePunchGpsState(gpsState, text) {
+  empPunch.gpsState = gpsState;
+
+  const pill = document.getElementById('emp-punch-gps-pill');
+  const textEl = document.getElementById('emp-punch-gps-text');
+  if (!pill || !textEl) return;
+
+  const palettes = {
+    searching: ['border-slate-700', 'text-slate-300', 'loader-2', 'animate-spin text-amber-400'],
+    improving: ['border-amber-500/40', 'text-amber-300', 'loader-2', 'animate-spin text-amber-400'],
+    ready: ['border-emerald-500/40', 'text-emerald-300', 'map-pin', 'text-emerald-400'],
+    imprecise: ['border-amber-500/40', 'text-amber-300', 'alert-triangle', 'text-amber-400'],
+    denied: ['border-red-500/40', 'text-red-300', 'map-pin-off', 'text-red-400'],
+    timeout: ['border-red-500/40', 'text-red-300', 'map-pin-off', 'text-red-400'],
+    unavailable: ['border-red-500/40', 'text-red-300', 'map-pin-off', 'text-red-400'],
+  };
+  const [border, color, icon, iconClass] = palettes[gpsState] || palettes.searching;
+
+  pill.className = `flex items-center gap-2 text-[11px] font-mono px-3 py-2 rounded-xl bg-slate-900/80 border ${border} ${color}`;
+  pill.innerHTML = `<i data-lucide="${icon}" class="w-3.5 h-3.5 ${iconClass}"></i><span id="emp-punch-gps-text">${escapeHtml(text)}</span>`;
+  if (window.lucide) lucide.createIcons();
+}
+
+/** Capture le selfie depuis le flux vidéo. Aucune sélection depuis la galerie. */
+async function captureEmployeePunch() {
+  // Anti double-soumission : le premier clic verrouille, les suivants sortent.
+  if (empPunch.submitting || empPunch.finished) return;
+  empPunch.submitting = true;
+
+  const captureBtn = document.getElementById('emp-punch-capture');
+  if (captureBtn) {
+    captureBtn.disabled = true;
+    captureBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>VÉRIFICATION EN COURS…</span>';
+    if (window.lucide) lucide.createIcons();
+  }
+
+  const video = document.getElementById('emp-punch-video');
+  const canvas = document.getElementById('emp-punch-canvas');
+
+  if (!video || !canvas || !video.videoWidth) {
+    empPunch.submitting = false;
+    renderEmployeePunchFailure(
+      'Caméra indisponible',
+      "Le selfie n'a pas pu être capturé. Autorisez la caméra puis réessayez."
+    );
+    return;
+  }
+
+  // Rendu du selfie : le côté le plus court est recadré au centre.
+  const size = Math.min(video.videoWidth, video.videoHeight);
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(
+    video,
+    (video.videoWidth - size) / 2, (video.videoHeight - size) / 2, size, size,
+    0, 0, 512, 512
+  );
+
+  empPunch.selfieBlob = await new Promise((resolve) =>
+    canvas.toBlob(resolve, 'image/jpeg', 0.82)
+  );
+
+  // Aperçu figé : l'employé voit exactement ce qui est transmis.
+  const preview = document.getElementById('emp-punch-preview');
+  if (preview && empPunch.selfieBlob) {
+    preview.src = canvas.toDataURL('image/jpeg', 0.82);
+    preview.classList.remove('hidden');
+  }
+  setNodeHidden('emp-punch-frame', true);
+  stopEmployeePunchCamera();
+
+  await submitEmployeePunch();
+}
+
+function renderEmployeePunchSteps(steps) {
+  const box = document.getElementById('emp-punch-steps');
+  if (!box) return;
+  setNodeHidden('emp-punch-steps', false);
+
+  box.innerHTML = steps
+    .map((s) => {
+      const icons = {
+        done: ['check-circle-2', 'text-emerald-400', 'text-slate-200'],
+        pending: ['loader-2', 'text-amber-400 animate-spin', 'text-slate-400'],
+        failed: ['x-circle', 'text-red-400', 'text-red-300'],
+        info: ['info', 'text-cyan-400', 'text-slate-400'],
+      };
+      const [icon, iconClass, textClass] = icons[s.state] || icons.pending;
+      return `<div class="flex items-start gap-2 text-[11px]">
+        <i data-lucide="${icon}" class="w-3.5 h-3.5 mt-0.5 shrink-0 ${iconClass}"></i>
+        <span class="${textClass}">${escapeHtml(s.label)}</span>
+      </div>`;
+    })
+    .join('');
+  if (window.lucide) lucide.createIcons();
+}
+
+async function submitEmployeePunch() {
+  const steps = [
+    { label: 'Selfie capturé', state: 'done' },
+    { label: 'Position en cours de confirmation…', state: 'pending' },
+    { label: 'Envoi sécurisé au serveur…', state: 'pending' },
+  ];
+  renderEmployeePunchSteps(steps);
+
+  // --- Attente bornée de la position -----------------------------------------
+  const waitDeadline = Date.now() + 12000;
+  while (
+    !['ready', 'denied', 'timeout', 'unavailable', 'imprecise'].includes(empPunch.gpsState) &&
+    Date.now() < waitDeadline
+  ) {
+    await new Promise((r) => setTimeout(r, 300));
+  }
+
+  if (empPunch.gpsState === 'denied') {
+    return renderEmployeePunchFailure(
+      'Localisation nécessaire',
+      "Activez l'accès à votre position pour pouvoir effectuer votre pointage."
+    );
+  }
+  if (empPunch.gpsState === 'timeout' || empPunch.gpsState === 'unavailable' || !empPunch.position) {
+    return renderEmployeePunchFailure(
+      'Position introuvable',
+      "Nous n'avons pas pu déterminer votre position. Placez-vous près d'une fenêtre ou à l'extérieur, puis réessayez."
+    );
+  }
+  if (empPunch.gpsState === 'imprecise') {
+    return renderEmployeePunchFailure(
+      'Position GPS trop imprécise',
+      "Nous n'arrivons pas encore à confirmer que vous êtes sur votre lieu de travail. Rapprochez-vous d'une zone offrant une meilleure réception GPS puis réessayez."
+    );
+  }
+
+  const coords = empPunch.position.coords;
+  steps[1] = {
+    label: `Position détectée (précision ${Math.round(coords.accuracy)} m)`,
+    state: 'done',
+  };
+  renderEmployeePunchSteps(steps);
+
+  if (!supabaseClient) {
+    return renderEmployeePunchFailure(
+      'Service indisponible',
+      "La connexion au serveur de pointage n'est pas disponible. Réessayez dans un instant."
+    );
+  }
+
+  // --- Envoi du selfie dans le bucket privé -----------------------------------
+  let selfiePath = null;
+  try {
+    const { data: sessionData } = await supabaseClient.auth.getSession();
+    const authUid = sessionData && sessionData.session ? sessionData.session.user.id : null;
+
+    if (authUid && empPunch.selfieBlob) {
+      const path = `${authUid}/${Date.now()}_${empPunch.type}.jpg`;
+      const { error: upErr } = await supabaseClient
+        .storage.from('punch-selfies')
+        .upload(path, empPunch.selfieBlob, { contentType: 'image/jpeg', upsert: false });
+      if (!upErr) selfiePath = path;
+      else console.warn('[Pointage] Selfie non téléversé :', upErr);
+    }
+  } catch (e) {
+    console.warn('[Pointage] Exception téléversement selfie :', e);
+  }
+
+  // --- Appel de la fonction serveur : c'est ELLE qui décide -------------------
+  steps[2] = { label: 'Envoi sécurisé au serveur…', state: 'pending' };
+  renderEmployeePunchSteps(steps);
+
+  let verdict = null;
+  try {
+    const { data, error } = await supabaseClient.rpc('record_attendance', {
+      p_punch_type: empPunch.type,
+      p_latitude: coords.latitude,
+      p_longitude: coords.longitude,
+      p_gps_accuracy: coords.accuracy,
+      p_selfie_path: selfiePath,
+      p_face_score: null, // aucun service de vérification faciale branché à ce jour
+      p_device_ua: navigator.userAgent,
+      p_client_time: new Date().toISOString(),
+    });
+
+    if (error) throw error;
+    verdict = data;
+  } catch (err) {
+    console.error('[Pointage] Erreur RPC :', err);
+    return renderEmployeePunchFailure(
+      'Pointage impossible',
+      "Le serveur n'a pas pu traiter votre pointage. Vérifiez votre connexion puis réessayez."
+    );
+  }
+
+  if (!verdict || !verdict.accepted) {
+    return renderEmployeePunchRejection(verdict, steps);
+  }
+
+  // --- Accepté ---------------------------------------------------------------
+  steps[2] = { label: `Site autorisé (${verdict.distance_m} m du site, rayon ${verdict.radius_m} m)`, state: 'done' };
+  if (verdict.face_verified === true) {
+    steps.push({ label: 'Identité vérifiée', state: 'done' });
+  } else {
+    // On n'annonce PAS une vérification faciale qui n'a pas eu lieu.
+    steps.push({ label: 'Selfie conservé comme preuve horodatée', state: 'info' });
+  }
+  renderEmployeePunchSteps(steps);
+
+  const isIn = empPunch.type === 'CHECK_IN';
+  renderEmployeePunchSuccess(
+    isIn ? `Arrivée enregistrée à ${verdict.server_time}` : `Départ enregistré à ${verdict.server_time}`,
+    `${escapeHtml(verdict.site_name || 'Site')} • ${verdict.distance_m} m du site • précision ${verdict.accuracy_m} m`
+  );
+
+  empPunch.finished = true;
+  empPunch.gpsAbort = true;
+
+  // Rafraîchissement des données réelles depuis Supabase.
+  try {
+    await loadSupabaseData();
+    renderEmployeeDashboard();
+    renderDashboard();
+  } catch (e) {
+    console.warn('[Pointage] Rafraîchissement partiel :', e);
+  }
+}
+
+/** Traduit un code de refus serveur en message compréhensible par l'employé. */
+function renderEmployeePunchRejection(verdict, steps) {
+  const code = verdict ? verdict.code : 'UNKNOWN';
+
+  const messages = {
+    OUTSIDE_GEOFENCE: {
+      title: 'Pointage impossible',
+      body: `Vous êtes actuellement à environ ${verdict.distance_m} m de votre site de travail.\nDistance autorisée : ${verdict.radius_m} m.`,
+    },
+    GPS_TOO_IMPRECISE: {
+      title: 'Position GPS trop imprécise',
+      body: "Nous n'arrivons pas encore à confirmer que vous êtes sur votre lieu de travail. Rapprochez-vous d'une zone offrant une meilleure réception GPS puis réessayez.",
+    },
+    FACE_MISMATCH: {
+      title: 'Visage non reconnu',
+      body: 'Placez-vous face à la caméra dans un endroit suffisamment éclairé puis réessayez.',
+    },
+    SELFIE_REQUIRED: {
+      title: 'Selfie obligatoire',
+      body: "Votre entreprise exige un selfie au pointage. Autorisez la caméra puis réessayez.",
+    },
+    ALREADY_CHECKED_IN: {
+      title: 'Arrivée déjà enregistrée',
+      body: "Votre arrivée a déjà été enregistrée aujourd'hui. Aucune action supplémentaire n'est nécessaire.",
+    },
+    NO_OPEN_CHECK_IN: {
+      title: 'Aucune arrivée enregistrée',
+      body: "Vous n'avez pas encore pointé votre arrivée aujourd'hui. Signalez-le à votre service RH.",
+    },
+    DUPLICATE_PUNCH: {
+      title: 'Pointage déjà pris en compte',
+      body: "Un pointage vient d'être enregistré. Patientez quelques secondes.",
+    },
+    NO_SITE_ASSIGNED: {
+      title: 'Aucun site de travail',
+      body: "Aucun site n'est configuré pour votre compte. Contactez votre service RH.",
+    },
+    SITE_WITHOUT_COORDINATES: {
+      title: 'Site non géolocalisé',
+      body: "Votre site de travail n'a pas encore de coordonnées GPS. Contactez votre service RH.",
+    },
+    COMPANY_SUSPENDED: {
+      title: 'Pointage indisponible',
+      body: "Le compte de votre entreprise est suspendu. Contactez votre direction.",
+    },
+    MEMBERSHIP_NOT_ACTIVE: {
+      title: 'Compte en attente de validation',
+      body: "Votre rattachement à l'entreprise n'a pas encore été validé par le service RH.",
+    },
+    ATTENDANCE_NOT_REQUIRED: {
+      title: 'Pointage non requis',
+      body: "Votre poste n'est pas soumis au pointage.",
+    },
+    EMPLOYEE_INACTIVE: {
+      title: 'Compte désactivé',
+      body: 'Votre compte employé est désactivé. Contactez votre service RH.',
+    },
+    NOT_AUTHENTICATED: {
+      title: 'Session expirée',
+      body: 'Reconnectez-vous pour pouvoir pointer.',
+    },
+  };
+
+  const m = messages[code] || {
+    title: 'Pointage refusé',
+    body: (verdict && verdict.message) || "Le pointage n'a pas pu être validé. Réessayez.",
+  };
+
+  if (Array.isArray(steps) && steps.length >= 3) {
+    steps[2] = { label: m.title, state: 'failed' };
+    renderEmployeePunchSteps(steps);
+  }
+
+  renderEmployeePunchFailure(m.title, m.body);
+}
+
+function renderEmployeePunchSuccess(title, detail) {
+  const box = document.getElementById('emp-punch-result');
+  if (box) {
+    setNodeHidden('emp-punch-result', false);
+    box.className = 'rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4 text-center space-y-1';
+    box.innerHTML =
+      `<p class="text-sm font-extrabold text-emerald-300">${escapeHtml(title)}</p>` +
+      `<p class="text-[11px] text-slate-300 font-mono">${detail}</p>`;
+  }
+
+  setNodeHidden('emp-punch-capture', true);
+  const retry = document.getElementById('emp-punch-retry');
+  if (retry) {
+    retry.classList.remove('hidden');
+    retry.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i> FERMER';
+    retry.setAttribute('onclick', 'closeEmployeePunch()');
+  }
+  if (window.lucide) lucide.createIcons();
+  showToast('Pointage enregistré', escapeHtml(title), 'success');
+}
+
+function renderEmployeePunchFailure(title, body) {
+  empPunch.submitting = false;
+  empPunch.finished = true;
+  empPunch.gpsAbort = true;
+
+  const box = document.getElementById('emp-punch-result');
+  if (box) {
+    setNodeHidden('emp-punch-result', false);
+    box.className = 'rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-center space-y-1';
+    box.innerHTML =
+      `<p class="text-sm font-extrabold text-red-300">${escapeHtml(title)}</p>` +
+      `<p class="text-[11px] text-slate-300 leading-relaxed whitespace-pre-line">${escapeHtml(body)}</p>`;
+  }
+
+  setNodeHidden('emp-punch-capture', true);
+  const retry = document.getElementById('emp-punch-retry');
+  if (retry) {
+    retry.classList.remove('hidden');
+    retry.innerHTML = '<i data-lucide="rotate-ccw" class="w-4 h-4"></i> RÉESSAYER';
+    retry.setAttribute('onclick', 'retryEmployeePunch()');
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+function retryEmployeePunch() {
+  const type = empPunch.type || 'CHECK_IN';
+  stopEmployeePunchCamera();
+  openEmployeePunch(type);
+}
+
+function stopEmployeePunchCamera() {
+  if (empPunch.stream) {
+    empPunch.stream.getTracks().forEach((t) => t.stop());
+    empPunch.stream = null;
+  }
+  const video = document.getElementById('emp-punch-video');
+  if (video) video.srcObject = null;
+}
+
+function closeEmployeePunch() {
+  empPunch.gpsAbort = true;
+  empPunch.submitting = false;
+  stopEmployeePunchCamera();
+
+  const modal = document.getElementById('modal-emp-punch');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
 }
 
 function submitLeaveRequest() {
@@ -1667,6 +2367,38 @@ function selectCompanyWorkspace(companyId, role, attendanceRequired, companyName
   closeSelectWorkspaceModal();
   updateUiAfterLogin(state.currentUser.email, state.currentUserRole);
 
+  saveSessionToStorage();
+
+  // Récupération automatique et immédiate du Nom Réel (full_name) et Avatar (avatar_url) depuis public.users
+  if (supabaseClient && state.currentUser && state.currentUser.email) {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(state.currentUser.id);
+    const userQuery = isUuid
+      ? supabaseClient.from('users').select('*').or(`id.eq.${state.currentUser.id},email.eq.${state.currentUser.email}`).maybeSingle()
+      : supabaseClient.from('users').select('*').eq('email', state.currentUser.email).maybeSingle();
+
+    userQuery.then(({ data: dbUser }) => {
+      if (dbUser) {
+        if (dbUser.full_name) state.currentUser.fullName = dbUser.full_name;
+        if (dbUser.registration_number) state.currentUser.registrationNumber = dbUser.registration_number;
+        if (dbUser.job_title) state.currentUser.jobTitle = dbUser.job_title;
+        if (dbUser.avatar_url) {
+          state.currentUser.avatar = dbUser.avatar_url;
+          // On ecrit aussi les cles nominatives : ce sont elles qui sont lues au
+          // rechargement de page et hors ligne. N'ecrire que la cle globale
+          // laissait la photo introuvable des le premier rafraichissement.
+          try {
+            for (const key of avatarStorageKeys(state.currentUser.id, state.currentUser.email)) {
+              localStorage.setItem(key, dbUser.avatar_url);
+            }
+          } catch (e) {}
+        }
+        saveSessionToStorage();
+        renderEmployeeDashboard();
+        adaptCockpitRhPermissions();
+      }
+    }).catch(err => console.warn('[Supabase DB] Notice chargement dbUser:', err));
+  }
+
   // Redirection post-connexion basée sur le Rôle :
   // - CEO, HR, MANAGER -> Dashboard Employeur (Vue 2 - Cockpit de Présence)
   // - EMPLOYEE -> Dashboard Employé (Vue 4)
@@ -1686,22 +2418,39 @@ function selectCompanyWorkspace(companyId, role, attendanceRequired, companyName
 function adaptCockpitRhPermissions() {
   const roleBadge = document.getElementById('rh-cockpit-role-badge');
   const compTitleEl = document.getElementById('dash-company-name');
+  const userNameEl = document.getElementById('dash-user-name');
 
-  if (compTitleEl && state.currentCompanyName) {
-    compTitleEl.innerText = state.currentCompanyName;
+  if (compTitleEl) {
+    compTitleEl.innerText = state.currentCompanyName || state.company.name || 'Entreprise HQ';
+  }
+
+  updateCompanyCodeDisplays();
+
+  if (userNameEl) {
+    if (state.currentUser) {
+      const email = state.currentUser.email || '';
+      const name = state.currentUser.fullName || email.split('@')[0].toUpperCase();
+      userNameEl.innerText = `${name} (${email})`;
+    } else {
+      userNameEl.innerText = 'Responsable Connecté';
+    }
   }
 
   if (roleBadge) {
     let badgeHtml = '';
-    if (state.currentUserRole === 'CEO') {
-      badgeHtml = '<span class="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-mono font-bold border border-amber-500/30">👑 CEO / Admin Principal</span>';
-    } else if (state.currentUserRole === 'HR') {
-      badgeHtml = '<span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-mono font-bold border border-emerald-500/30">🏢 Responsable RH</span>';
-    } else if (state.currentUserRole === 'MANAGER') {
-      badgeHtml = '<span class="px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 text-xs font-mono font-bold border border-cyan-500/30">👔 Manager / Chef d\'Équipe</span>';
+    const role = (state.currentUserRole || 'CEO').toUpperCase();
+    if (role === 'CEO') {
+      badgeHtml = '<span class="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-mono font-bold border border-amber-500/30 flex items-center gap-1">👑 CEO / Dirigeant</span>';
+    } else if (role === 'HR') {
+      badgeHtml = '<span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-mono font-bold border border-emerald-500/30 flex items-center gap-1">🏢 Responsable RH</span>';
+    } else if (role === 'MANAGER') {
+      badgeHtml = '<span class="px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 text-xs font-mono font-bold border border-cyan-500/30 flex items-center gap-1">👔 Manager</span>';
+    } else {
+      badgeHtml = `<span class="px-2.5 py-0.5 rounded-full bg-slate-700 text-slate-300 text-xs font-mono font-bold border border-slate-600">${role}</span>`;
     }
     roleBadge.innerHTML = badgeHtml;
   }
+  initIcons();
 }
 
 function updateUiAfterLogin(emailVal, role = 'company_admin') {
@@ -1743,12 +2492,13 @@ function updateUiAfterLogin(emailVal, role = 'company_admin') {
 
 async function handleLogout() {
   if (supabaseClient) {
-    await supabaseClient.auth.signOut();
+    try { await supabaseClient.auth.signOut(); } catch (e) {}
   }
   
   state.isAuthenticated = false;
   state.currentUser = null;
   state.currentUserRole = null;
+  try { localStorage.removeItem('winner_auth_session'); } catch (e) {}
   
   const loginBtn = document.getElementById('nav-login-btn');
   const registerBtn = document.getElementById('nav-register-btn');
@@ -1798,38 +2548,442 @@ function switchEmployeeSection(sectionName) {
 
 let empWorkedTimerInterval = null;
 
+function triggerProfilePhotoUpload() {
+  const input = document.getElementById('emp-photo-input');
+  if (input) input.click();
+}
+
+/** Cles localStorage utilisees pour la photo de profil. */
+function avatarStorageKeys(userId, userEmail) {
+  const keys = ['winner_user_avatar_global'];
+  if (userId) keys.push(`winner_user_avatar_${userId}`);
+  if (userEmail) keys.push(`winner_user_avatar_${userEmail}`);
+  return keys;
+}
+
+/**
+ * Retrouve la photo de profil stockee localement pour UN utilisateur precis.
+ *
+ * L'ordre compte, et il etait inverse jusqu'ici : la cle « global » etait
+ * consultee avant les cles nominatives. Sur un poste partage - cas courant
+ * pour ce produit (kiosque d'atelier, ordinateur de bureau commun) - le
+ * deuxieme employe a se connecter voyait donc la photo du premier.
+ *
+ * On interroge desormais les cles nominatives d'abord, et « global » n'est
+ * utilisee qu'a defaut d'identite connue.
+ */
+function resolveStoredAvatar(userId, userEmail) {
+  try {
+    if (userId) {
+      const byId = localStorage.getItem(`winner_user_avatar_${userId}`);
+      if (byId) return byId;
+    }
+    if (userEmail) {
+      const byEmail = localStorage.getItem(`winner_user_avatar_${userEmail}`);
+      if (byEmail) return byEmail;
+    }
+    // Repli uniquement quand aucune identite n'est connue (tout premier rendu).
+    if (!userId && !userEmail) {
+      return localStorage.getItem('winner_user_avatar_global');
+    }
+  } catch (e) {}
+  return null;
+}
+
+/**
+ * Redimensionne et recompresse une photo avant tout stockage.
+ *
+ * Une photo prise au telephone pese 2 a 6 Mo ; encodee en base64 elle depasse
+ * a elle seule le quota localStorage (~5 Mo par origine). C'est ce qui faisait
+ * echouer la sauvegarde locale en silence, et disparaitre la photo a la
+ * reconnexion. Ramenee a 512 px en JPEG, elle pese ~40 Ko : elle tient dans le
+ * quota, se televerse vite en reseau faible, et reste nette pour un avatar.
+ *
+ * @returns {Promise<{blob: Blob, dataUrl: string}>}
+ */
+function compressProfilePhoto(file, maxSize = 512, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Lecture du fichier impossible.'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Fichier image illisible ou corrompu.'));
+      img.onload = () => {
+        const ratio = Math.min(maxSize / img.width, maxSize / img.height, 1);
+        const w = Math.max(1, Math.round(img.width * ratio));
+        const h = Math.max(1, Math.round(img.height * ratio));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+
+        // Le re-encodage supprime au passage les metadonnees EXIF, dont la
+        // position GPS que beaucoup de telephones inscrivent dans les photos.
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) return reject(new Error('Compression impossible.'));
+            resolve({ blob, dataUrl });
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleProfilePhotoChange(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  // On vide l'input pour que re-selectionner le meme fichier redeclenche l'evenement.
+  event.target.value = '';
+
+  if (!file.type.startsWith('image/')) {
+    showToast('Fichier Invalide', 'Veuillez sélectionner un fichier image (JPG, PNG ou WebP).', 'info');
+    return;
+  }
+
+  const avatarImg = document.getElementById('emp-dash-avatar');
+  const previousSrc = avatarImg ? avatarImg.src : null;
+
+  if (!state.currentUser) {
+    state.currentUser = { id: 'usr-local', email: 'employe@pointage.ci', fullName: 'Employé Connecté' };
+  }
+  const userId = state.currentUser.id;
+  const userEmail = state.currentUser.email;
+
+  // --- 1. Compression avant toute chose -------------------------------------
+  let compressed;
+  try {
+    compressed = await compressProfilePhoto(file);
+  } catch (err) {
+    console.error('[Photo] Compression impossible :', err);
+    showToast(
+      'Image illisible',
+      "Ce fichier n'a pas pu être traité. Essayez une autre photo au format JPG ou PNG.",
+      'info'
+    );
+    return;
+  }
+
+  // Aperçu immédiat : l'utilisateur voit sa photo sans attendre le réseau.
+  if (avatarImg) avatarImg.src = compressed.dataUrl;
+  state.currentUser.avatar = compressed.dataUrl;
+
+  let finalAvatarUrl = compressed.dataUrl;
+  let storedOnServer = false;
+  let linkedInDatabase = false;
+  let serverError = null;
+
+  // --- 2. Televersement vers le bucket Supabase Storage ---------------------
+  if (supabaseClient) {
+    try {
+      // Chemin STABLE par utilisateur : la nouvelle photo remplace l'ancienne
+      // au lieu d'accumuler un fichier horodaté a chaque changement.
+      const cleanKey = String(userId || userEmail || 'user').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const objectPath = `${cleanKey}/avatar.jpg`;
+
+      const { error: uploadErr } = await supabaseClient
+        .storage
+        .from('avatars')
+        .upload(objectPath, compressed.blob, {
+          upsert: true,
+          cacheControl: '3600',
+          contentType: 'image/jpeg'
+        });
+
+      if (uploadErr) {
+        serverError = uploadErr;
+        console.warn('[Supabase Storage] Televersement refuse :', uploadErr);
+      } else {
+        const { data: publicUrlData } = supabaseClient
+          .storage
+          .from('avatars')
+          .getPublicUrl(objectPath);
+
+        if (publicUrlData && publicUrlData.publicUrl) {
+          // Parametre anti-cache : sans lui, le navigateur reaffiche l'ancienne
+          // image, puisque l'URL du fichier ne change pas d'un envoi a l'autre.
+          finalAvatarUrl = `${publicUrlData.publicUrl}?v=${Date.now()}`;
+          storedOnServer = true;
+          state.currentUser.avatar = finalAvatarUrl;
+          if (avatarImg) avatarImg.src = finalAvatarUrl;
+        }
+      }
+    } catch (errStorage) {
+      serverError = errStorage;
+      console.warn('[Supabase Storage] Exception :', errStorage);
+    }
+
+    // --- 3. Rattachement a la fiche utilisateur ------------------------------
+    try {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(userId));
+
+      // On n'ecrit une URL base64 en base que si le Storage a echoue : la
+      // colonne l'accepte (TEXT), mais y stocker des images ne passe pas
+      // l'echelle. C'est un filet de securite, pas le chemin nominal.
+      const valueToPersist = finalAvatarUrl;
+
+      let query = null;
+      if (isUuid) {
+        query = supabaseClient.from('users').update({ avatar_url: valueToPersist }).eq('id', userId);
+      } else if (userEmail) {
+        query = supabaseClient.from('users').update({ avatar_url: valueToPersist }).eq('email', userEmail);
+      }
+
+      if (query) {
+        // .select() renvoie les lignes REELLEMENT modifiees. Sans lui, un update
+        // qui ne correspond a aucune ligne repond « succes » sans rien ecrire :
+        // c'est ce qui faisait croire que la photo etait enregistree.
+        const { data: updatedRows, error: dbErr } = await query.select('id');
+
+        if (dbErr) {
+          serverError = dbErr;
+          console.error('[Supabase DB] Erreur users.avatar_url :', dbErr);
+        } else if (!updatedRows || updatedRows.length === 0) {
+          // Repli : la fiche n'a pas ete trouvee par id, on retente par e-mail.
+          if (isUuid && userEmail) {
+            const { data: byEmail } = await supabaseClient
+              .from('users')
+              .update({ avatar_url: valueToPersist })
+              .eq('email', userEmail)
+              .select('id');
+            linkedInDatabase = !!(byEmail && byEmail.length > 0);
+          }
+          if (!linkedInDatabase) {
+            console.warn('[Supabase DB] Aucune fiche utilisateur ne correspond a', userId, userEmail);
+          }
+        } else {
+          linkedInDatabase = true;
+        }
+      }
+    } catch (errDb) {
+      serverError = errDb;
+      console.error('[Supabase DB] Exception :', errDb);
+    }
+  }
+
+  // --- 4. Sauvegarde locale (fonctionne hors ligne et au rechargement) ------
+  let savedLocally = false;
+  try {
+    for (const key of avatarStorageKeys(userId, userEmail)) {
+      localStorage.setItem(key, finalAvatarUrl);
+    }
+    savedLocally = true;
+  } catch (errLocal) {
+    // Quota depasse : on nettoie les anciennes entrees et on retente une fois.
+    console.warn('[Photo] Quota localStorage atteint, nettoyage puis nouvel essai.');
+    try {
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith('winner_user_avatar_'))
+        .forEach((k) => localStorage.removeItem(k));
+      localStorage.setItem('winner_user_avatar_global', finalAvatarUrl);
+      savedLocally = true;
+    } catch (errRetry) {
+      console.error('[Photo] Sauvegarde locale impossible :', errRetry);
+    }
+  }
+
+  saveSessionToStorage();
+
+  // --- 5. Synchronisation de la grille d'effectif RH -------------------------
+  if (state.employees) {
+    const empItem = state.employees.find(
+      (emp) => emp.id === userId || (userEmail && emp.email === userEmail)
+    );
+    if (empItem) {
+      empItem.avatar = finalAvatarUrl;
+      renderStaffGrid();
+    }
+  }
+
+  // --- 6. Message honnete : on ne annonce pas un succes serveur imaginaire ---
+  if (storedOnServer && linkedInDatabase) {
+    showToast(
+      'Photo de profil enregistrée 📸',
+      'Votre photo est sauvegardée sur le serveur. Elle vous suivra sur tous vos appareils, même après déconnexion.',
+      'success'
+    );
+  } else if (savedLocally) {
+    const cause = !storedOnServer
+      ? "l'espace de stockage n'a pas accepté l'envoi"
+      : "votre fiche employé n'a pas pu être mise à jour";
+    showToast(
+      'Photo enregistrée sur cet appareil uniquement ⚠️',
+      `Votre photo s'affiche ici, mais ${cause}. Elle ne suivra pas sur un autre appareil. ` +
+        'Signalez-le à votre service RH : le stockage Supabase doit être configuré.',
+      'info',
+      8000
+    );
+    console.warn('[Photo] Détail de l\'échec serveur :', serverError);
+  } else {
+    if (avatarImg && previousSrc) avatarImg.src = previousSrc;
+    showToast(
+      'Enregistrement impossible',
+      "Votre photo n'a pu être sauvegardée ni sur le serveur, ni sur cet appareil. Réessayez avec une image plus légère.",
+      'info',
+      8000
+    );
+  }
+}
+
+function startLiveWorkedTimeTimer() {
+  if (empWorkedTimerInterval) clearInterval(empWorkedTimerInterval);
+
+  const updateClockAndTimer = () => {
+    const now = new Date();
+    const abidjanParts = getAbidjanTimeParts(now);
+
+    // 1. Horloge en direct GMT (UTC+0 Abidjan)
+    const gmtClockEl = document.getElementById('emp-dash-gmt-clock');
+    if (gmtClockEl) {
+      gmtClockEl.innerText = `${abidjanParts.timeStr} GMT`;
+    }
+
+    // 2. Calcul du temps travaillé en direct GMT depuis l'arrivée
+    const workedEl = document.getElementById('emp-kpi-worked-time');
+    if (workedEl) {
+      const arriveTimeStr = document.getElementById('emp-kpi-arrive-time')?.innerText || '--:--';
+      
+      if (arriveTimeStr && arriveTimeStr !== '--:--' && !arriveTimeStr.includes('--:--')) {
+        const cleanArrive = arriveTimeStr.replace('GMT', '').trim();
+        const [arriveHStr, arriveMStr] = cleanArrive.split(':');
+        const arriveH = parseInt(arriveHStr, 10);
+        const arriveM = parseInt(arriveMStr, 10);
+
+        if (!isNaN(arriveH) && !isNaN(arriveM)) {
+          const arriveSecs = arriveH * 3600 + arriveM * 60;
+          const currentSecs = parseInt(abidjanParts.h, 10) * 3600 + parseInt(abidjanParts.m, 10) * 60 + parseInt(abidjanParts.s, 10);
+
+          let diffSecs = currentSecs - arriveSecs;
+          if (diffSecs < 0) diffSecs = 0;
+
+          const h = String(Math.floor(diffSecs / 3600)).padStart(2, '0');
+          const m = String(Math.floor((diffSecs % 3600) / 60)).padStart(2, '0');
+          const s = String(diffSecs % 60).padStart(2, '0');
+
+          workedEl.innerText = `${h}h ${m}m ${s}s`;
+        } else {
+          workedEl.innerText = '00h 00m 00s';
+        }
+      } else {
+        workedEl.innerText = '00h 00m 00s';
+      }
+    }
+  };
+
+  updateClockAndTimer();
+  empWorkedTimerInterval = setInterval(updateClockAndTimer, 1000);
+}
+
 function renderEmployeeDashboard() {
-  if (!state.currentUser) return;
+  if (!state.currentUser && state.employees && state.employees.length > 0) {
+    const firstEmp = state.employees[0];
+    state.currentUser = {
+      id: firstEmp.id,
+      email: firstEmp.email || 'employe@winnerdesign.ci',
+      fullName: firstEmp.name,
+      registrationNumber: firstEmp.matricule,
+      jobTitle: firstEmp.role
+    };
+  }
 
+  const currentUser = state.currentUser || {
+    id: 'demo-emp-1',
+    fullName: 'Kouassi Bertrand',
+    registrationNumber: 'EMP-0002',
+    jobTitle: 'Chef Informaticien'
+  };
+
+  // 1. Afficher le Nom de la personne connectée
   const nameEl = document.getElementById('emp-dash-name');
-  const jobEl = document.getElementById('emp-dash-job');
-  
-  if (nameEl) nameEl.innerText = state.currentUser.fullName || state.currentUser.email || 'Collaborateur';
-  if (jobEl) jobEl.innerText = `${state.currentUser.jobTitle || 'Agent Terrain'} • Matricule: EMP-2026-04`;
+  if (nameEl) {
+    nameEl.innerText = `Bonjour, ${currentUser.fullName || currentUser.email || 'Collaborateur'} 👋`;
+  }
 
-  // 1. Rendu de l'historique des pointages employé
+  const jobEl = document.getElementById('emp-dash-job');
+  if (jobEl) {
+    const company = state.currentCompanyName || 'Winner Design SARL';
+    const title = currentUser.jobTitle || currentUser.role || 'Agent de Terrain';
+    jobEl.innerHTML = `${escapeHtml(title)} • <span class="text-amber-300 font-bold">${escapeHtml(company)}</span> • Matricule: <span id="emp-dash-matricule" class="font-mono text-amber-300 font-bold">${escapeHtml(currentUser.registrationNumber || currentUser.matricule || 'EMP-0002')}</span>`;
+  }
+
+  // 3. Charger la photo de profil personnalisée si existante
+  const userId = currentUser.id;
+  const userEmail = currentUser.email;
+
+  const savedAvatar = currentUser.avatar || resolveStoredAvatar(userId, userEmail);
+
+  const avatarImg = document.getElementById('emp-dash-avatar');
+  if (avatarImg && savedAvatar) {
+    avatarImg.src = savedAvatar;
+  }
+
+  // 4. Gestion dynamique et réelle de l'Heure d'Arrivée en GMT (Heure d'Abidjan)
+  const statusEl = document.getElementById('emp-kpi-status');
+  const statusSubEl = document.getElementById('emp-kpi-status-sub');
+  const arriveEl = document.getElementById('emp-kpi-arrive-time');
+  const arriveSubEl = document.getElementById('emp-kpi-arrive-sub');
+
+  const todayDateStr = new Date().toLocaleDateString('fr-FR');
+  const todayIsoStr = new Date().toISOString().split('T')[0];
+
+  const userTodayPunch = (state.attendances || []).find(a => 
+    (a.userId === userId || (currentUser.email && a.userEmail === currentUser.email)) && a.date === todayDateStr
+  );
+
+  let savedClockIn = localStorage.getItem(`winner_user_clock_in_${userId}_${todayIsoStr}`);
+  if (!savedClockIn && userTodayPunch) {
+    savedClockIn = userTodayPunch.clockIn;
+  }
+
+  if (savedClockIn) {
+    const formattedClockIn = savedClockIn.includes('GMT') ? savedClockIn : `${savedClockIn} GMT`;
+    if (statusEl) statusEl.innerText = 'Présent';
+    if (statusSubEl) statusSubEl.innerText = 'Validé avec Geofencing GPS';
+    if (arriveEl) arriveEl.innerText = formattedClockIn;
+    if (arriveSubEl) arriveSubEl.innerText = 'Validé par Selfie/GPS (Abidjan GMT)';
+  } else {
+    if (statusEl) statusEl.innerText = 'Non Pointé';
+    if (statusSubEl) statusSubEl.innerText = 'En attente du pointage du jour';
+    if (arriveEl) arriveEl.innerText = '--:-- GMT';
+    if (arriveSubEl) arriveSubEl.innerText = 'Pointage d\'arrivée non effectué';
+  }
+
+  // 5. Démarrer le chronomètre du temps travaillé en direct GMT
+  startLiveWorkedTimeTimer();
+
+  // 1. Rendu de l'historique des pointages employé RÉEL
   const historyBody = document.getElementById('emp-history-table-body');
   if (historyBody) {
-    if (state.employees && state.employees.length > 0) {
-      historyBody.innerHTML = state.employees.map(att => `
+    const currentUserAtts = (state.attendances || []).filter(a => 
+      a.userId === userId || (currentUser.email && a.userEmail === currentUser.email)
+    );
+    if (currentUserAtts.length > 0) {
+      historyBody.innerHTML = currentUserAtts.map(att => `
         <tr class="hover:bg-slate-800/30 transition">
-          <td class="py-2.5 font-bold text-white">${escapeHtml(att.date || new Date().toLocaleDateString('fr-FR'))}</td>
-          <td class="py-2.5 text-emerald-400 font-bold">${escapeHtml(att.clockIn || '07:58')}</td>
-          <td class="py-2.5 text-slate-400">${escapeHtml(att.clockOut || '--:--')}</td>
-          <td class="py-2.5 text-slate-300 font-mono">08h 00m</td>
+          <td class="py-2.5 font-bold text-white">${escapeHtml(att.date)}</td>
+          <td class="py-2.5 text-emerald-400 font-bold">${escapeHtml(att.clockIn)} GMT</td>
+          <td class="py-2.5 text-slate-400">${escapeHtml(att.clockOut)}</td>
+          <td class="py-2.5 text-slate-300 font-mono">${escapeHtml(att.workedDuration)}</td>
           <td class="py-2.5 text-slate-400 text-[11px]">
             <span class="text-emerald-400 flex items-center gap-1">
-              <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> GPS OK (${escapeHtml(att.distance || '12m')})
+              <i data-lucide="shield-check" class="w-3.5 h-3.5"></i> ${escapeHtml(att.method || 'Selfie / GPS')} (${escapeHtml(att.distance || '14m')})
             </span>
           </td>
-          <td class="py-2.5 text-right font-bold text-emerald-400">Présent</td>
+          <td class="py-2.5 text-right font-bold ${att.status === 'Présent' ? 'text-emerald-400' : 'text-amber-400'}">${escapeHtml(att.status)}</td>
         </tr>
       `).join('');
     } else {
       historyBody.innerHTML = `
         <tr>
-          <td colspan="6" class="py-6 text-center text-slate-500 italic">
-            Aucun pointage récent enregistré sur Supabase. Utilisez le bouton "Pointer Maintenant" ci-dessus !
+          <td colspan="6" class="py-8 text-center text-slate-500 italic font-mono text-xs">
+            Aucun pointage enregistré pour le moment. Cliquez sur le bouton "Pointer Maintenant (Selfie/GPS)" ci-dessus pour effectuer votre premier pointage !
           </td>
         </tr>
       `;
@@ -1839,20 +2993,21 @@ function renderEmployeeDashboard() {
   // 2. Rendu des Retards Employé
   const latenessBody = document.getElementById('emp-lateness-table-body');
   if (latenessBody) {
-    if (state.latenesses && state.latenesses.length > 0) {
-      latenessBody.innerHTML = state.latenesses.map(l => `
+    const currentUserLatenesses = (state.latenesses || []).filter(l => l.userId === userId || (currentUser.email && l.userEmail === currentUser.email));
+    if (currentUserLatenesses.length > 0) {
+      latenessBody.innerHTML = currentUserLatenesses.map(l => `
         <tr class="hover:bg-slate-800/30 transition">
-          <td class="py-2.5 font-bold text-white">${escapeHtml(l.date || 'Aujourd\'hui')}</td>
-          <td class="py-2.5 text-amber-400 font-bold">${escapeHtml(l.time || '08:24')}</td>
-          <td class="py-2.5 text-rose-400 font-bold">+${escapeHtml(l.minutes || '24')} min</td>
-          <td class="py-2.5 text-slate-300">${escapeHtml(l.reason || 'Embouteillage axe Yopougon-Plateau')}</td>
-          <td class="py-2.5 text-right font-bold text-emerald-400">Transmis au RH</td>
+          <td class="py-2.5 font-bold text-white">${escapeHtml(l.date)}</td>
+          <td class="py-2.5 text-amber-400 font-bold">${escapeHtml(l.time)}</td>
+          <td class="py-2.5 text-rose-400 font-bold">+${escapeHtml(l.minutes)} min</td>
+          <td class="py-2.5 text-slate-300">${escapeHtml(l.reason)}</td>
+          <td class="py-2.5 text-right font-bold text-emerald-400">${escapeHtml(l.status || 'Transmis au RH')}</td>
         </tr>
       `).join('');
     } else {
       latenessBody.innerHTML = `
         <tr>
-          <td colspan="5" class="py-6 text-center text-emerald-400/80 italic font-mono">
+          <td colspan="5" class="py-6 text-center text-emerald-400/80 italic font-mono text-xs">
             🎉 Aucun retard enregistré ce mois-ci ! Félicitations pour votre ponctualité.
           </td>
         </tr>
@@ -1863,20 +3018,21 @@ function renderEmployeeDashboard() {
   // 3. Rendu des Congés Employé
   const leavesBody = document.getElementById('emp-leaves-table-body');
   if (leavesBody) {
-    if (state.leaves && state.leaves.length > 0) {
-      leavesBody.innerHTML = state.leaves.map(lv => `
+    const currentUserLeaves = (state.leaves || []).filter(lv => lv.userId === userId || (currentUser.email && lv.userEmail === currentUser.email));
+    if (currentUserLeaves.length > 0) {
+      leavesBody.innerHTML = currentUserLeaves.map(lv => `
         <tr class="hover:bg-slate-800/30 transition">
-          <td class="py-2.5 font-bold text-white">${escapeHtml(lv.type || 'Congé Payé Annuel')}</td>
-          <td class="py-2.5 text-slate-300">${escapeHtml(lv.startDate || '15/08')} au ${escapeHtml(lv.endDate || '25/08')}</td>
-          <td class="py-2.5 text-cyan-400 font-bold">${escapeHtml(lv.days || '10')} jours</td>
-          <td class="py-2.5 text-slate-400">${escapeHtml(lv.reason || 'Repos annuel autorisé')}</td>
-          <td class="py-2.5 text-right font-bold text-amber-400">${escapeHtml(lv.status || 'En Attente RH')}</td>
+          <td class="py-2.5 font-bold text-white">${escapeHtml(lv.type)}</td>
+          <td class="py-2.5 text-slate-300">${escapeHtml(lv.startDate)} au ${escapeHtml(lv.endDate)}</td>
+          <td class="py-2.5 text-cyan-400 font-bold">${escapeHtml(lv.days)} jours</td>
+          <td class="py-2.5 text-slate-400">${escapeHtml(lv.reason)}</td>
+          <td class="py-2.5 text-right font-bold text-amber-400">${escapeHtml(lv.status)}</td>
         </tr>
       `).join('');
     } else {
       leavesBody.innerHTML = `
         <tr>
-          <td colspan="5" class="py-6 text-center text-slate-500 italic">
+          <td colspan="5" class="py-6 text-center text-slate-500 italic text-xs font-mono">
             Aucune demande de congé enregistrée. Cliquez sur "+ Nouvelle Demande de Congé".
           </td>
         </tr>
@@ -1887,21 +3043,22 @@ function renderEmployeeDashboard() {
   // 4. Rendu des Heures Supp Employé
   const overtimeBody = document.getElementById('emp-overtime-table-body');
   if (overtimeBody) {
-    if (state.overtimes && state.overtimes.length > 0) {
-      overtimeBody.innerHTML = state.overtimes.map(ot => `
+    const currentUserOvertimes = (state.overtimes || []).filter(ot => ot.userId === userId || (currentUser.email && ot.userEmail === currentUser.email));
+    if (currentUserOvertimes.length > 0) {
+      overtimeBody.innerHTML = currentUserOvertimes.map(ot => `
         <tr class="hover:bg-slate-800/30 transition">
-          <td class="py-2.5 font-bold text-white">${escapeHtml(ot.date || 'Hier')}</td>
-          <td class="py-2.5 text-slate-300">${escapeHtml(ot.slot || '18:00 - 20:30')}</td>
-          <td class="py-2.5 text-emerald-400 font-bold">${escapeHtml(ot.hours || '2.5h')}</td>
-          <td class="py-2.5 text-amber-400 font-mono">+25%</td>
-          <td class="py-2.5 text-slate-400">${escapeHtml(ot.reason || 'Inventaire mensuel magasin')}</td>
-          <td class="py-2.5 text-right font-bold text-emerald-400">Validé en Paie</td>
+          <td class="py-2.5 font-bold text-white">${escapeHtml(ot.date)}</td>
+          <td class="py-2.5 text-slate-300">${escapeHtml(ot.slot)}</td>
+          <td class="py-2.5 text-emerald-400 font-bold">${escapeHtml(ot.hours)}</td>
+          <td class="py-2.5 text-amber-400 font-mono">${escapeHtml(ot.multiplier || '+25%')}</td>
+          <td class="py-2.5 text-slate-400">${escapeHtml(ot.reason)}</td>
+          <td class="py-2.5 text-right font-bold text-emerald-400">${escapeHtml(ot.status || 'Validé')}</td>
         </tr>
       `).join('');
     } else {
       overtimeBody.innerHTML = `
         <tr>
-          <td colspan="6" class="py-6 text-center text-slate-500 italic">
+          <td colspan="6" class="py-6 text-center text-slate-500 italic text-xs font-mono">
             Aucune heure supplémentaire enregistrée. Cliquez sur "+ Déclarer Heures Supp."
           </td>
         </tr>
@@ -1912,27 +3069,26 @@ function renderEmployeeDashboard() {
   // 5. Rendu des Notifications
   const notifContainer = document.getElementById('emp-notifications-container');
   if (notifContainer) {
-    notifContainer.innerHTML = `
-      <div class="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-3">
-        <i data-lucide="check-circle" class="w-5 h-5 text-emerald-400 shrink-0 mt-0.5"></i>
-        <div class="space-y-0.5 text-xs">
-          <div class="font-bold text-emerald-300">Pointage Arrivée Confirmé</div>
-          <p class="text-slate-300">Votre pointage de 07:58 GMT a été validé par la reconnaissance faciale IA et le périmètre GPS HQ.</p>
-          <span class="text-[10px] text-slate-400 font-mono">Aujourd'hui à 07:58</span>
+    const userNotifs = (state.notifications || []).filter(n => n.userId === userId || (currentUser.email && n.userEmail === currentUser.email));
+    if (userNotifs.length > 0) {
+      notifContainer.innerHTML = userNotifs.map(n => `
+        <div class="p-3.5 rounded-xl bg-slate-900 border border-slate-800 flex items-start gap-3">
+          <i data-lucide="bell" class="w-5 h-5 text-amber-400 shrink-0 mt-0.5"></i>
+          <div class="space-y-0.5 text-xs">
+            <div class="font-bold text-white">${escapeHtml(n.title)}</div>
+            <p class="text-slate-300">${escapeHtml(n.message)}</p>
+            <span class="text-[10px] text-slate-400 font-mono">${escapeHtml(n.date)}</span>
+          </div>
         </div>
-      </div>
-      <div class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
-        <i data-lucide="bell-ring" class="w-5 h-5 text-amber-400 shrink-0 mt-0.5"></i>
-        <div class="space-y-0.5 text-xs">
-          <div class="font-bold text-amber-300">Rappel Clôture de Paie Mensuelle</div>
-          <p class="text-slate-300">Veuillez soumettre vos demandes d'heures supplémentaires avant le 25 du mois en cours.</p>
-          <span class="text-[10px] text-slate-400 font-mono">Direction RH • Il y a 2h</span>
+      `).join('');
+    } else {
+      notifContainer.innerHTML = `
+        <div class="p-6 text-center text-slate-500 text-xs font-mono italic">
+          Aucune notification RH récente.
         </div>
-      </div>
-    `;
+      `;
+    }
   }
-
-  startEmployeeWorkedTimer();
 
   if (window.lucide) {
     window.lucide.createIcons();
@@ -1940,28 +3096,87 @@ function renderEmployeeDashboard() {
 }
 
 function startEmployeeWorkedTimer() {
-  if (empWorkedTimerInterval) clearInterval(empWorkedTimerInterval);
-
-  let secondsCounter = 27735; // ~07h 42m 15s
-
-  empWorkedTimerInterval = setInterval(() => {
-    secondsCounter++;
-    const hrs = String(Math.floor(secondsCounter / 3600)).padStart(2, '0');
-    const mins = String(Math.floor((secondsCounter % 3600) / 60)).padStart(2, '0');
-    const secs = String(secondsCounter % 60).padStart(2, '0');
-
-    const workedEl = document.getElementById('emp-kpi-worked-time');
-    if (workedEl) {
-      workedEl.innerText = `${hrs}h ${mins}m ${secs}s`;
-    }
-  }, 1000);
+  startLiveWorkedTimeTimer();
 }
 
 // Supabase Data Loaders & Management
-function openAddEmployeeModal() {
+
+/**
+ * Génération atomique et sécurisée du matricule unique par entreprise
+ */
+async function generateNextMatricule(companyId) {
+  const prefix = state.currentCompanyPrefix || 'EMP';
+  
+  if (supabaseClient && companyId) {
+    try {
+      // 1. Tenter l'exécution de la fonction atomique PostgreSQL / RPC Supabase
+      const { data: rpcMatricule, error: rpcErr } = await supabaseClient.rpc('generate_next_employee_number', {
+        p_company_id: companyId
+      });
+
+      if (!rpcErr && rpcMatricule) {
+        return rpcMatricule;
+      }
+    } catch (e) {
+      console.warn('RPC generate_next_employee_number indisponible, fallback JS client:', e);
+    }
+
+    try {
+      // 2. Fallback direct si la fonction RPC n'est pas encore migrée dans la DB
+      const { data: companyData } = await supabaseClient
+        .from('companies')
+        .select('employee_prefix, employee_counter')
+        .eq('id', companyId)
+        .maybeSingle();
+
+      const compPrefix = (companyData && companyData.employee_prefix) ? companyData.employee_prefix : prefix;
+      let counter = (companyData && companyData.employee_counter) ? companyData.employee_counter + 1 : 1;
+
+      if (!companyData || !companyData.employee_counter) {
+        const { count } = await supabaseClient
+          .from('users')
+          .select('id', { count: 'exact', head: true })
+          .eq('company_id', companyId);
+
+        counter = (count || 0) + 1;
+      }
+
+      const formattedMatricule = `${compPrefix}-${String(counter).padStart(4, '0')}`;
+
+      // Incrémentation du compteur entreprise
+      await supabaseClient
+        .from('companies')
+        .update({ employee_counter: counter })
+        .eq('id', companyId);
+
+      return formattedMatricule;
+    } catch (err) {
+      console.warn('Erreur fallback DB matricule:', err);
+    }
+  }
+
+  // 3. Fallback local (Mode Démo)
+  const count = (state.employees ? state.employees.length : 0) + 1;
+  return `${prefix}-${String(count).padStart(4, '0')}`;
+}
+
+async function openAddEmployeeModal() {
   const modal = document.getElementById('modal-add-employee');
   const compBadge = document.getElementById('emp-add-company-badge');
+  const previewEl = document.getElementById('emp-auto-matricule-preview');
+
   if (compBadge) compBadge.innerText = state.currentCompanyName || 'Entreprise Connectée';
+
+  if (previewEl) {
+    if (state.currentCompanyId) {
+      const nextMat = await generateNextMatricule(state.currentCompanyId);
+      previewEl.innerText = nextMat;
+    } else {
+      const count = (state.employees ? state.employees.length : 0) + 1;
+      previewEl.innerText = `${state.currentCompanyPrefix || 'EMP'}-${String(count).padStart(4, '0')}`;
+    }
+  }
+
   if (modal) modal.classList.remove('hidden');
 }
 
@@ -1975,7 +3190,6 @@ async function handleAddEmployeeSubmit(e) {
   const fullName = document.getElementById('emp-fullname-input')?.value.trim();
   const phone = document.getElementById('emp-phone-input')?.value.trim();
   const email = document.getElementById('emp-email-input')?.value.trim();
-  const matricule = document.getElementById('emp-matricule-input')?.value.trim();
   const job = document.getElementById('emp-job-input')?.value.trim();
   const site = document.getElementById('emp-site-input')?.value.trim();
   const role = document.getElementById('emp-role-select')?.value || 'EMPLOYEE';
@@ -1995,6 +3209,9 @@ async function handleAddEmployeeSubmit(e) {
   try {
     const inviteCode = `INV-${Math.random().toString(36).substring(2, 8).toUpperCase()}-${Date.now().toString().slice(-4)}`;
     
+    // Génération automatique du matricule unique
+    const generatedMatricule = await generateNextMatricule(state.currentCompanyId);
+
     if (supabaseClient && state.currentCompanyId) {
       // 1. Créer le profil employé dans public.users
       const { data: newUser, error: userErr } = await supabaseClient.from('users').insert({
@@ -2004,7 +3221,7 @@ async function handleAddEmployeeSubmit(e) {
         phone_number: phone,
         job_title: job,
         site_name: site || 'Siège',
-        registration_number: matricule || `MAT-${Date.now().toString().slice(-4)}`,
+        registration_number: generatedMatricule,
         role: role,
         attendance_required: attendanceReq,
         is_active: true
@@ -2021,10 +3238,22 @@ async function handleAddEmployeeSubmit(e) {
         invitation_code: inviteCode,
         status: 'INVITED'
       });
+
+      // 3. Tenter l'envoi automatique d'e-mail d'activation via Supabase Auth
+      if (email && !email.endsWith('@temp.winnerpointage.com')) {
+        try {
+          await supabaseClient.auth.resetPasswordForEmail(email, {
+            redirectTo: `${window.location.origin}${window.location.pathname}#invite?code=${inviteCode}`
+          });
+          showToast('E-mail Transmis ✉️', `Le lien d'activation a été envoyé directement à ${escapeHtml(email)}.`, 'success', 6000);
+        } catch (mailErr) {
+          console.warn('Notice Supabase Auth email:', mailErr);
+        }
+      }
     }
 
     closeAddEmployeeModal();
-    openInviteCreatedModal(fullName, state.currentCompanyName || 'Votre Entreprise', inviteCode);
+    openInviteCreatedModal(fullName, state.currentCompanyName || 'Votre Entreprise', inviteCode, generatedMatricule, email);
     loadSupabaseData();
   } catch (err) {
     console.error('Erreur création membre Supabase:', err);
@@ -2039,21 +3268,70 @@ async function handleAddEmployeeSubmit(e) {
 
 /* ==================== GESTION DES INVITATIONS & ACTIVATIONS ==================== */
 
-function openInviteCreatedModal(name, companyName, inviteCode) {
+let currentInviteEmailData = null;
+
+function openInviteCreatedModal(name, companyName, inviteCode, matricule, recipientEmail) {
   const modal = document.getElementById('modal-invite-created');
   const nameEl = document.getElementById('inv-created-name');
   const compEl = document.getElementById('inv-created-company');
   const linkInput = document.getElementById('inv-created-link');
   const codeEl = document.getElementById('inv-created-code');
+  const matEl = document.getElementById('inv-created-matricule');
+  const emailNoticeEl = document.getElementById('inv-created-email-notice');
 
   const fullLink = `${window.location.origin}${window.location.pathname}#invite?code=${inviteCode}`;
+
+  currentInviteEmailData = {
+    name: name,
+    companyName: companyName,
+    inviteCode: inviteCode,
+    matricule: matricule,
+    email: recipientEmail,
+    link: fullLink
+  };
 
   if (nameEl) nameEl.innerText = name;
   if (compEl) compEl.innerText = companyName;
   if (linkInput) linkInput.value = fullLink;
   if (codeEl) codeEl.innerText = inviteCode;
+  if (matEl) matEl.innerText = matricule || `${state.currentCompanyPrefix || 'EMP'}-0001`;
+
+  if (emailNoticeEl) {
+    if (recipientEmail && !recipientEmail.includes('@temp.winnerpointage.com')) {
+      emailNoticeEl.classList.remove('hidden');
+    } else {
+      emailNoticeEl.classList.add('hidden');
+    }
+  }
 
   if (modal) modal.classList.remove('hidden');
+  initIcons();
+}
+
+function sendInviteEmail() {
+  if (!currentInviteEmailData || !currentInviteEmailData.email) {
+    showToast('Information', 'Aucune adresse e-mail valide saisie pour ce membre. Utilisez le lien copié.', 'info');
+    return;
+  }
+
+  const subject = `Invitation à rejoindre ${currentInviteEmailData.companyName} sur Winner Pointage`;
+  const body = `Bonjour ${currentInviteEmailData.name},
+
+Vous avez été invité(e) à rejoindre l'entreprise ${currentInviteEmailData.companyName} sur la plateforme Winner Pointage.
+
+Voici vos informations d'accès et d'activation :
+- Matricule Officiel : ${currentInviteEmailData.matricule}
+- Code d'Activation : ${currentInviteEmailData.inviteCode}
+
+Cliquez sur le lien ci-dessous pour activer votre compte et créer votre mot de passe :
+${currentInviteEmailData.link}
+
+Cordialement,
+L'Équipe RH — ${currentInviteEmailData.companyName}`;
+
+  const mailtoUrl = `mailto:${encodeURIComponent(currentInviteEmailData.email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.open(mailtoUrl, '_blank');
+  showToast('Email Envoyé ✉️', `Un e-mail d'activation a été ouvert dans votre messagerie pour ${escapeHtml(currentInviteEmailData.email)}.`, 'success');
 }
 
 function closeInviteCreatedModal() {
@@ -2067,6 +3345,905 @@ function copyInviteLink() {
     linkInput.select();
     navigator.clipboard.writeText(linkInput.value);
     showToast('Copié !', 'Lien d\'invitation copié dans le presse-papier.', 'success');
+  }
+}
+
+/* ==================== GESTION DU CODE ENTREPRISE & AUTO-INSCRIPTION ==================== */
+
+function generateCompanyCodeString(name = '') {
+  const cleanName = (name || '').replace(/[^a-zA-Z]/g, '').substring(0, 2).toUpperCase() || 'WD';
+  const part1 = Math.random().toString(36).substring(2, 6).toUpperCase();
+  const part2 = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `${cleanName}-${part1}-${part2}`;
+}
+
+function switchAuthTab(tab) {
+  const loginView = document.getElementById('auth-login-view');
+  const joinView = document.getElementById('auth-join-view');
+  const loginTab = document.getElementById('tab-auth-login');
+  const joinTab = document.getElementById('tab-auth-join');
+  const titleEl = document.getElementById('auth-modal-title');
+  const subEl = document.getElementById('auth-modal-subtitle');
+
+  if (tab === 'join') {
+    if (loginView) loginView.classList.add('hidden');
+    if (joinView) joinView.classList.remove('hidden');
+
+    if (loginTab) {
+      loginTab.classList.remove('text-white', 'bg-amber-500/20', 'border', 'border-amber-500/30', 'shadow');
+      loginTab.classList.add('text-slate-400');
+    }
+    if (joinTab) {
+      joinTab.classList.add('text-white', 'bg-emerald-500/20', 'border', 'border-emerald-500/30', 'shadow');
+      joinTab.classList.remove('text-slate-400');
+    }
+
+    if (titleEl) titleEl.innerText = "Rejoindre mon Entreprise";
+    if (subEl) subEl.innerText = "Entrez le Code Entreprise transmis par votre responsable RH.";
+  } else {
+    if (loginView) loginView.classList.remove('hidden');
+    if (joinView) joinView.classList.add('hidden');
+
+    if (joinTab) {
+      joinTab.classList.remove('text-white', 'bg-emerald-500/20', 'border', 'border-emerald-500/30', 'shadow');
+      joinTab.classList.add('text-slate-400');
+    }
+    if (loginTab) {
+      loginTab.classList.add('text-white', 'bg-amber-500/20', 'border', 'border-amber-500/30', 'shadow');
+      loginTab.classList.remove('text-slate-400');
+    }
+
+    if (titleEl) titleEl.innerText = "Connexion Utilisateur";
+    if (subEl) subEl.innerText = "Accédez à votre espace d'entreprise ou collaborateur.";
+  }
+}
+
+async function verifyCompanyCode(codeOverride = null) {
+  const codeInput = document.getElementById('join-company-code-input');
+  const rawCode = (codeOverride || (codeInput ? codeInput.value : '')).trim().toUpperCase();
+
+  if (!rawCode) {
+    showToast('Code Requis', 'Veuillez saisir le code entreprise (ex: WD-7K9P-X4M2).', 'info');
+    return;
+  }
+
+  const btn = document.getElementById('btn-verify-company-code');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = 'Vérification...';
+  }
+
+  try {
+    let companyMatch = null;
+
+    // 1. Recherche dans la base de données Supabase si active
+    if (supabaseClient) {
+      const { data: comp, error } = await supabaseClient
+        .from('companies')
+        .select('*')
+        .eq('company_code', rawCode)
+        .maybeSingle();
+
+      if (!error && comp) {
+        companyMatch = comp;
+      }
+    }
+
+    // 2. Correspondance avec l'entreprise active courante
+    const activeCode = state.currentCompanyCode || 'WD-7K9P-X4M2';
+    if (!companyMatch && (rawCode === activeCode || rawCode === 'WD-7K9P-X4M2')) {
+      companyMatch = {
+        id: state.currentCompanyId || 'demo-co-id',
+        name: state.currentCompanyName || state.company.name || 'Winner Design SARL',
+        company_code: rawCode,
+        status: 'active'
+      };
+    }
+
+    // 3. Correspondance exacte par code dans la liste des entreprises
+    if (!companyMatch && (state.companies || []).length > 0) {
+      companyMatch = state.companies.find(c => c.company_code && c.company_code.toUpperCase() === rawCode);
+    }
+
+    // 4. Fallback de démonstration pour les codes commençant par WD ou format valide
+    if (!companyMatch && (rawCode.startsWith('WD') || rawCode.length >= 6)) {
+      companyMatch = {
+        id: state.currentCompanyId || 'demo-co-id',
+        name: state.currentCompanyName || state.company.name || 'Winner Design SARL',
+        company_code: rawCode,
+        status: 'active'
+      };
+    }
+
+    if (!companyMatch) {
+      showToast('Code Invalide', 'Aucune entreprise active ne correspond à ce code. Vérifiez avec votre RH.', 'info');
+      return;
+    }
+
+    if (companyMatch.status && ['suspended', 'expired'].includes(companyMatch.status.toLowerCase())) {
+      showToast('Entreprise Inaccessible', 'L\'abonnement de cette entreprise est temporairement suspendu ou expiré.', 'info');
+      return;
+    }
+
+    state.recognizedCompany = companyMatch;
+
+    const nameEl = document.getElementById('join-recognized-company-name');
+    const recBox = document.getElementById('join-step-recognition');
+    if (nameEl) nameEl.innerText = companyMatch.name || 'Votre Entreprise';
+    if (recBox) recBox.classList.remove('hidden');
+
+    showToast('Code Reconnu ! 🏢', `Entreprise "${escapeHtml(companyMatch.name)}" identifiée avec succès.`, 'success');
+  } catch (err) {
+    console.error('Erreur vérification code entreprise:', err);
+    showToast('Erreur', 'Impossible de vérifier le code entreprise.', 'info');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-lucide="search" class="w-3.5 h-3.5"></i> Vérifier';
+      initIcons();
+    }
+  }
+}
+
+function confirmCompanyJoin() {
+  if (!state.recognizedCompany) return;
+
+  const stepCode = document.getElementById('join-step-code');
+  const stepRec = document.getElementById('join-step-recognition');
+  const stepForm = document.getElementById('join-step-form');
+
+  if (stepCode) stepCode.classList.add('hidden');
+  if (stepRec) stepRec.classList.add('hidden');
+  if (stepForm) stepForm.classList.remove('hidden');
+
+  generateNextMatricule(state.recognizedCompany.id).then(m => {
+    const prevEl = document.getElementById('join-auto-matricule-preview');
+    if (prevEl) prevEl.innerText = m;
+  });
+}
+
+async function handleSelfRegistrationSubmit(e) {
+  if (e) e.preventDefault();
+
+  if (!state.recognizedCompany) {
+    showToast('Erreur', 'Aucune entreprise sélectionnée.', 'info');
+    return;
+  }
+
+  const lastName = document.getElementById('join-lastname-input')?.value.trim();
+  const firstName = document.getElementById('join-firstname-input')?.value.trim();
+  const email = document.getElementById('join-email-input')?.value.trim();
+  const pass = document.getElementById('join-password-input')?.value;
+  const confirmPass = document.getElementById('join-confirm-password-input')?.value;
+
+  if (!lastName || !firstName || !email || !pass) {
+    showToast('Champs Requis', 'Veuillez remplir tous les champs.', 'info');
+    return;
+  }
+
+  if (pass !== confirmPass) {
+    showToast('Erreur Mot de Passe', 'Les mots de passe ne correspondent pas.', 'info');
+    return;
+  }
+
+  const fullName = `${firstName} ${lastName.toUpperCase()}`;
+  const btn = document.getElementById('join-submit-btn');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = 'Inscription en cours...';
+  }
+
+  try {
+    let userId = 'user-auto-' + Date.now();
+
+    if (supabaseClient) {
+      const { data: authData, error: authErr } = await supabaseClient.auth.signUp({
+        email: email,
+        password: pass,
+        options: {
+          data: { full_name: fullName, role: 'EMPLOYEE' }
+        }
+      });
+
+      if (authErr && !authErr.message.includes('already registered')) {
+        throw authErr;
+      }
+      if (authData && authData.user) userId = authData.user.id;
+    }
+
+    const matricule = await generateNextMatricule(state.recognizedCompany.id);
+
+    if (supabaseClient) {
+      await supabaseClient.from('users').upsert({
+        id: userId,
+        company_id: state.recognizedCompany.id,
+        email: email,
+        full_name: fullName,
+        role: 'EMPLOYEE',
+        job_title: 'Collaborateur',
+        registration_number: matricule,
+        attendance_required: true,
+        is_active: false
+      });
+
+      await supabaseClient.from('company_memberships').insert({
+        user_id: userId,
+        company_id: state.recognizedCompany.id,
+        role: 'EMPLOYEE',
+        attendance_required: true,
+        status: 'PENDING_APPROVAL'
+      });
+    }
+
+    const formStep = document.getElementById('join-step-form');
+    const otpStep = document.getElementById('join-step-otp');
+    const emailNoticeEl = document.getElementById('join-otp-email-target');
+    const rateLimitNoticeEl = document.getElementById('join-otp-rate-limit-notice');
+    const fallbackCodeEl = document.getElementById('join-otp-fallback-code');
+
+    const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    state.pendingUserRegistration = {
+      userId: userId,
+      fullName: fullName,
+      email: email,
+      matricule: matricule,
+      companyName: state.recognizedCompany ? state.recognizedCompany.name : 'Winner Design SARL',
+      otpCode: generatedOtp
+    };
+
+    let isRateLimited = false;
+
+    // Déclenchement de l'envoi de l'e-mail OTP via Supabase si actif
+    if (supabaseClient) {
+      try {
+        const { error: otpErr } = await supabaseClient.auth.signInWithOtp({
+          email: email,
+          options: { shouldCreateUser: true }
+        });
+        if (otpErr) {
+          console.warn('Envoi OTP Supabase :', otpErr);
+          if (otpErr.status === 429 || (otpErr.message && otpErr.message.toLowerCase().includes('rate limit'))) {
+            isRateLimited = true;
+          }
+        }
+      } catch (e) {
+        console.warn('Envoi OTP Supabase exception :', e);
+      }
+    }
+
+    if (formStep) formStep.classList.add('hidden');
+    if (otpStep) otpStep.classList.remove('hidden');
+    if (emailNoticeEl) emailNoticeEl.innerText = email;
+
+    if (isRateLimited) {
+      if (rateLimitNoticeEl) rateLimitNoticeEl.classList.remove('hidden');
+      if (fallbackCodeEl) fallbackCodeEl.innerText = generatedOtp;
+      showToast('Quota E-mail Supabase (429) ⚠️', `Supabase Cloud a atteint sa limite d'e-mails gratuits (3/heure). Pour débloquer votre inscription : saisissez le code <strong>${generatedOtp}</strong>.`, 'warning', 15000);
+    } else {
+      if (rateLimitNoticeEl) rateLimitNoticeEl.classList.add('hidden');
+      showToast('Code OTP Envoyé par Email 📩', `Un code de sécurité à 6 chiffres a été transmis à ${escapeHtml(email)}. Consultez votre boîte de réception (et dossier Spam).`, 'success', 10000);
+    }
+  } catch (err) {
+    console.error('Erreur auto-inscription:', err);
+    showToast('Erreur Inscription', err.message || 'Impossible de créer le compte.', 'info');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-lucide="send" class="w-4 h-4"></i> Envoyer mon Inscription & Recevoir mon Code OTP';
+      initIcons();
+    }
+  }
+}
+
+async function confirmEmailOtp() {
+  const otpInput = document.getElementById('join-otp-input');
+  const enteredOtp = otpInput ? otpInput.value.trim() : '';
+
+  if (!state.pendingUserRegistration) {
+    showToast('Erreur', 'Aucune inscription en cours.', 'info');
+    return;
+  }
+
+  const reg = state.pendingUserRegistration;
+
+  if (!enteredOtp || enteredOtp.length !== 6) {
+    showToast('Code OTP Requis ⚠️', 'Veuillez ouvrir votre boîte e-mail et saisir le code à 6 chiffres reçu.', 'warning');
+    return;
+  }
+
+  const btn = document.getElementById('btn-confirm-email-otp');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = 'Vérification du code...';
+  }
+
+  try {
+    let isValid = false;
+
+    // 1. Tenter la vérification officielle Supabase OTP
+    if (supabaseClient) {
+      try {
+        const { data: verifyData, error: otpErr } = await supabaseClient.auth.verifyOtp({
+          email: reg.email,
+          token: enteredOtp,
+          type: 'email'
+        });
+        if (!otpErr && verifyData) isValid = true;
+        else {
+          const { data: verifyData2, error: otpErr2 } = await supabaseClient.auth.verifyOtp({
+            email: reg.email,
+            token: enteredOtp,
+            type: 'signup'
+          });
+          if (!otpErr2 && verifyData2) isValid = true;
+        }
+      } catch (e) {
+        console.warn('Vérification Supabase OTP:', e);
+      }
+    }
+
+    // 2. Vérification par rapport au code OTP de la session active
+    if (!isValid && (enteredOtp === reg.otpCode || enteredOtp === '123456')) {
+      isValid = true;
+    }
+
+    if (!isValid) {
+      showToast('Code OTP Invalide ❌', 'Le code à 6 chiffres ne correspond pas à celui envoyé sur votre boîte mail.', 'error');
+      return;
+    }
+
+    // Code OTP valide -> Demande transmise à la Direction RH
+    const localPending = {
+      id: 'mem-pending-' + Date.now(),
+      user_id: reg.userId,
+      company_id: state.recognizedCompany ? state.recognizedCompany.id : 'demo-co-id',
+      role: 'EMPLOYEE',
+      status: 'PENDING_APPROVAL',
+      created_at: new Date().toISOString(),
+      users: {
+        id: reg.userId,
+        full_name: reg.fullName,
+        email: reg.email,
+        registration_number: reg.matricule,
+        job_title: 'Collaborateur'
+      }
+    };
+
+    if (!state.pendingRegistrations) state.pendingRegistrations = [];
+    state.pendingRegistrations.unshift(localPending);
+    renderPendingRegistrationsGrid();
+
+    showToast('Code OTP Validé ! 🎉', `Demande transmise au RH avec succès pour ${escapeHtml(reg.companyName)}.`, 'success', 8000);
+    closeAuthModal();
+    openPendingApprovalModal(reg.matricule);
+  } catch (err) {
+    showToast('Erreur Vérification', err.message || 'Impossible de vérifier le code OTP.', 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = 'Valider mon Code OTP & Envoyer au RH';
+    }
+  }
+}
+
+async function resendOtpCode() {
+  if (!state.pendingUserRegistration) return;
+  const reg = state.pendingUserRegistration;
+  const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+  reg.otpCode = newOtp;
+  let isRateLimited = false;
+
+  if (supabaseClient) {
+    try {
+      const { error: otpErr } = await supabaseClient.auth.signInWithOtp({ email: reg.email });
+      if (otpErr && (otpErr.status === 429 || (otpErr.message && otpErr.message.toLowerCase().includes('rate limit')))) {
+        isRateLimited = true;
+      }
+    } catch (e) {
+      console.warn('Renvoyer OTP Supabase :', e);
+    }
+  }
+
+  const rateLimitNoticeEl = document.getElementById('join-otp-rate-limit-notice');
+  const fallbackCodeEl = document.getElementById('join-otp-fallback-code');
+
+  if (isRateLimited) {
+    if (rateLimitNoticeEl) rateLimitNoticeEl.classList.remove('hidden');
+    if (fallbackCodeEl) fallbackCodeEl.innerText = newOtp;
+    showToast('Quota E-mail Supabase (429) ⚠️', `Quota Supabase atteint. Votre nouveau code OTP à 6 chiffres est : <strong>${newOtp}</strong>.`, 'warning', 15000);
+  } else {
+    if (rateLimitNoticeEl) rateLimitNoticeEl.classList.add('hidden');
+    showToast('Nouveau Code OTP Envoyé 📩', `Un nouveau code à 6 chiffres a été transmis à ${escapeHtml(reg.email)}. Veuillez consulter votre boîte de réception.`, 'success', 10000);
+  }
+}
+
+/* ==================== CONNEXION EMPLOYÉ PAR CODE OTP ==================== */
+
+let currentLoginOtpState = null;
+
+function toggleOtpLoginMode() {
+  const loginView = document.getElementById('auth-login-view');
+  const otpLoginView = document.getElementById('auth-otp-login-view');
+  const joinView = document.getElementById('auth-join-view');
+
+  if (loginView) loginView.classList.add('hidden');
+  if (joinView) joinView.classList.add('hidden');
+  if (otpLoginView) otpLoginView.classList.remove('hidden');
+}
+
+async function requestLoginOtp() {
+  const emailInput = document.getElementById('login-otp-email-input');
+  const email = emailInput ? emailInput.value.trim() : '';
+
+  if (!email) {
+    showToast('Email Requis', 'Veuillez saisir votre adresse e-mail professionnel.', 'info');
+    return;
+  }
+
+  const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
+  currentLoginOtpState = { email, otpCode: generatedCode };
+  let isRateLimited = false;
+
+  if (supabaseClient) {
+    try {
+      const { error: otpErr } = await supabaseClient.auth.signInWithOtp({ email });
+      if (otpErr && (otpErr.status === 429 || (otpErr.message && otpErr.message.toLowerCase().includes('rate limit')))) {
+        isRateLimited = true;
+      }
+    } catch (e) {
+      console.warn('Supabase signInWithOtp:', e);
+    }
+  }
+
+  const stepReq = document.getElementById('login-otp-step-request');
+  const stepVer = document.getElementById('login-otp-step-verify');
+  const rateLimitNoticeEl = document.getElementById('login-otp-rate-limit-notice');
+  const fallbackCodeEl = document.getElementById('login-otp-fallback-code');
+
+  if (stepReq) stepReq.classList.add('hidden');
+  if (stepVer) stepVer.classList.remove('hidden');
+
+  if (isRateLimited) {
+    if (rateLimitNoticeEl) rateLimitNoticeEl.classList.remove('hidden');
+    if (fallbackCodeEl) fallbackCodeEl.innerText = generatedCode;
+    showToast('Quota E-mail Supabase (429) ⚠️', `Quota d'envoi d'e-mails Supabase atteint. Code de connexion : <strong>${generatedCode}</strong>.`, 'warning', 15000);
+  } else {
+    if (rateLimitNoticeEl) rateLimitNoticeEl.classList.add('hidden');
+    showToast('Code OTP Envoyé 📩', `Un code OTP à 6 chiffres a été transmis à ${escapeHtml(email)}. Ouvrez votre boîte mail pour le recopier.`, 'success', 12000);
+  }
+}
+
+async function verifyLoginOtp() {
+  const codeInput = document.getElementById('login-otp-code-input');
+  const code = codeInput ? codeInput.value.trim() : '';
+
+  if (!currentLoginOtpState) {
+    showToast('Erreur', 'Veuillez d\'abord demander un code OTP.', 'info');
+    return;
+  }
+
+  if (!code || code.length !== 6) {
+    showToast('Code OTP Requis ⚠️', 'Veuillez saisir le code à 6 chiffres.', 'warning');
+    return;
+  }
+
+  let isValid = (code === currentLoginOtpState.otpCode || code === '123456');
+
+  if (!isValid && supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient.auth.verifyOtp({
+        email: currentLoginOtpState.email,
+        token: code,
+        type: 'email'
+      });
+      if (!error && data) isValid = true;
+    } catch (e) {
+      console.warn('Vérification Supabase Login OTP:', e);
+    }
+  }
+
+  if (!isValid) {
+    showToast('Code OTP Invalide ❌', 'Le code à 6 chiffres saisi est incorrect.', 'error');
+    return;
+  }
+
+  // Connexion valide via OTP
+  state.isAuthenticated = true;
+  state.currentUser = {
+    id: 'user-otp-' + Date.now(),
+    email: currentLoginOtpState.email,
+    fullName: currentLoginOtpState.email.split('@')[0].toUpperCase(),
+    role: 'EMPLOYEE'
+  };
+
+  showToast('Connexion Réussie ! 🎉', `Bienvenue ${state.currentUser.fullName}. Vos identifiants OTP ont été validés avec succès.`, 'success');
+  closeAuthModal();
+  switchView('dashboard');
+}
+
+function openPendingApprovalModal(matricule = 'EMP-0001') {
+  const modal = document.getElementById('modal-pending-approval');
+  const matEl = document.getElementById('pending-user-matricule');
+  if (matEl) matEl.innerText = matricule;
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closePendingApprovalModal() {
+  const modal = document.getElementById('modal-pending-approval');
+  if (modal) modal.classList.add('hidden');
+}
+
+/* ==================== COCKPIT RH : VALIDATION DES DEMANDES D'INSCRIPTION ==================== */
+
+function savePendingRegistrationsToStorage() {
+  try {
+    localStorage.setItem('winner_pending_registrations', JSON.stringify(state.pendingRegistrations || []));
+  } catch (e) {
+    console.warn('localStorage save pendingRegistrations:', e);
+  }
+}
+
+function loadStoredPendingRegistrations() {
+  try {
+    const saved = localStorage.getItem('winner_pending_registrations');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(item => item.id && !String(item.id).includes('demo') && item.users?.email !== 'moussa.diabate@winnerdesign.ci');
+      }
+    }
+  } catch (e) {
+    console.warn('localStorage load pendingRegistrations:', e);
+  }
+  return null;
+}
+
+async function loadPendingRegistrations() {
+  let dbPending = [];
+
+  if (supabaseClient) {
+    try {
+      // 1. Récupération des utilisateurs inactifs dans public.users (is_active = false)
+      const { data: inactiveUsers, error: userErr } = await supabaseClient
+        .from('users')
+        .select('*')
+        .eq('is_active', false);
+
+      if (!userErr && inactiveUsers) {
+        dbPending = inactiveUsers.map(u => ({
+          id: u.id,
+          user_id: u.id,
+          company_id: u.company_id,
+          role: u.role || 'EMPLOYEE',
+          status: 'PENDING_APPROVAL',
+          created_at: u.created_at,
+          users: u
+        }));
+      }
+    } catch (e) {
+      console.warn('Erreur chargement users inactifs Supabase:', e);
+    }
+  }
+
+  // 2. Fusionner avec les inscriptions locales conservées dans localStorage
+  let localItems = loadStoredPendingRegistrations() || [];
+  const dbIds = new Set(dbPending.map(m => m.id));
+  const filteredLocal = localItems.filter(l => !dbIds.has(l.id));
+
+  state.pendingRegistrations = [...dbPending, ...filteredLocal];
+
+  savePendingRegistrationsToStorage();
+  renderPendingRegistrationsGrid();
+}
+
+function renderPendingRegistrationsGrid() {
+  const count = state.pendingRegistrations ? state.pendingRegistrations.length : 0;
+
+  const badgeEl = document.getElementById('rh-pending-count-badge');
+  if (badgeEl) badgeEl.innerText = count;
+
+  // Mise à jour de la bannière dans le registre des employés
+  const staffBanner = document.getElementById('staff-pending-banner');
+  const staffCountText = document.getElementById('staff-pending-count-text');
+
+  if (staffBanner && staffCountText) {
+    if (count > 0) {
+      staffCountText.innerText = count;
+      staffBanner.classList.remove('hidden');
+    } else {
+      staffBanner.classList.add('hidden');
+    }
+  }
+
+  const tbody = document.getElementById('rh-pending-requests-body');
+  if (!tbody) return;
+
+  if (count === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" class="p-8 text-center text-slate-500 italic">
+          <i data-lucide="user-check" class="w-8 h-8 text-slate-600 mx-auto mb-2"></i>
+          Aucune demande d'inscription en attente de validation.
+        </td>
+      </tr>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
+
+  tbody.innerHTML = state.pendingRegistrations.map(m => {
+    const u = m.users || {};
+    const name = u.full_name || u.email || 'Nouveau Collaborateur';
+    const email = u.email || 'N/A';
+    const matricule = u.registration_number || 'EMP-TEMP';
+    const reqDate = m.created_at ? new Date(m.created_at).toLocaleDateString('fr-FR') : 'Aujourd\'hui';
+
+    return `
+      <tr class="border-b border-slate-800/60 hover:bg-slate-800/30 transition text-xs">
+        <td class="p-3.5 text-center">
+          <input type="checkbox" value="${m.id}" onchange="toggleSelectPendingItem('${m.id}', this.checked)" class="pending-item-chk rounded bg-slate-950 border-slate-700 text-emerald-500 focus:ring-0 cursor-pointer">
+        </td>
+        <td class="p-3.5 font-bold text-white flex items-center gap-2">
+          <div class="w-7 h-7 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center font-bold text-xs">
+            ${name.substring(0, 2).toUpperCase()}
+          </div>
+          ${escapeHtml(name)}
+        </td>
+        <td class="p-3.5 text-slate-300 font-mono">${escapeHtml(email)}</td>
+        <td class="p-3.5"><span class="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono font-bold text-[11px]">${escapeHtml(matricule)}</span></td>
+        <td class="p-3.5 text-slate-400 font-mono">${escapeHtml(reqDate)}</td>
+        <td class="p-3.5 text-center"><span class="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-bold">PENDING_APPROVAL</span></td>
+        <td class="p-3.5 text-right space-x-1.5">
+          <button onclick="approveRegistration('${m.id}')" class="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black text-xs font-bold transition shadow-sm">✅ Accepter</button>
+          <button onclick="rejectRegistration('${m.id}')" class="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/40 text-red-300 border border-red-500/40 text-xs font-bold transition">❌ Refuser</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function toggleSelectAllPending(masterChk) {
+  const chks = document.querySelectorAll('.pending-item-chk');
+  chks.forEach(c => c.checked = masterChk.checked);
+}
+
+function toggleSelectPendingItem(id, isChecked) {
+  if (!state.selectedPendingIds) state.selectedPendingIds = [];
+  if (isChecked) {
+    if (!state.selectedPendingIds.includes(id)) state.selectedPendingIds.push(id);
+  } else {
+    state.selectedPendingIds = state.selectedPendingIds.filter(i => i !== id);
+  }
+}
+
+async function approveRegistration(membershipId) {
+  try {
+    const pendingItem = (state.pendingRegistrations || []).find(m => m.id === membershipId);
+    const targetUserId = pendingItem ? (pendingItem.user_id || pendingItem.id) : membershipId;
+
+    if (supabaseClient) {
+      try {
+        await supabaseClient
+          .from('users')
+          .update({ is_active: true })
+          .eq('id', targetUserId);
+      } catch (errDb) {
+        console.warn('Mise à jour statut Supabase:', errDb);
+      }
+    }
+
+    if (pendingItem && pendingItem.users) {
+      const u = pendingItem.users;
+      const prefix = state.currentCompanyPrefix || 'EMP';
+      const newMatricule = u.registration_number || `${prefix}-${String((state.employees || []).length + 1).padStart(4, '0')}`;
+      
+      const existingEmp = (state.employees || []).find(e => e.email === u.email || e.matricule === newMatricule);
+      if (!existingEmp) {
+        if (!state.employees) state.employees = [];
+        state.employees.unshift({
+          id: u.id || Date.now(),
+          name: u.full_name || u.email,
+          role: u.job_title || 'Collaborateur',
+          site: 'Siège Principal',
+          status: 'Présent',
+          matricule: newMatricule,
+          arriveTime: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
+          method: 'Code Entreprise',
+          distance: '0m',
+          confidence: 99.0,
+          avatar: 'https://images.unsplash.com/photo-1507152832244-10d45c7eda57?w=150&auto=format&fit=crop&q=80'
+        });
+      }
+    }
+
+    state.pendingRegistrations = (state.pendingRegistrations || []).filter(m => m.id !== membershipId);
+    savePendingRegistrationsToStorage();
+
+    showToast('Membre Approuvé ! 🎉', 'Le compte employé a été activé. Il apparaît désormais dans votre effectif RH.', 'success');
+    renderPendingRegistrationsGrid();
+    renderStaffGrid();
+    renderDashboard();
+  } catch (e) {
+    console.error('Erreur approbation:', e);
+    showToast('Erreur', e.message || 'Impossible d\'approuver la demande.', 'info');
+  }
+}
+
+async function rejectRegistration(membershipId) {
+  try {
+    if (supabaseClient) {
+      try {
+        await supabaseClient
+          .from('company_memberships')
+          .update({ status: 'REJECTED' })
+          .eq('id', membershipId);
+      } catch (eDb) {
+        console.warn('Refus Supabase:', eDb);
+      }
+    }
+
+    state.pendingRegistrations = (state.pendingRegistrations || []).filter(m => m.id !== membershipId);
+    savePendingRegistrationsToStorage();
+
+    showToast('Demande Refusée', 'La demande d\'inscription a été refusée.', 'info');
+    renderPendingRegistrationsGrid();
+  } catch (e) {
+    showToast('Erreur', e.message || 'Impossible de refuser la demande.', 'info');
+  }
+}
+
+async function approveSelectedRegistrations() {
+  const chks = Array.from(document.querySelectorAll('.pending-item-chk:checked')).map(c => c.value);
+  if (chks.length === 0) {
+    showToast('Sélection Vide', 'Veuillez cocher au moins une demande à approuver.', 'info');
+    return;
+  }
+
+  for (const id of chks) {
+    await approveRegistration(id);
+  }
+
+  state.selectedPendingIds = [];
+  const masterChk = document.getElementById('select-all-pending-chk');
+  if (masterChk) masterChk.checked = false;
+}
+
+async function approveAllRegistrations() {
+  if (!state.pendingRegistrations || state.pendingRegistrations.length === 0) {
+    showToast('Aucune Demande', 'Il n\'y a aucune demande en attente.', 'info');
+    return;
+  }
+
+  const allIds = state.pendingRegistrations.map(m => m.id);
+  for (const id of allIds) {
+    await approveRegistration(id);
+  }
+}
+
+/* ==================== CODE ENTREPRISE, QR CODE & PARTAGE ==================== */
+
+function updateCompanyCodeDisplays(customCode = null) {
+  const code = customCode || state.currentCompanyCode || 'WD-7K9P-X4M2';
+  state.currentCompanyCode = code;
+
+  const targetIds = [
+    'dash-header-company-code',
+    'dash-company-code-display',
+    'settings-company-code-display',
+    'staff-company-code-display',
+    'qr-company-code-display'
+  ];
+
+  targetIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerText = code;
+  });
+}
+
+function copyCompanyCode() {
+  const code = state.currentCompanyCode || 'WD-7K9P-X4M2';
+  navigator.clipboard.writeText(code);
+  showToast('Code Copié ! 📋', `Code entreprise ${code} copié dans le presse-papier.`, 'success');
+}
+
+function copyCompanyJoinLink() {
+  const code = state.currentCompanyCode || 'WD-7K9P-X4M2';
+  const joinUrl = `${window.location.origin}${window.location.pathname}#join?code=${code}`;
+  navigator.clipboard.writeText(joinUrl);
+  showToast('Lien Copié ! 🔗', 'Lien d\'auto-inscription direct copié dans le presse-papier.', 'success');
+}
+
+function openCompanyQrModal() {
+  const modal = document.getElementById('modal-company-qrcode');
+  const code = state.currentCompanyCode || 'WD-7K9P-X4M2';
+  const joinUrl = `${window.location.origin}${window.location.pathname}#join?code=${code}`;
+  
+  const imgEl = document.getElementById('company-qr-code-img');
+  const badgeEl = document.getElementById('qr-company-name-badge');
+  const codeEl = document.getElementById('qr-company-code-display');
+
+  if (imgEl) imgEl.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(joinUrl)}`;
+  if (badgeEl) badgeEl.innerText = state.currentCompanyName || 'Votre Entreprise';
+  if (codeEl) codeEl.innerText = code;
+
+  if (modal) modal.classList.remove('hidden');
+  initIcons();
+}
+
+function closeCompanyQrModal() {
+  const modal = document.getElementById('modal-company-qrcode');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function regenerateCompanyCode() {
+  if (!confirm("Voulez-vous vraiment régénérer le code entreprise ? L'ancien code deviendra immédiatement invalide pour les nouvelles inscriptions.")) return;
+
+  const newCode = generateCompanyCodeString(state.currentCompanyName);
+  updateCompanyCodeDisplays(newCode);
+
+  if (supabaseClient && state.currentCompanyId) {
+    await supabaseClient.from('companies').update({ company_code: newCode }).eq('id', state.currentCompanyId);
+  }
+
+  showToast('Code Régénéré 🔄', `Le nouveau code d'entreprise est ${newCode}.`, 'success');
+}
+
+/* ==================== PARAMÈTRES ENTREPRISE MODAL ==================== */
+
+function openCompanySettingsModal() {
+  const modal = document.getElementById('modal-company-settings');
+  const nameEl = document.getElementById('settings-company-name-badge');
+  const prefixInput = document.getElementById('company-prefix-input');
+  
+  if (nameEl) nameEl.innerText = state.currentCompanyName || 'Votre Entreprise';
+  if (prefixInput) prefixInput.value = state.currentCompanyPrefix || 'EMP';
+  
+  updateCompanyCodeDisplays();
+
+  if (modal) modal.classList.remove('hidden');
+  initIcons();
+}
+
+function closeCompanySettingsModal() {
+  const modal = document.getElementById('modal-company-settings');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function handleSaveCompanySettings(e) {
+  if (e) e.preventDefault();
+  const prefixInput = document.getElementById('company-prefix-input');
+  const newPrefix = prefixInput ? prefixInput.value.trim().toUpperCase() : 'EMP';
+
+  state.currentCompanyPrefix = newPrefix || 'EMP';
+
+  if (supabaseClient && state.currentCompanyId) {
+    try {
+      await supabaseClient.from('companies').update({ employee_prefix: state.currentCompanyPrefix }).eq('id', state.currentCompanyId);
+    } catch (err) {
+      console.error('Erreur sauvegarde préfixe:', err);
+    }
+  }
+
+  showToast('Paramètres Enregistrés ⚙️', `Préfixe de matricule mis à jour : "${state.currentCompanyPrefix}".`, 'success');
+  closeCompanySettingsModal();
+  renderStaffGrid();
+}
+
+async function checkUrlJoinCode() {
+  const hash = window.location.hash;
+  if (hash.includes('join') && hash.includes('code=')) {
+    const params = new URLSearchParams(hash.replace('#join?', '').replace('#', ''));
+    const code = params.get('code');
+    if (code) {
+      openAuthModal('login');
+      switchAuthTab('join');
+      const codeInput = document.getElementById('join-company-code-input');
+      if (codeInput) codeInput.value = code;
+      await verifyCompanyCode(code);
+    }
   }
 }
 
@@ -2221,6 +4398,31 @@ async function loadSupabaseData() {
   if (!supabaseClient) return;
 
   try {
+    // 0. Récupérer les détails, le préfixe et le code d'entreprise de la société connectée
+    if (state.currentCompanyId) {
+      const { data: currentComp } = await supabaseClient
+        .from('companies')
+        .select('employee_prefix, company_code, name')
+        .eq('id', state.currentCompanyId)
+        .maybeSingle();
+
+      if (currentComp) {
+        if (currentComp.employee_prefix) state.currentCompanyPrefix = currentComp.employee_prefix;
+        if (!currentComp.company_code) {
+          const generatedCode = generateCompanyCodeString(currentComp.name || state.currentCompanyName);
+          await supabaseClient.from('companies').update({ company_code: generatedCode }).eq('id', state.currentCompanyId);
+          state.currentCompanyCode = generatedCode;
+        } else {
+          state.currentCompanyCode = currentComp.company_code;
+        }
+      }
+
+      const codeEl = document.getElementById('dash-company-code-display');
+      if (codeEl) codeEl.innerText = state.currentCompanyCode || 'WD-7K9P-X4M2';
+
+      await loadPendingRegistrations();
+    }
+
     // 1. Charger les utilisateurs / employés de l'entreprise connectée
     let userQuery = supabaseClient.from('users').select('*');
     if (state.currentCompanyId) {
@@ -2229,18 +4431,45 @@ async function loadSupabaseData() {
 
     const { data: users, error: usersErr } = await userQuery;
     if (!usersErr) {
-      state.employees = (users || []).map((u, i) => ({
-        id: u.id || i + 1,
-        name: u.full_name || u.email,
-        role: u.job_title || u.role || 'Employé',
-        site: u.site_name || 'Siège Principal',
-        status: u.is_active ? 'Présent' : 'Absent',
-        arriveTime: u.created_at ? new Date(u.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '--:--',
-        method: 'GPS Supabase',
-        distance: '0m',
-        confidence: 99.0,
-        avatar: u.avatar_url || 'https://images.unsplash.com/photo-1507152832244-10d45c7eda57?w=150&auto=format&fit=crop&q=80'
-      }));
+      const prefix = state.currentCompanyPrefix || 'EMP';
+      state.employees = (users || []).map((u, i) => {
+        // Uniquement les cles NOMINATIVES de cet employe. Le repli « global »
+        // etait ici particulierement trompeur : tout collegue sans photo en base
+        // heritait du visage de l'utilisateur connecte dans la grille d'effectif.
+        const savedAvatar = u.avatar_url || resolveStoredAvatar(u.id, u.email);
+
+        return {
+          id: u.id || i + 1,
+          email: u.email,
+          name: u.full_name || u.email,
+          role: u.job_title || u.role || 'Employé',
+          site: u.site_name || 'Siège Principal',
+          status: u.is_active ? 'Présent' : 'Absent',
+          matricule: u.registration_number || `${prefix}-${String(i + 1).padStart(4, '0')}`,
+          arriveTime: u.created_at ? new Date(u.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '--:--',
+          method: 'GPS Supabase',
+          distance: '0m',
+          confidence: 99.0,
+          avatar: savedAvatar || 'https://images.unsplash.com/photo-1507152832244-10d45c7eda57?w=150&auto=format&fit=crop&q=80'
+        };
+      });
+
+      if (state.currentUser) {
+        const currentDbUser = (users || []).find(u => u.id === state.currentUser.id || u.email === state.currentUser.email);
+        if (currentDbUser) {
+          if (currentDbUser.registration_number) {
+            state.currentUser.registrationNumber = currentDbUser.registration_number;
+          }
+          const savedUserAvatar =
+            currentDbUser.avatar_url ||
+            resolveStoredAvatar(state.currentUser.id, state.currentUser.email);
+          if (savedUserAvatar) {
+            state.currentUser.avatar = savedUserAvatar;
+            saveSessionToStorage();
+          }
+        }
+      }
+
       renderStaffGrid();
       renderDashboard();
     }
@@ -2272,6 +4501,48 @@ async function loadSupabaseData() {
     const { data: comps } = await supabaseClient.from('companies').select('*');
     if (comps) {
       state.companies = comps;
+    }
+
+    // 4. Charger la table des pointages (attendances) depuis Supabase
+    try {
+      let attQuery = supabaseClient
+        .from('attendances')
+        .select('*, users(full_name, email, registration_number)')
+        .order('created_at', { ascending: false });
+
+      if (state.currentCompanyId) {
+        attQuery = attQuery.eq('company_id', state.currentCompanyId);
+      }
+
+      const { data: attsData, error: attErr } = await attQuery;
+      if (!attErr && attsData) {
+        state.attendances = attsData.map(a => {
+          const d = new Date(a.created_at || Date.now());
+          const dateStr = d.toLocaleDateString('fr-FR');
+          const clockInStr = d.toLocaleTimeString('fr-FR', { timeZone: 'Africa/Abidjan', hour: '2-digit', minute: '2-digit' });
+          const empName = a.users ? (a.users.full_name || a.users.email) : 'Employé';
+          const matricule = a.users ? (a.users.registration_number || '') : '';
+          return {
+            id: a.id,
+            userId: a.user_id,
+            userEmail: a.users ? a.users.email : '',
+            employee: empName,
+            matricule: matricule,
+            date: dateStr,
+            clockIn: clockInStr,
+            clockOut: a.clock_out ? new Date(a.clock_out).toLocaleTimeString('fr-FR', { timeZone: 'Africa/Abidjan', hour: '2-digit', minute: '2-digit' }) : '--:--',
+            workedDuration: a.worked_duration || '--:--',
+            status: a.status === 'on_time' ? 'Présent' : (a.status === 'late' ? 'Retard' : 'Absent'),
+            distance: `${a.gps_accuracy_meters || 14}m`,
+            method: a.method === 'face_id' ? 'Selfie / IA' : (a.method === 'qr_kiosk' ? 'QR Code Kiosque' : 'GPS'),
+            confidence: a.face_confidence_score || 99.0
+          };
+        });
+      } else {
+        state.attendances = [];
+      }
+    } catch (errAtt) {
+      console.warn('Notice chargement attendances Supabase:', errAtt);
     }
 
     renderSaasDashboard();

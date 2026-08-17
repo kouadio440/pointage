@@ -6,6 +6,63 @@
   <title>Winner Pointage — SaaS de Pointage Géolocalisé & Sécurisé pour Entreprises</title>
   <meta name="description" content="Plateforme SaaS de pointage géolocalisé, anti-fraude, selfie IA et gestion du temps de travail pour les PME et grandes entreprises." />
 
+  <!--
+    Décision de vue AVANT le premier rendu.
+
+    Deux sections n'ont PAS la classe "hidden" dans le corps du document :
+    #view-hero et #view-saas. Le navigateur les peint donc toutes les deux dès
+    que le HTML est parsé, et elles ne sont masquées qu'une fois app.js exécuté —
+    après Tailwind CDN, Supabase, Lucide et les polices. C'est ce qui faisait
+    défiler l'accueil puis le tableau de bord SaaS avant d'atteindre la bonne vue.
+
+    Le style ci-dessous masque TOUTES les sections et n'en révèle qu'une, plutôt
+    que d'en masquer nommément deux : ainsi, une section ajoutée plus tard sans
+    "hidden" ne réintroduira pas le défaut.
+
+    app.js retire l'attribut dès que switchView() prend la main : la décision
+    finale, contrôles de rôle compris, reste du ressort du JS applicatif.
+  -->
+  <script>
+    (function () {
+      var KNOWN = ['hero', 'saas', 'dashboard', 'employee'];
+      var view = 'hero';
+
+      try {
+        var hash = (window.location.hash || '').replace('#', '');
+
+        if (KNOWN.indexOf(hash) !== -1) {
+          view = hash;
+        } else {
+          var raw = localStorage.getItem('winner_auth_session');
+          if (raw) {
+            var s = JSON.parse(raw);
+            if (s && s.isAuthenticated) {
+              view = String(s.currentUserRole || '').toUpperCase() === 'EMPLOYEE'
+                ? 'employee'
+                : 'dashboard';
+            }
+          }
+        }
+      } catch (e) {
+        /* Session illisible : on retombe sur l'accueil, comportement d'origine. */
+      }
+
+      // L'attribut est TOUJOURS posé, y compris pour « hero » : un visiteur non
+      // connecté voyait lui aussi le tableau de bord SaaS s'afficher sous l'accueil.
+      document.documentElement.setAttribute('data-boot-view', view);
+    })();
+  </script>
+  <style>
+    /* Actif uniquement pendant les quelques centaines de millisecondes qui
+       précèdent l'exécution d'app.js, qui retire ensuite l'attribut. */
+    html[data-boot-view] .view-section { display: none !important; }
+
+    html[data-boot-view='hero'] #view-hero,
+    html[data-boot-view='saas'] #view-saas,
+    html[data-boot-view='dashboard'] #view-dashboard,
+    html[data-boot-view='employee'] #view-employee { display: block !important; }
+  </style>
+
   <!-- Google Fonts: Inter (headings), Playfair Display (dramatic titles), JetBrains Mono (data) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -801,27 +858,74 @@
     <!-- ==================== VIEW 2: DASHBOARD MAIN ==================== -->
     <section id="view-dashboard" class="view-section hidden space-y-6">
 
-      <!-- Dashboard Header -->
-      <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
-        <div>
-          <h2 class="text-2xl font-extrabold text-white flex items-center gap-2">
-            Dashboard Employeur — Cockpit de Présence
-            <span class="text-xs font-mono font-normal text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">Zone Principale HQ</span>
-          </h2>
-          <p class="text-xs text-slate-400">Espace Responsables : Suivi direct de l'effectif, retards, congés et alertes anti-fraude.</p>
+      <!-- Dashboard Header avec Entreprise & Utilisateur Connecté -->
+      <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800/80 pb-4 bg-slate-900/60 p-4 rounded-2xl border border-slate-800/80 shadow-lg">
+        <div class="space-y-2">
+          <!-- Nom de l'Entreprise Connectée & Titre Cockpit -->
+          <div class="flex flex-wrap items-center gap-3">
+            <div class="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 px-3.5 py-1.5 rounded-xl shadow-sm">
+              <i data-lucide="building-2" class="w-5 h-5 text-amber-400"></i>
+              <span id="dash-company-name" class="text-base font-extrabold text-amber-300 tracking-wide">Entreprise</span>
+            </div>
+            
+            <span class="text-slate-600 font-bold hidden sm:inline">•</span>
+            
+            <h2 class="text-xl font-extrabold text-white flex items-center gap-2">
+              Cockpit Client RH
+              <span class="text-xs font-mono font-normal text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full hidden md:inline-block">Zone Principale HQ</span>
+            </h2>
+          </div>
+          
+          <!-- Responsable Connecté (CEO / RH) -->
+          <div class="flex flex-wrap items-center gap-2 text-xs">
+            <div class="flex items-center gap-2 bg-slate-800/90 border border-slate-700/80 px-3 py-1 rounded-xl shadow-inner">
+              <i data-lucide="user-check" class="w-4 h-4 text-emerald-400"></i>
+              <span class="text-slate-400">Connecté(e) :</span>
+              <strong id="dash-user-name" class="text-white font-bold">Non connecté</strong>
+              <span id="rh-cockpit-role-badge"></span>
+            </div>
+            
+            <span class="text-slate-500 hidden lg:inline">•</span>
+            <p class="text-xs text-slate-400 hidden lg:inline">Espace Responsables : Suivi direct de l'effectif, retards, congés et alertes anti-fraude.</p>
+          </div>
+
+          <!-- Code Entreprise Public & Raccourcis Connexion Employé -->
+          <div class="flex flex-wrap items-center gap-2 pt-1">
+            <div class="flex items-center gap-2 bg-slate-950/90 border border-amber-500/40 px-3 py-1.5 rounded-xl shadow-inner text-xs">
+              <i data-lucide="key-round" class="w-4 h-4 text-amber-400"></i>
+              <span class="text-slate-400 font-medium">Code Connexion Employé :</span>
+              <strong id="dash-header-company-code" class="text-amber-300 font-mono font-extrabold tracking-wider text-sm">WD-7K9P-X4M2</strong>
+            </div>
+
+            <div class="flex items-center gap-1">
+              <button onclick="copyCompanyCode()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold transition flex items-center gap-1" title="Copier le code entreprise">
+                <i data-lucide="copy" class="w-3.5 h-3.5 text-amber-400"></i> Copier Code
+              </button>
+              <button onclick="copyCompanyJoinLink()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-[11px] font-bold transition flex items-center gap-1" title="Copier le lien d'auto-inscription">
+                <i data-lucide="link" class="w-3.5 h-3.5 text-amber-400"></i> Copier Lien
+              </button>
+              <button onclick="openCompanyQrModal()" class="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold transition flex items-center gap-1" title="Afficher le QR Code d'inscription">
+                <i data-lucide="qr-code" class="w-3.5 h-3.5"></i> QR Code
+              </button>
+            </div>
+          </div>
         </div>
 
-        <!-- Filters & Timeframes -->
+        <!-- Filters & Actions -->
         <div class="flex items-center space-x-2">
-          <button onclick="openAddEmployeeModal()" class="px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs flex items-center gap-1.5 transition shadow-lg shadow-emerald-500/20">
+          <button onclick="openAddEmployeeModal()" class="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs flex items-center gap-1.5 transition shadow-lg shadow-emerald-500/20">
             <i data-lucide="user-plus" class="w-4 h-4"></i>
             + Ajouter un Collaborateur
           </button>
-          <select id="site-filter" onchange="renderDashboard()" class="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-emerald-500">
+          <button onclick="openCompanySettingsModal()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 border border-slate-700 transition flex items-center gap-1.5 text-xs font-semibold shadow-sm" title="Paramètres & Préfixe Matricule">
+            <i data-lucide="settings" class="w-4 h-4"></i>
+            <span>Paramètres</span>
+          </button>
+          <select id="site-filter" onchange="renderDashboard()" class="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500">
             <option value="all">Tous les sites (1 Site actif)</option>
             <option value="hq" selected>Siège Social — Zone Principale</option>
           </select>
-          <button onclick="triggerRefreshSimulatedData()" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition" title="Actualiser le flux">
+          <button onclick="triggerRefreshSimulatedData()" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition" title="Actualiser le flux">
             <i data-lucide="refresh-cw" class="w-4 h-4"></i>
           </button>
         </div>
@@ -852,6 +956,11 @@
         </button>
         <button onclick="switchSection('qr')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="qr">
           QR Code Kiosque
+        </button>
+        <button onclick="switchSection('pending-approvals')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-amber-400 hover:text-white hover:bg-slate-800 transition flex items-center gap-1.5 border border-amber-500/30" data-section="pending-approvals">
+          <i data-lucide="user-check" class="w-3.5 h-3.5 text-amber-400"></i>
+          <span>Demandes d'inscription</span>
+          <span id="rh-pending-count-badge" class="px-2 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-extrabold">0</span>
         </button>
         <button onclick="switchSection('reports')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="reports">
           Rapports PDF
@@ -1280,6 +1389,42 @@
             </div>
           </div>
 
+          <!-- Bannière d'alerte pour Demandes en attente d'inscription -->
+          <div id="staff-pending-banner" class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-wrap items-center justify-between gap-3 text-xs text-amber-200 hidden">
+            <div class="flex items-center gap-2.5 font-semibold">
+              <i data-lucide="user-check" class="w-4 h-4 text-amber-400"></i>
+              <span><strong id="staff-pending-count-text" class="text-amber-300 font-extrabold text-sm">1</strong> demande(s) d'inscription d'employé en attente de validation RH.</span>
+            </div>
+            <button onclick="switchSection('pending-approvals')" class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs transition flex items-center gap-1">
+              <i data-lucide="arrow-right-circle" class="w-3.5 h-3.5"></i> Voir & Valider les Accès
+            </button>
+          </div>
+
+          <!-- Code Entreprise Info Banner for Employees -->
+          <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold">
+                <i data-lucide="key-round" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <div class="text-xs text-slate-400 font-mono">Code Entreprise d'Auto-Inscription pour vos Employés :</div>
+                <div id="staff-company-code-display" class="text-base font-extrabold font-mono text-amber-300 tracking-wider">WD-7K9P-X4M2</div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <button onclick="copyCompanyCode()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition flex items-center gap-1">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copier Code
+              </button>
+              <button onclick="copyCompanyJoinLink()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-xs font-semibold transition flex items-center gap-1">
+                <i data-lucide="link" class="w-3.5 h-3.5"></i> Copier Lien
+              </button>
+              <button onclick="openCompanyQrModal()" class="px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition flex items-center gap-1">
+                <i data-lucide="qr-code" class="w-3.5 h-3.5"></i> QR Code
+              </button>
+            </div>
+          </div>
+
           <!-- Staff Cards Grid -->
           <div id="staff-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <!-- Rendered JS -->
@@ -1448,6 +1593,81 @@
         </div>
       </div>
 
+      <!-- SUB-SECTION 10: PENDING REGISTRATION APPROVALS -->
+      <div id="section-pending-approvals" class="sub-section hidden space-y-6">
+        <div class="glass-panel p-6 space-y-6">
+          <!-- Header & Quick Actions -->
+          <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+            <div>
+              <h3 class="text-lg font-extrabold text-white flex items-center gap-2">
+                <i data-lucide="user-check" class="w-5 h-5 text-amber-400"></i>
+                Demandes d'Inscription des Employés
+              </h3>
+              <p class="text-xs text-slate-400">Validez ou refusez les auto-inscriptions d'employés réalisées via votre Code Entreprise public.</p>
+            </div>
+            
+            <div class="flex items-center gap-2">
+              <button onclick="approveSelectedRegistrations()" class="px-3.5 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-bold text-xs transition flex items-center gap-1.5 shadow-sm">
+                <i data-lucide="check-square" class="w-4 h-4 text-emerald-400"></i> Accepter la sélection
+              </button>
+              <button onclick="approveAllRegistrations()" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-lg">
+                <i data-lucide="zap" class="w-4 h-4"></i> Tout accepter
+              </button>
+            </div>
+          </div>
+
+          <!-- Code Entreprise Banner & Sharing Shortcuts -->
+          <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold">
+                <i data-lucide="qr-code" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <div class="text-xs text-slate-400 font-mono">Code Entreprise Public pour Auto-inscription :</div>
+                <div id="dash-company-code-display" class="text-base font-extrabold font-mono text-amber-300 tracking-wider">WD-7K9P-X4M2</div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <button onclick="copyCompanyCode()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition flex items-center gap-1">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copier Code
+              </button>
+              <button onclick="copyCompanyJoinLink()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-xs font-semibold transition flex items-center gap-1">
+                <i data-lucide="link" class="w-3.5 h-3.5"></i> Copier Lien
+              </button>
+              <button onclick="openCompanyQrModal()" class="px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-bold transition flex items-center gap-1">
+                <i data-lucide="qr-code" class="w-3.5 h-3.5"></i> Afficher QR Code
+              </button>
+              <button onclick="regenerateCompanyCode()" class="px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold transition flex items-center gap-1" title="Invalide immédiatement l'ancien code pour les nouvelles inscriptions">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Régénérer Code
+              </button>
+            </div>
+          </div>
+
+          <!-- Pending Approvals Table -->
+          <div class="overflow-x-auto rounded-xl border border-slate-800">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="bg-slate-900/80 border-b border-slate-800 text-[11px] font-mono text-slate-400 uppercase tracking-wider">
+                  <th class="p-3.5 text-center w-10">
+                    <input type="checkbox" id="select-all-pending-chk" onchange="toggleSelectAllPending(this)" class="rounded bg-slate-950 border-slate-700 text-emerald-500 focus:ring-0 cursor-pointer">
+                  </th>
+                  <th class="p-3.5">Employé</th>
+                  <th class="p-3.5">Email Professionnel</th>
+                  <th class="p-3.5">Matricule Généré</th>
+                  <th class="p-3.5">Date Demande</th>
+                  <th class="p-3.5 text-center">Statut</th>
+                  <th class="p-3.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="rh-pending-requests-body" class="divide-y divide-slate-800/60 text-xs">
+                <!-- Injected via app.js -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
     </section>
 
   </main>
@@ -1539,6 +1759,80 @@
     </div>
   </div>
 
+
+  <!--
+    MODAL POINTAGE EMPLOYÉ — Selfie + GPS en une seule opération.
+
+    Distinct du modal RH ci-dessus, qui comporte un sélecteur d'employé : un
+    employé ne choisit jamais pour qui il pointe, son identité vient de sa session.
+
+    Conçu mobile d'abord : c'est depuis un téléphone que se fera l'essentiel des
+    pointages, souvent en réseau dégradé.
+  -->
+  <div id="modal-emp-punch" class="fixed inset-0 z-[60] bg-black/85 backdrop-blur-md hidden items-center justify-center p-3 sm:p-4">
+    <div class="glass-panel-elevated w-full max-w-md p-5 sm:p-6 space-y-4 border border-emerald-500/40 relative max-h-[95vh] overflow-y-auto">
+      <button id="emp-punch-close" onclick="closeEmployeePunch()" class="absolute top-3 right-3 text-slate-400 hover:text-white p-2 min-h-tap" aria-label="Fermer">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <div class="pr-8">
+        <h3 id="emp-punch-title" class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+          <i data-lucide="scan-face" class="w-5 h-5 text-emerald-400"></i>
+          <span>Pointer mon arrivée</span>
+        </h3>
+        <p id="emp-punch-subtitle" class="text-[11px] text-slate-400 mt-1">
+          Regardez la caméra. Votre position est recherchée en même temps.
+        </p>
+      </div>
+
+      <!-- Zone caméra + aperçu du selfie capturé -->
+      <div id="emp-punch-camera-wrap" class="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-slate-950 border border-slate-700">
+        <video id="emp-punch-video" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover"></video>
+        <img id="emp-punch-preview" alt="Selfie capturé" class="hidden absolute inset-0 w-full h-full object-cover" />
+        <canvas id="emp-punch-canvas" class="hidden"></canvas>
+
+        <div id="emp-punch-frame" class="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div class="w-40 h-52 rounded-[40%] border-2 border-dashed border-emerald-400/70"></div>
+        </div>
+
+        <div id="emp-punch-camera-error" class="hidden absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center text-center p-5 gap-2">
+          <i data-lucide="camera-off" class="w-8 h-8 text-amber-400"></i>
+          <p class="text-sm font-bold text-white">Caméra indisponible</p>
+          <p id="emp-punch-camera-error-msg" class="text-[11px] text-slate-400 leading-relaxed"></p>
+        </div>
+      </div>
+
+      <!-- État GPS en direct, pendant que l'employé se cadre -->
+      <div id="emp-punch-gps-pill" class="flex items-center gap-2 text-[11px] font-mono px-3 py-2 rounded-xl bg-slate-900/80 border border-slate-700 text-slate-300">
+        <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin text-amber-400"></i>
+        <span id="emp-punch-gps-text">Recherche de votre position…</span>
+      </div>
+
+      <!-- Étapes de vérification (affichées pendant le traitement) -->
+      <div id="emp-punch-steps" class="hidden space-y-2 rounded-xl bg-slate-900/80 border border-slate-700 p-3"></div>
+
+      <!-- Verdict final -->
+      <div id="emp-punch-result" class="hidden"></div>
+
+      <!-- Actions -->
+      <div class="space-y-2">
+        <button id="emp-punch-capture" onclick="captureEmployeePunch()"
+          class="w-full min-h-tap py-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-black font-extrabold text-xs tracking-wider transition shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+          <i data-lucide="camera" class="w-4 h-4"></i>
+          <span>PRENDRE MON SELFIE ET POINTER</span>
+        </button>
+        <button id="emp-punch-retry" onclick="retryEmployeePunch()"
+          class="hidden w-full min-h-tap py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 font-bold text-xs tracking-wider transition flex items-center justify-center gap-2">
+          <i data-lucide="rotate-ccw" class="w-4 h-4"></i> RÉESSAYER
+        </button>
+      </div>
+
+      <p class="text-[10px] text-slate-500 leading-relaxed text-center">
+        Votre position et votre selfie ne sont utilisés que pour ce pointage. L'heure
+        officielle est celle du serveur, jamais celle de votre téléphone.
+      </p>
+    </div>
+  </div>
 
   <!-- MODAL 2: LEAVE REQUEST FORM -->
   <div id="modal-leave" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4">
@@ -2237,23 +2531,76 @@
       <div class="glass-panel p-6 border-slate-800 space-y-5">
         <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
           <div class="flex items-center space-x-4">
-            <div class="relative">
-              <img id="emp-dash-avatar" src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80" class="w-14 h-14 rounded-2xl object-cover border-2 border-emerald-500 shadow-lg" alt="Avatar Employé" />
+            <div class="relative group cursor-pointer" onclick="triggerProfilePhotoUpload()" title="Changer la photo de profil">
+              <img id="emp-dash-avatar" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2310b981'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z'/%3E%3C/svg%3E" class="w-16 h-16 rounded-2xl object-cover border-2 border-emerald-500 shadow-lg group-hover:opacity-80 transition bg-slate-800/80 p-1" alt="Avatar Employé" />
+              <script>
+                /*
+                  Affiche la photo de profil des le parsing du HTML, sans attendre
+                  app.js : evite que l'avatar par defaut clignote avant la vraie photo.
+
+                  On resout la cle NOMINATIVE de l'utilisateur en session. Lire
+                  « winner_user_avatar_global » ici afficherait la photo du
+                  precedent connecte sur un poste partage.
+                */
+                (function () {
+                  try {
+                    var raw = localStorage.getItem('winner_auth_session');
+                    if (!raw) return;
+                    var user = (JSON.parse(raw) || {}).currentUser;
+                    if (!user) return;
+
+                    var saved =
+                      (user.id ? localStorage.getItem('winner_user_avatar_' + user.id) : null) ||
+                      (user.email ? localStorage.getItem('winner_user_avatar_' + user.email) : null);
+
+                    if (saved) {
+                      var img = document.getElementById('emp-dash-avatar');
+                      if (img) img.src = saved;
+                    }
+                  } catch (e) {}
+                })();
+              </script>
               <span id="emp-dash-status-dot" class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-400 border-2 border-slate-900 glow-green"></span>
+              <div class="absolute inset-0 bg-black/40 rounded-2xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+                <i data-lucide="camera" class="w-5 h-5 text-white"></i>
+              </div>
             </div>
+            <!-- Input file masqué pour l'upload de photo de profil -->
+            <input type="file" id="emp-photo-input" accept="image/*" class="hidden" onchange="handleProfilePhotoChange(event)">
             <div>
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 flex-wrap">
                 <h2 id="emp-dash-name" class="text-xl font-extrabold text-white">Espace Collaborateur</h2>
                 <span id="emp-dash-role-badge" class="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-mono font-bold border border-emerald-500/20">Employé Actif</span>
               </div>
-              <p id="emp-dash-job" class="text-xs text-slate-400">Commercial & Agent de Terrain • Matricule: <span id="emp-dash-matricule" class="font-mono text-slate-300">EMP-2026-04</span></p>
+              <p id="emp-dash-job" class="text-xs text-slate-400">Commercial & Agent de Terrain • Matricule: <span id="emp-dash-matricule" class="font-mono text-amber-300 font-bold">EMP-2026-04</span></p>
+              <div class="mt-1.5 flex items-center gap-2.5 flex-wrap">
+                <button type="button" onclick="triggerProfilePhotoUpload()" class="text-[11px] text-amber-300 hover:text-amber-200 font-semibold underline flex items-center gap-1 transition">
+                  <i data-lucide="camera" class="w-3.5 h-3.5"></i> Modifier Ma Photo de Profil
+                </button>
+                <span class="text-slate-600">•</span>
+                <span class="text-[11px] text-slate-400 flex items-center gap-1 font-mono">
+                  <i data-lucide="clock" class="w-3.5 h-3.5 text-emerald-400"></i> Abidjan (GMT):
+                  <strong id="emp-dash-gmt-clock" class="text-emerald-400 bg-black/70 px-2 py-0.5 rounded border border-emerald-500/30 font-bold">--:--:-- GMT</strong>
+                </span>
+              </div>
             </div>
           </div>
 
-          <div class="flex items-center space-x-3">
-            <button onclick="openPunchModal()" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-amber-500 hover:from-emerald-600 hover:to-amber-600 text-white font-bold text-xs shadow-lg flex items-center gap-2 transition glow-green">
-              <i data-lucide="scan-face" class="w-4 h-4"></i>
-              Pointer Maintenant (Selfie/GPS)
+          <!--
+            Deux actions explicites plutôt qu'un bouton générique : l'employé sait
+            immédiatement ce qu'il enregistre, et le serveur reçoit un type de
+            pointage sans ambiguïté. Cibles tactiles ≥ 44 px pour l'usage mobile.
+          -->
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+            <button id="btn-emp-check-in" onclick="openEmployeePunch('CHECK_IN')"
+              class="min-h-tap px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-black font-bold text-xs shadow-lg flex items-center justify-center gap-2 transition glow-green disabled:opacity-50 disabled:cursor-not-allowed">
+              <i data-lucide="log-in" class="w-4 h-4"></i>
+              Pointer mon arrivée
+            </button>
+            <button id="btn-emp-check-out" onclick="openEmployeePunch('CHECK_OUT')"
+              class="min-h-tap px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 font-bold text-xs flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed">
+              <i data-lucide="log-out" class="w-4 h-4"></i>
+              Pointer mon départ
             </button>
           </div>
         </div>
@@ -2276,8 +2623,8 @@
               <span>Heure d'Arrivée</span>
               <i data-lucide="log-in" class="w-4 h-4 text-amber-400"></i>
             </div>
-            <div id="emp-kpi-arrive-time" class="text-xl font-extrabold font-mono text-white">07:58 GMT</div>
-            <div id="emp-kpi-arrive-sub" class="text-[10px] text-emerald-400">À l'heure (Poste HQ)</div>
+            <div id="emp-kpi-arrive-time" class="text-xl font-extrabold font-mono text-emerald-400">--:-- GMT</div>
+            <div id="emp-kpi-arrive-sub" class="text-[10px] text-emerald-400/90">Horodateur GMT (Abidjan / UTC+0)</div>
           </div>
 
           <!-- Card 3: Heure de Départ -->
@@ -2466,75 +2813,234 @@
 
   <!-- PRODUCTION AUTHENTICATION MODAL -->
   <div id="modal-auth" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
-    <div class="glass-panel-elevated p-8 max-w-md w-full relative space-y-5 border border-amber-500/40 shadow-2xl rounded-2xl">
+    <div class="glass-panel-elevated p-6 max-w-md w-full relative space-y-4 border border-amber-500/40 shadow-2xl rounded-2xl">
       <button onclick="closeAuthModal()" class="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition">
         <i data-lucide="x" class="w-5 h-5"></i>
       </button>
 
-      <div class="text-center space-y-2">
-        <div class="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 mx-auto flex items-center justify-center glow-amber">
-          <i data-lucide="shield-check" class="w-6 h-6"></i>
-        </div>
-        <h3 id="auth-modal-title" class="text-xl font-bold text-white">Connexion Sécurisée Supabase</h3>
-        <p id="auth-modal-subtitle" class="text-xs text-slate-400">Accédez à votre espace d'entreprise ou collaborateur.</p>
+      <!-- Navigation Tabs: Se Connecter vs Rejoindre mon entreprise -->
+      <div class="grid grid-cols-2 p-1 bg-slate-900 border border-slate-800 rounded-xl text-xs font-bold gap-1">
+        <button type="button" id="tab-auth-login" onclick="switchAuthTab('login')" class="py-2.5 rounded-lg text-white bg-amber-500/20 border border-amber-500/30 transition shadow flex items-center justify-center gap-1.5">
+          <i data-lucide="key-round" class="w-3.5 h-3.5 text-amber-400"></i> Se Connecter
+        </button>
+        <button type="button" id="tab-auth-join" onclick="switchAuthTab('join')" class="py-2.5 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center gap-1.5">
+          <i data-lucide="building-2" class="w-3.5 h-3.5 text-emerald-400"></i> Rejoindre mon Entreprise
+        </button>
       </div>
 
-      <!-- Employee Notice in Register Mode -->
-      <div id="auth-employee-notice" class="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-xs text-cyan-200 hidden space-y-1">
-        <div class="font-bold flex items-center gap-1.5 text-cyan-300">
-          <i data-lucide="info" class="w-4 h-4 text-cyan-400"></i> Vous êtes un Employé ?
-        </div>
-        <p class="text-[11px] text-slate-300">Votre compte doit être créé par votre Responsable RH. Si vous avez reçu un code d'invitation, <button type="button" onclick="openInviteCodePrompt()" class="text-amber-400 font-bold underline hover:text-amber-300">cliquez ici pour l'activer</button>.</p>
+      <div class="text-center space-y-1">
+        <h3 id="auth-modal-title" class="text-lg font-bold text-white">Connexion Utilisateur</h3>
+        <p id="auth-modal-subtitle" class="text-xs text-slate-400">Accédez à votre espace entreprise ou employé.</p>
       </div>
 
-      <form onsubmit="handleAuthSubmit(event)" class="space-y-3.5 pt-1">
-        <div id="auth-company-container" class="space-y-1 hidden">
-          <label class="block text-xs font-semibold text-slate-300">Nom de l'Entreprise / Société :</label>
-          <input type="text" id="auth-company-input" placeholder="ex: Winner Digital SARL" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500">
+      <!-- MODE 1: SE CONNECTER (Login Form) -->
+      <div id="auth-login-view">
+        <form onsubmit="handleAuthSubmit(event)" class="space-y-3 pt-1">
+          <div id="auth-company-container" class="space-y-1 hidden">
+            <label class="block text-xs font-semibold text-slate-300">Nom de l'Entreprise / Société :</label>
+            <input type="text" id="auth-company-input" placeholder="ex: Winner Digital SARL" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-amber-500">
+          </div>
+
+          <div id="auth-fullname-container" class="space-y-1 hidden">
+            <label class="block text-xs font-semibold text-slate-300">Nom & Prénom du CEO / Admin :</label>
+            <input type="text" id="auth-fullname-input" placeholder="ex: Jean-Marc Kouassi" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-amber-500">
+          </div>
+
+          <div class="space-y-1">
+            <label class="block text-xs font-semibold text-slate-300">Email Professionnel :</label>
+            <input type="email" id="auth-email-input" required placeholder="nom@entreprise.com" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-amber-500">
+          </div>
+
+          <div class="space-y-1">
+            <label class="block text-xs font-semibold text-slate-300">Mot de passe :</label>
+            <div class="relative">
+              <input type="password" id="auth-password-input" required minlength="6" placeholder="••••••••••••" class="w-full bg-slate-900 border border-slate-700 rounded-xl pl-3.5 pr-10 py-2 text-xs text-white focus:outline-none focus:border-amber-500">
+              <button type="button" id="btn-toggle-auth-pass" onclick="togglePasswordVisibility('auth-password-input', 'btn-toggle-auth-pass')" class="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white transition" title="Afficher/Masquer le mot de passe">
+                <i data-lucide="eye" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+
+          <div id="auth-confirm-password-container" class="space-y-1 hidden">
+            <label class="block text-xs font-semibold text-amber-300">Confirmer le Mot de passe :</label>
+            <div class="relative">
+              <input type="password" id="auth-confirm-password-input" minlength="6" placeholder="••••••••••••" class="w-full bg-slate-900 border border-slate-700 rounded-xl pl-3.5 pr-10 py-2 text-xs text-white focus:outline-none focus:border-amber-500">
+              <button type="button" id="btn-toggle-auth-confirm-pass" onclick="togglePasswordVisibility('auth-confirm-password-input', 'btn-toggle-auth-confirm-pass')" class="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white transition" title="Afficher/Masquer le mot de passe">
+                <i data-lucide="eye" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+
+          <button type="submit" id="auth-submit-btn" class="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white font-bold text-xs tracking-wide shadow-lg shadow-orange-500/25 transition">
+            Se Connecter
+          </button>
+        </form>
+
+        <div class="pt-2 text-center text-xs text-slate-400 border-t border-slate-800 flex items-center justify-between flex-wrap gap-2">
+          <button type="button" onclick="toggleAuthMode()" id="auth-toggle-mode-btn" class="text-amber-400 font-bold hover:underline">
+            Créer un Compte Entreprise (CEO)
+          </button>
+          <button type="button" onclick="toggleOtpLoginMode()" id="auth-toggle-otp-login-btn" class="text-amber-300 font-bold hover:underline flex items-center gap-1">
+            🔑 Connexion par Code OTP
+          </button>
+        </div>
+      </div>
+
+      <!-- MODE 1.5: CONNEXION RAPIDE PAR CODE OTP -->
+      <div id="auth-otp-login-view" class="hidden space-y-3 pt-1">
+        <div class="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300">
+          Entrez votre adresse e-mail. Un code OTP à 6 chiffres vous sera attribué pour vous connecter directement sans lien.
         </div>
 
-        <div id="auth-fullname-container" class="space-y-1 hidden">
-          <label class="block text-xs font-semibold text-slate-300">Nom & Prénom du CEO / Admin :</label>
-          <input type="text" id="auth-fullname-input" placeholder="ex: Jean-Marc Kouassi" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500">
+        <div id="login-otp-step-request" class="space-y-3">
+          <div class="space-y-1">
+            <label class="block text-xs font-semibold text-slate-300">Email Professionnel :</label>
+            <input type="email" id="login-otp-email-input" placeholder="employe@entreprise.ci" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-amber-500">
+          </div>
+          <button type="button" onclick="requestLoginOtp()" id="btn-request-login-otp" class="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs shadow-lg transition flex items-center justify-center gap-1.5">
+            <i data-lucide="mail-check" class="w-4 h-4"></i> Recevoir mon Code OTP
+          </button>
         </div>
 
-        <div class="space-y-1">
-          <label class="block text-xs font-semibold text-slate-300">Email Professionnel :</label>
-          <input type="email" id="auth-email-input" required placeholder="nom@entreprise.com" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500">
+        <div id="login-otp-step-verify" class="space-y-3 hidden">
+          <div class="space-y-1">
+            <label class="block text-xs font-semibold text-amber-300">Saisissez le Code OTP (6 chiffres) reçu par e-mail :</label>
+            <input type="text" id="login-otp-code-input" maxlength="6" placeholder="123456" class="w-full bg-black border border-amber-500/40 rounded-xl px-4 py-2.5 text-center text-lg text-amber-300 font-mono font-extrabold tracking-[0.4em] focus:outline-none focus:border-amber-400">
+          </div>
+
+          <!-- Notice Quota Supabase 429 -->
+          <div id="login-otp-rate-limit-notice" class="p-3 bg-amber-500/15 border border-amber-500/40 rounded-xl text-xs text-amber-200 hidden space-y-1.5 text-left">
+            <div class="font-bold flex items-center gap-1.5 text-amber-300">
+              <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400"></i> Quota E-mail Supabase Atteint (429)
+            </div>
+            <p class="text-[11px] text-slate-300">Serveur SMTP Supabase gratuit saturé. Voici le code de connexion attribué :</p>
+            <div class="font-mono font-extrabold text-amber-300 text-base tracking-[0.3em] bg-black/80 p-2 rounded-lg text-center border border-amber-500/40" id="login-otp-fallback-code">123456</div>
+          </div>
+
+          <div class="p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-[11px] text-slate-400 text-left flex items-start gap-2">
+            <i data-lucide="mail-check" class="w-4 h-4 text-amber-400 shrink-0 mt-0.5"></i>
+            <span>Consultez votre boîte de réception pour recopier le code à 6 chiffres transmis.</span>
+          </div>
+
+          <button type="button" onclick="verifyLoginOtp()" id="btn-verify-login-otp" class="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs shadow-lg transition flex items-center justify-center gap-1.5">
+            <i data-lucide="key-round" class="w-4 h-4"></i> Se Connecter avec mon Code OTP
+          </button>
         </div>
 
-        <div class="space-y-1">
-          <label class="block text-xs font-semibold text-slate-300">Mot de passe :</label>
-          <div class="relative">
-            <input type="password" id="auth-password-input" required minlength="6" placeholder="••••••••••••" class="w-full bg-slate-900 border border-slate-700 rounded-xl pl-3.5 pr-10 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500">
-            <button type="button" id="btn-toggle-auth-pass" onclick="togglePasswordVisibility('auth-password-input', 'btn-toggle-auth-pass')" class="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white transition" title="Afficher/Masquer le mot de passe">
-              <i data-lucide="eye" class="w-4 h-4"></i>
+        <div class="pt-2 text-center text-xs">
+          <button type="button" onclick="switchAuthTab('login')" class="text-slate-400 hover:text-white font-semibold underline">
+            ← Retour à la Connexion par Mot de Passe
+          </button>
+        </div>
+      </div>
+
+      <!-- MODE 2: REJOINDRE MON ENTREPRISE (Self-Registration via company_code) -->
+      <div id="auth-join-view" class="hidden space-y-3">
+        <!-- Step 1: Code Entreprise -->
+        <div id="join-step-code" class="space-y-3">
+          <div class="space-y-1">
+            <label class="block text-xs font-semibold text-slate-300">Code Entreprise (fourni par votre RH) :</label>
+            <div class="flex items-center gap-2">
+              <input type="text" id="join-company-code-input" placeholder="ex: WD-7K9P-X4M2" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-amber-300 font-mono tracking-wider focus:outline-none focus:border-emerald-500 font-bold uppercase">
+              <button type="button" onclick="verifyCompanyCode()" id="btn-verify-company-code" class="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs shrink-0 transition flex items-center gap-1">
+                <i data-lucide="search" class="w-3.5 h-3.5"></i> Vérifier
+              </button>
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-400 italic">Entrez le code à 8 ou 12 caractères de votre société pour démarrer votre inscription.</p>
+        </div>
+
+        <!-- Step 1.5: Carte de confirmation entreprise reconnue -->
+        <div id="join-step-recognition" class="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-200 hidden space-y-2 text-center">
+          <div class="font-semibold text-slate-300">🏢 Vous êtes sur le point de rejoindre :</div>
+          <div id="join-recognized-company-name" class="text-base font-extrabold text-amber-300">Winner Design SARL</div>
+          <button type="button" onclick="confirmCompanyJoin()" class="w-full py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs transition">
+            ✅ Confirmer & Remplir mes Informations
+          </button>
+        </div>
+
+        <!-- Step 2: Formulaire inscription employé -->
+        <form id="join-step-form" onsubmit="handleSelfRegistrationSubmit(event)" class="space-y-3 hidden">
+          <div class="grid grid-cols-2 gap-2">
+            <div class="space-y-1">
+              <label class="block text-[11px] font-semibold text-slate-300">Nom :</label>
+              <input type="text" id="join-lastname-input" required placeholder="KOUASSI" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+            </div>
+            <div class="space-y-1">
+              <label class="block text-[11px] font-semibold text-slate-300">Prénom :</label>
+              <input type="text" id="join-firstname-input" required placeholder="Jean-Marc" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+            </div>
+          </div>
+
+          <div class="space-y-1">
+            <label class="block text-[11px] font-semibold text-slate-300">Email Professionnel :</label>
+            <input type="email" id="join-email-input" required placeholder="jean-marc@entreprise.ci" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+          </div>
+
+          <div class="grid grid-cols-2 gap-2">
+            <div class="space-y-1">
+              <label class="block text-[11px] font-semibold text-slate-300">Mot de passe :</label>
+              <input type="password" id="join-password-input" required minlength="6" placeholder="••••••••" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+            </div>
+            <div class="space-y-1">
+              <label class="block text-[11px] font-semibold text-amber-300">Confirmation :</label>
+              <input type="password" id="join-confirm-password-input" required minlength="6" placeholder="••••••••" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+            </div>
+          </div>
+
+          <div class="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-[10px] text-slate-400 font-mono">
+            Matricule attribué automatiquement : <span id="join-auto-matricule-preview" class="text-amber-400 font-bold">EMP-0001</span>
+          </div>
+
+          <button type="submit" id="join-submit-btn" class="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-amber-500 hover:from-emerald-600 hover:to-amber-600 text-white font-bold text-xs tracking-wide shadow-lg transition flex items-center justify-center gap-1.5 glow-green">
+            <i data-lucide="send" class="w-4 h-4"></i>
+            Envoyer mon Inscription & Recevoir mon Code OTP
+          </button>
+        </form>
+
+        <!-- Step 3: E-mail Verification Notice avec Code OTP 6 chiffres -->
+        <div id="join-step-otp" class="p-4 rounded-xl bg-slate-900 border border-amber-500/30 text-xs text-slate-300 hidden space-y-4 text-center shadow-xl">
+          <div class="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 mx-auto flex items-center justify-center border border-amber-500/30">
+            <i data-lucide="mail" class="w-6 h-6"></i>
+          </div>
+          
+          <div class="space-y-1">
+            <h4 class="font-extrabold text-base text-white">Vérifiez votre Boîte Mail 📩</h4>
+            <p class="text-xs text-slate-300">Un code OTP à 6 chiffres a été transmis à l'adresse e-mail :</p>
+            <p id="join-otp-email-target" class="font-mono text-amber-300 font-bold text-xs bg-black/60 px-3 py-1 rounded-lg inline-block border border-amber-500/20"></p>
+          </div>
+
+          <div class="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl space-y-2 text-left">
+            <div class="flex items-center justify-between text-[11px]">
+              <span class="text-slate-300 font-semibold">Entrez le Code OTP (6 chiffres) reçu par email :</span>
+            </div>
+            <input type="text" id="join-otp-input" maxlength="6" placeholder="ex: 123456" class="w-full bg-black border border-amber-500/40 rounded-xl px-4 py-3 text-center text-lg text-amber-300 font-mono font-extrabold tracking-[0.4em] focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400">
+          </div>
+
+          <!-- Notice spéciale en cas de limite de débit e-mail Supabase (HTTP 429) -->
+          <div id="join-otp-rate-limit-notice" class="p-3 bg-amber-500/15 border border-amber-500/40 rounded-xl text-xs text-amber-200 hidden space-y-1.5 text-left">
+            <div class="font-bold flex items-center gap-1.5 text-amber-300">
+              <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400"></i> Quota E-mail Supabase Cloud Atteint (Anti-Spam 429)
+            </div>
+            <p class="text-[11px] text-slate-300">Le serveur Supabase gratuit a atteint sa limite d'envoi d'e-mails (3/heure). Voici le code OTP généré pour débloquer votre inscription immédiatement :</p>
+            <div class="font-mono font-extrabold text-amber-300 text-base tracking-[0.3em] bg-black/80 p-2 rounded-lg text-center border border-amber-500/40" id="join-otp-fallback-code">123456</div>
+          </div>
+
+          <div class="p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-[11px] text-slate-400 text-left flex items-start gap-2">
+            <i data-lucide="info" class="w-4 h-4 text-amber-400 shrink-0 mt-0.5"></i>
+            <span>Consultez votre boîte mail (et le dossier "Courrier Indésirable" / Spam), puis saisissez le code à 6 chiffres ci-dessus.</span>
+          </div>
+
+          <div class="space-y-2">
+            <button type="button" id="btn-confirm-email-otp" onclick="confirmEmailOtp()" class="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-black font-bold text-xs shadow-lg transition flex items-center justify-center gap-2">
+              <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+              Valider mon Code OTP & Envoyer au RH
+            </button>
+            <button type="button" onclick="resendOtpCode()" class="text-xs text-slate-400 hover:text-amber-300 font-semibold underline transition block mx-auto">
+              🔄 Renvoyer un nouveau Code OTP par Email
             </button>
           </div>
         </div>
-
-        <div id="auth-confirm-password-container" class="space-y-1 hidden">
-          <label class="block text-xs font-semibold text-amber-300">Confirmer le Mot de passe :</label>
-          <div class="relative">
-            <input type="password" id="auth-confirm-password-input" minlength="6" placeholder="••••••••••••" class="w-full bg-slate-900 border border-slate-700 rounded-xl pl-3.5 pr-10 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500">
-            <button type="button" id="btn-toggle-auth-confirm-pass" onclick="togglePasswordVisibility('auth-confirm-password-input', 'btn-toggle-auth-confirm-pass')" class="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white transition" title="Afficher/Masquer le mot de passe">
-              <i data-lucide="eye" class="w-4 h-4"></i>
-            </button>
-          </div>
-        </div>
-
-        <button type="submit" id="auth-submit-btn" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white font-bold text-xs tracking-wide shadow-lg shadow-orange-500/25 transition">
-          Se Connecter via Supabase
-        </button>
-      </form>
-
-      <div class="pt-2 text-center text-xs text-slate-400 border-t border-slate-800 flex items-center justify-between">
-        <button type="button" onclick="toggleAuthMode()" id="auth-toggle-mode-btn" class="text-amber-400 font-bold hover:underline">
-          Créer un Compte Entreprise (CEO)
-        </button>
-        <button type="button" onclick="openInviteCodePrompt()" class="text-emerald-400 font-bold hover:underline">
-          Code d'Activation Employé
-        </button>
       </div>
     </div>
   </div>
@@ -2643,8 +3149,11 @@
             <input type="email" id="emp-email-input" placeholder="collaborateur@entreprise.ci" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
           </div>
           <div class="space-y-1">
-            <label class="block text-xs font-semibold text-slate-300">Matricule Interne :</label>
-            <input type="text" id="emp-matricule-input" required placeholder="ex: MAT-2026-08" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-500">
+            <label class="block text-xs font-semibold text-slate-300">Matricule Employé :</label>
+            <div class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-emerald-400 font-mono flex items-center justify-between shadow-inner">
+              <span class="flex items-center gap-1.5"><i data-lucide="sparkles" class="w-3.5 h-3.5 text-emerald-400"></i> Auto-généré</span>
+              <span id="emp-auto-matricule-preview" class="text-[10px] text-amber-400 font-bold">EMP-000X</span>
+            </div>
           </div>
         </div>
 
@@ -2700,22 +3209,80 @@
       <div class="space-y-1">
         <h3 class="text-lg font-bold text-white">Invitation Générée avec Succès !</h3>
         <p class="text-xs text-slate-400">Le membre <strong id="inv-created-name" class="text-white">...</strong> est rattaché à l'entreprise <strong id="inv-created-company" class="text-emerald-400">...</strong></p>
+        <div class="inline-block px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono text-xs font-bold mt-1">
+          Matricule Officiel : <span id="inv-created-matricule">EMP-0001</span>
+        </div>
       </div>
 
       <div class="space-y-2 text-left bg-slate-900/90 p-4 rounded-xl border border-slate-800">
         <label class="block text-[11px] font-mono text-slate-400 uppercase tracking-wider">Lien d'Activation Sécurisé (Rattaché à company_id) :</label>
         <div class="flex items-center gap-2">
           <input type="text" id="inv-created-link" readonly class="w-full bg-black/80 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-amber-300 focus:outline-none" />
-          <button onclick="copyInviteLink()" class="px-3 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs shrink-0 flex items-center gap-1">
+          <button onclick="copyInviteLink()" class="px-3 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs shrink-0 flex items-center gap-1 shadow-sm">
             <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copier
           </button>
         </div>
-        <p class="text-[10px] text-slate-500 font-mono">Code d'activation : <span id="inv-created-code" class="text-slate-300 font-bold">...</span></p>
+
+        <div id="inv-created-email-notice" class="pt-2 flex items-center justify-between gap-2 border-t border-slate-800 text-xs text-slate-300 font-mono">
+          <span class="flex items-center gap-1 text-emerald-400"><i data-lucide="mail-check" class="w-3.5 h-3.5"></i> E-mail d'activation prêt</span>
+          <button onclick="sendInviteEmail()" class="px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition flex items-center gap-1">
+            <i data-lucide="send" class="w-3.5 h-3.5"></i> Envoyer par E-mail
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL PARAMÈTRES DE L'ENTREPRISE (CODE ENTREPRISE & PRÉFIXE MATRICULE) -->
+  <div id="modal-company-settings" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+    <div class="glass-panel-elevated p-6 max-w-md w-full relative space-y-5 border border-amber-500/40 shadow-2xl rounded-2xl">
+      <button onclick="closeCompanySettingsModal()" class="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <div class="space-y-1">
+        <div class="flex items-center gap-2">
+          <i data-lucide="settings" class="w-5 h-5 text-amber-400"></i>
+          <h3 class="text-lg font-bold text-white">Paramètres de l'Entreprise</h3>
+        </div>
+        <p class="text-xs text-slate-400">Configuration et code d'accès employé pour <span id="settings-company-name-badge" class="font-mono text-amber-300 font-bold">Votre Entreprise</span>.</p>
       </div>
 
-      <button onclick="closeInviteCreatedModal()" class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700 transition">
-        Fermer et retourner au Cockpit RH
-      </button>
+      <form onsubmit="handleSaveCompanySettings(event)" class="space-y-4 pt-1">
+        <!-- Code Entreprise Access Card -->
+        <div class="space-y-2 bg-slate-900/90 p-4 rounded-xl border border-slate-800">
+          <label class="block text-xs font-bold text-amber-300">Code Entreprise d'Auto-Inscription Employé :</label>
+          <div class="flex items-center gap-2">
+            <div id="settings-company-code-display" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-amber-300 font-mono font-bold tracking-wider">WD-7K9P-X4M2</div>
+            <button type="button" onclick="copyCompanyCode()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-xs font-bold shrink-0 transition flex items-center gap-1">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copier
+            </button>
+            <button type="button" onclick="regenerateCompanyCode()" class="px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-bold shrink-0 transition flex items-center gap-1" title="Régénérer le code d'entreprise">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="space-y-2 bg-slate-900/90 p-4 rounded-xl border border-slate-800">
+          <label class="block text-xs font-bold text-white">Préfixe Personnalisé des Matricules :</label>
+          <p class="text-[11px] text-slate-400">Définissez les lettres du préfixe (ex: <code class="text-amber-300 font-mono font-bold">EMP</code>, <code class="text-amber-300 font-mono font-bold">WD</code>, <code class="text-amber-300 font-mono font-bold">SOC</code>). Par défaut : <code class="text-slate-300 font-mono">EMP</code>.</p>
+          
+          <div class="flex items-center gap-2">
+            <input type="text" id="company-prefix-input" maxlength="10" placeholder="ex: WD" uppercase class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2 text-sm text-amber-300 font-mono font-bold uppercase focus:outline-none focus:border-amber-500">
+            <span class="text-xs font-mono text-slate-500 shrink-0">- 0001</span>
+          </div>
+        </div>
+
+        <div class="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300 flex items-start gap-2">
+          <i data-lucide="info" class="w-4 h-4 shrink-0 mt-0.5"></i>
+          <span>Le nouveau préfixe s'appliquera automatiquement à tous les futurs collaborateurs créés. Les matricules déjà attribués restent inchangés.</span>
+        </div>
+
+        <button type="submit" id="save-settings-submit-btn" class="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs shadow-lg transition flex items-center justify-center gap-1.5">
+          <i data-lucide="save" class="w-4 h-4"></i>
+          ENREGISTRER LES PARAMÈTRES
+        </button>
+      </form>
     </div>
   </div>
 
@@ -2808,6 +3375,54 @@
       <div id="workspace-cards-container" class="space-y-3 pt-2 text-left">
         <!-- Dynamic company cards generated by JS -->
       </div>
+    </div>
+  <!-- MODAL INSCRIPTION EN ATTENTE DE VALIDATION -->
+  <div id="modal-pending-approval" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 hidden">
+    <div class="glass-panel-elevated p-8 max-w-md w-full relative space-y-5 border border-amber-500/50 shadow-2xl rounded-2xl text-center">
+      <div class="w-14 h-14 rounded-2xl bg-amber-500/20 text-amber-400 mx-auto flex items-center justify-center glow-amber">
+        <i data-lucide="clock" class="w-7 h-7"></i>
+      </div>
+      <div class="space-y-2">
+        <h3 class="text-xl font-extrabold text-white">Inscription en Attente de Validation</h3>
+        <p class="text-xs text-amber-300/90 leading-relaxed font-semibold">
+          Votre inscription a bien été transmise à votre entreprise. Votre compte est actuellement en attente de validation par votre responsable.
+        </p>
+        <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 text-[11px] text-slate-400 font-mono space-y-1 text-left">
+          <div>Matricule Officiel : <strong id="pending-user-matricule" class="text-amber-400">EMP-0001</strong></div>
+          <div>Statut de la Demande : <span class="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold">PENDING_APPROVAL</span></div>
+        </div>
+      </div>
+      <p class="text-[11px] text-slate-400">Le pointage et l'accès au Dashboard seront activés dès que votre CEO ou RH aura validé votre demande.</p>
+      <button onclick="closePendingApprovalModal()" class="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition">
+        Compris / Déconnexion
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL DISPLAY QR CODE ENTREPRISE -->
+  <div id="modal-company-qrcode" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+    <div class="glass-panel-elevated p-6 max-w-sm w-full relative space-y-5 border border-emerald-500/40 shadow-2xl rounded-2xl text-center">
+      <button onclick="closeCompanyQrModal()" class="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <div class="space-y-1">
+        <h3 class="text-lg font-bold text-white">QR Code d'Inscription Employés</h3>
+        <p class="text-xs text-slate-400">Faites scanner ce QR code à vos employés pour qu'ils rejoignent directement <strong id="qr-company-name-badge" class="text-emerald-400">l'entreprise</strong>.</p>
+      </div>
+
+      <div class="p-4 bg-white rounded-2xl shadow-xl inline-block mx-auto border border-slate-700">
+        <img id="company-qr-code-img" src="" alt="QR Code Rejoindre Entreprise" class="w-52 h-52 object-contain mx-auto rounded-lg" />
+      </div>
+
+      <div class="p-3 bg-slate-900 rounded-xl border border-slate-800 text-left space-y-1">
+        <div class="text-[10px] font-mono text-slate-400">Code Entreprise :</div>
+        <div id="qr-company-code-display" class="text-sm font-mono font-extrabold text-amber-300">WD-7K9P-X4M2</div>
+      </div>
+
+      <button onclick="copyCompanyJoinLink()" class="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs transition flex items-center justify-center gap-1.5 shadow">
+        <i data-lucide="copy" class="w-4 h-4"></i> Copier le Lien d'Inscription Direct
+      </button>
     </div>
   </div>
 

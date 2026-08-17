@@ -21,8 +21,15 @@ import { dirname, extname, join, relative } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** Repertoires analyses. apps/web est exclu : prototype fige, sans geolocalisation. */
-const DEFAULT_TARGETS = ['apps/api/src', 'apps/app/src', 'packages'];
+/**
+ * Repertoires analyses.
+ *
+ * apps/web y figure DEPUIS que le pointage GPS y a ete implemente : c'est
+ * desormais le principal endroit ou de la position est captee, donc le premier
+ * endroit ou un suivi continu pourrait apparaitre. Un controle qui n'inspecte
+ * pas le code concerne ne protege rien.
+ */
+const DEFAULT_TARGETS = ['apps/api/src', 'apps/app/src', 'apps/web', 'packages'];
 
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'coverage', '.turbo', '.git']);
 const EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.vue', '.svelte']);
