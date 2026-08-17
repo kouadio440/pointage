@@ -111,9 +111,9 @@ ALTER TABLE public.attendances
     CHECK (decision IN ('ACCEPTED', 'PENDING_REVIEW', 'REJECTED'));
 
 CREATE INDEX IF NOT EXISTS idx_attendances_company_day
-    ON public.attendances(company_id, (server_time::date));
+    ON public.attendances(company_id, server_time);
 CREATE INDEX IF NOT EXISTS idx_attendances_user_day
-    ON public.attendances(company_id, user_id, (server_time::date));
+    ON public.attendances(company_id, user_id, server_time);
 
 
 -- =============================================================================
@@ -152,6 +152,53 @@ CREATE INDEX IF NOT EXISTS idx_attempts_company_time
     ON public.attendance_attempts(company_id, server_time DESC);
 
 ALTER TABLE public.attendance_attempts ENABLE ROW LEVEL SECURITY;
+
+
+-- =============================================================================
+-- 4bis. HARMONISATION DES RÔLES
+--
+-- Le schéma initial n'autorisait que 'super_admin' / 'company_admin' /
+-- 'manager' / 'employee' / 'field_agent'. Or l'application écrit en réalité
+-- 'CEO' et 'EMPLOYEE' (voir apps/web/app.js). La contrainte d'origine rejette
+-- donc les insertions réelles.
+--
+-- On accepte les DEUX conventions plutôt que de migrer les données à l'aveugle :
+-- une migration de valeurs sur une base de production dont on ignore le contenu
+-- exact serait bien plus risquée que d'élargir la contrainte.
+-- =============================================================================
+
+ALTER TABLE public.users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE public.users
+    ADD CONSTRAINT users_role_check CHECK (
+        upper(role) IN (
+            'SUPER_ADMIN', 'COMPANY_ADMIN', 'MANAGER', 'EMPLOYEE', 'FIELD_AGENT',
+            'CEO', 'HR'
+        )
+    );
+
+/**
+ * Cet utilisateur a-t-il le droit de consulter les pointages de son entreprise ?
+ *
+ * Centralisée ici pour que les politiques RLS ne dupliquent pas une liste de
+ * rôles qui dériverait ensuite. Insensible à la casse, et couvre les deux
+ * conventions de nommage présentes dans le projet.
+ */
+CREATE OR REPLACE FUNCTION public.can_view_company_attendance(p_company_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+    SELECT EXISTS (
+        SELECT 1 FROM public.users u
+        WHERE u.id = auth.uid()
+          AND u.company_id = p_company_id
+          AND upper(u.role) IN ('SUPER_ADMIN', 'COMPANY_ADMIN', 'MANAGER', 'CEO', 'HR')
+    );
+$$;
+
+GRANT EXECUTE ON FUNCTION public.can_view_company_attendance(UUID) TO authenticated;
 
 
 -- =============================================================================
@@ -564,16 +611,15 @@ GRANT EXECUTE ON FUNCTION public.record_attendance(VARCHAR, DOUBLE PRECISION, DO
 
 DROP POLICY IF EXISTS "Public & Anon access on attendances" ON public.attendances;
 
--- Lecture : chacun voit ses propres pointages ; le RH/CEO voit ceux de SON entreprise.
+-- Lecture : chacun voit ses propres pointages ; le CEO/RH/manager voit ceux de
+-- SON entreprise. public.users.id est bien l'identifiant Supabase Auth
+-- (apps/web/app.js écrit `id: authData.user.id` à l'inscription), la comparaison
+-- avec auth.uid() est donc correcte.
 DROP POLICY IF EXISTS "attendances_select_own_or_company" ON public.attendances;
 CREATE POLICY "attendances_select_own_or_company" ON public.attendances
-FOR SELECT USING (
+FOR SELECT TO authenticated USING (
     user_id = auth.uid()
-    OR company_id IN (
-        SELECT u.company_id FROM public.users u
-        WHERE u.id = auth.uid()
-          AND u.role IN ('super_admin', 'company_admin', 'manager')
-    )
+    OR public.can_view_company_attendance(company_id)
 );
 
 -- Aucune politique INSERT / UPDATE / DELETE : l'écriture directe est impossible,
@@ -581,13 +627,9 @@ FOR SELECT USING (
 
 DROP POLICY IF EXISTS "attempts_select_own_or_company" ON public.attendance_attempts;
 CREATE POLICY "attempts_select_own_or_company" ON public.attendance_attempts
-FOR SELECT USING (
+FOR SELECT TO authenticated USING (
     user_id = auth.uid()
-    OR company_id IN (
-        SELECT u.company_id FROM public.users u
-        WHERE u.id = auth.uid()
-          AND u.role IN ('super_admin', 'company_admin', 'manager')
-    )
+    OR public.can_view_company_attendance(company_id)
 );
 
 
@@ -619,11 +661,13 @@ FOR SELECT TO authenticated
 USING (
     bucket_id = 'punch-selfies'
     AND (
+        -- L'employé concerné : le chemin du fichier commence par son identifiant.
         (storage.foldername(name))[1] = auth.uid()::text
+        -- Ou un responsable habilité, quelle que soit la convention de rôle.
         OR EXISTS (
             SELECT 1 FROM public.users u
             WHERE u.id = auth.uid()
-              AND u.role IN ('super_admin', 'company_admin', 'manager')
+              AND upper(u.role) IN ('SUPER_ADMIN', 'COMPANY_ADMIN', 'MANAGER', 'CEO', 'HR')
         )
     )
 );

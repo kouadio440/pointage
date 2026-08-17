@@ -1834,6 +1834,29 @@
     </div>
   </div>
 
+  <!--
+    DÉTAIL D'UN POINTAGE — Cockpit RH.
+
+    Permet au CEO/RH de comprendre POURQUOI un pointage a été accepté ou refusé :
+    distance mesurée, rayon autorisé, précision GPS, seuils en vigueur au moment
+    du pointage. Le selfie est une preuve sensible : il n'est chargé qu'à la
+    demande, via une URL signée de courte durée, et jamais affiché en liste.
+  -->
+  <div id="modal-attendance-detail" class="fixed inset-0 z-[60] bg-black/85 backdrop-blur-md hidden items-center justify-center p-3 sm:p-4">
+    <div class="glass-panel-elevated w-full max-w-lg p-5 sm:p-6 space-y-4 border border-cyan-500/40 relative max-h-[92vh] overflow-y-auto">
+      <button onclick="closeAttendanceDetail()" class="absolute top-3 right-3 text-slate-400 hover:text-white p-2 min-h-tap" aria-label="Fermer">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <h3 class="text-base font-bold text-white flex items-center gap-2 pr-8">
+        <i data-lucide="shield-check" class="w-5 h-5 text-cyan-400"></i>
+        Détail du pointage
+      </h3>
+
+      <div id="attendance-detail-body" class="space-y-3 text-xs"></div>
+    </div>
+  </div>
+
   <!-- MODAL 2: LEAVE REQUEST FORM -->
   <div id="modal-leave" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4">
     <div class="glass-panel-elevated max-w-md w-full p-6 space-y-4 border border-cyan-500/40 relative">

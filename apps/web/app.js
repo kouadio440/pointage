@@ -1636,7 +1636,8 @@ async function submitEmployeePunch() {
   if (!supabaseClient) {
     return renderEmployeePunchFailure(
       'Service indisponible',
-      "La connexion au serveur de pointage n'est pas disponible. Réessayez dans un instant."
+      "La connexion au serveur de pointage n'est pas disponible. Réessayez dans un instant.",
+      true
     );
   }
 
@@ -1678,10 +1679,44 @@ async function submitEmployeePunch() {
     if (error) throw error;
     verdict = data;
   } catch (err) {
-    console.error('[Pointage] Erreur RPC :', err);
+    // Un message générique du type « vérifiez votre connexion » masque la cause
+    // réelle et fait perdre un temps considérable. On distingue donc les cas,
+    // et on affiche à l'employé une consigne exploitable par son service RH.
+    console.error('[Pointage] Erreur RPC record_attendance :', err);
+
+    const code = (err && (err.code || err.status)) || '';
+    const msg = String((err && err.message) || '');
+    const isMissingFunction =
+      code === 'PGRST202' ||
+      /could not find the function|function .*record_attendance.* does not exist|schema cache/i.test(msg);
+    const isForbidden = code === '42501' || /permission denied/i.test(msg);
+
+    if (isMissingFunction) {
+      return renderEmployeePunchFailure(
+        'Pointage non encore activé',
+        "La fonction de pointage sécurisé n'est pas installée sur le serveur.\n\n" +
+          'À transmettre au service technique : exécuter le fichier\n' +
+          'services/supabase_migration_002_attendance.sql\n' +
+          "dans l'éditeur SQL Supabase.",
+        true
+      );
+    }
+
+    if (isForbidden) {
+      return renderEmployeePunchFailure(
+        'Autorisation manquante',
+        "Votre compte n'a pas le droit d'enregistrer un pointage sur ce serveur.\n\n" +
+          'À transmettre au service technique : vérifier le GRANT EXECUTE sur\n' +
+          'record_attendance pour le rôle authenticated.',
+        true
+      );
+    }
+
     return renderEmployeePunchFailure(
       'Pointage impossible',
-      "Le serveur n'a pas pu traiter votre pointage. Vérifiez votre connexion puis réessayez."
+      'Le serveur a refusé la demande.\n\n' +
+        `Détail technique : ${msg || 'erreur inconnue'}${code ? ` (code ${code})` : ''}`,
+      true
     );
   }
 
@@ -1815,7 +1850,15 @@ function renderEmployeePunchSuccess(title, detail) {
   showToast('Pointage enregistré', escapeHtml(title), 'success');
 }
 
-function renderEmployeePunchFailure(title, body) {
+/**
+ * @param {string} title
+ * @param {string} body
+ * @param {boolean} [technique] Panne d'installation ou de configuration, par
+ *   opposition à un refus métier légitime (hors zone, déjà pointé...). Seuls
+ *   les cas techniques proposent le diagnostic : inutile de suggérer à un
+ *   employé hors zone qu'il y a un problème de serveur.
+ */
+function renderEmployeePunchFailure(title, body, technique) {
   empPunch.submitting = false;
   empPunch.finished = true;
   empPunch.gpsAbort = true;
@@ -1827,6 +1870,16 @@ function renderEmployeePunchFailure(title, body) {
     box.innerHTML =
       `<p class="text-sm font-extrabold text-red-300">${escapeHtml(title)}</p>` +
       `<p class="text-[11px] text-slate-300 leading-relaxed whitespace-pre-line">${escapeHtml(body)}</p>`;
+
+    if (technique) {
+      box.insertAdjacentHTML(
+        'beforeend',
+        `<button type="button" onclick="diagnostiquerPointage()"
+           class="mt-3 w-full min-h-tap py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/40 font-bold text-[11px] transition">
+           DIAGNOSTIQUER LE PROBLÈME
+         </button>`
+      );
+    }
   }
 
   setNodeHidden('emp-punch-capture', true);
@@ -1864,6 +1917,291 @@ function closeEmployeePunch() {
     modal.classList.add('hidden');
     modal.classList.remove('flex');
   }
+}
+
+// =============================================================================
+//  DÉTAIL D'UN POINTAGE — consultation RH
+// =============================================================================
+
+/** Le rôle courant a-t-il le droit de consulter les preuves d'un pointage ? */
+function canViewPunchEvidence() {
+  const r = String(state.currentUserRole || '').toUpperCase();
+  return ['CEO', 'HR', 'MANAGER', 'COMPANY_ADMIN', 'SUPER_ADMIN'].includes(r);
+}
+
+function ligneDetail(label, valeur, ton) {
+  const couleurs = { ok: 'text-emerald-300', ko: 'text-red-300', warn: 'text-amber-300' };
+  const c = couleurs[ton] || 'text-slate-200';
+  return `<div class="flex items-start justify-between gap-3 py-1.5 border-b border-slate-800/60">
+      <span class="text-slate-400 shrink-0">${escapeHtml(label)}</span>
+      <span class="${c} font-mono text-right">${escapeHtml(String(valeur))}</span>
+    </div>`;
+}
+
+async function openAttendanceDetail(attendanceId) {
+  const att = (state.attendances || []).find((a) => String(a.id) === String(attendanceId));
+  const modal = document.getElementById('modal-attendance-detail');
+  const body = document.getElementById('attendance-detail-body');
+  if (!modal || !body) return;
+
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+
+  if (!att) {
+    body.innerHTML = `<p class="text-slate-400">Ce pointage est introuvable dans les données chargées.</p>`;
+    return;
+  }
+
+  const inconnu = 'non renseigné';
+  const dist = att.distanceFromSiteM != null ? `${Math.round(att.distanceFromSiteM)} m` : inconnu;
+  const rayon = att.allowedRadiusM != null ? `${att.allowedRadiusM} m` : inconnu;
+  const acc = att.gpsAccuracyM != null ? `${Math.round(att.gpsAccuracyM)} m` : inconnu;
+
+  // Un pointage antérieur à la mise en place des contrôles n'a pas ces preuves.
+  // On le dit, plutôt que d'afficher des valeurs de complaisance.
+  const sansPreuves = att.distanceFromSiteM == null && att.gpsAccuracyM == null;
+
+  const dansLaZone =
+    att.distanceFromSiteM != null && att.allowedRadiusM != null
+      ? att.distanceFromSiteM <= att.allowedRadiusM
+      : null;
+
+  let html = '';
+  html += ligneDetail('Employé', att.employee || inconnu);
+  html += ligneDetail('Matricule', att.matricule || inconnu);
+  html += ligneDetail('Date', att.date || inconnu);
+  html += ligneDetail('Type', att.punchType === 'CHECK_OUT' ? 'Départ' : (att.punchType === 'CHECK_IN' ? 'Arrivée' : inconnu));
+  html += ligneDetail('Arrivée', att.clockIn || inconnu);
+  html += ligneDetail('Départ', att.clockOut || '--:--');
+  html += ligneDetail('Méthode', att.methodUsed || att.method || inconnu);
+  html += ligneDetail(
+    'Décision serveur',
+    att.decision || inconnu,
+    att.decision === 'ACCEPTED' ? 'ok' : (att.decision === 'REJECTED' ? 'ko' : undefined)
+  );
+
+  if (sansPreuves) {
+    html += `<p class="mt-3 text-[11px] text-amber-300 leading-relaxed">
+        Ce pointage est antérieur à la mise en place des contrôles GPS et selfie :
+        aucune preuve de distance ni de précision n'a été enregistrée pour lui.
+      </p>`;
+  } else {
+    html += `<div class="mt-3 pt-2"><p class="text-[11px] font-bold text-slate-300 mb-1">Contrôles de localisation</p></div>`;
+    html += ligneDetail('Distance au site', dist, dansLaZone === false ? 'ko' : (dansLaZone === true ? 'ok' : undefined));
+    html += ligneDetail('Rayon autorisé', rayon);
+    html += ligneDetail('Précision GPS', acc);
+    if (att.maxAccuracyAtPunch != null) {
+      html += ligneDetail('Précision max. tolérée', `${att.maxAccuracyAtPunch} m`);
+    }
+    if (att.latitude != null && att.longitude != null) {
+      html += ligneDetail('Coordonnées', `${Number(att.latitude).toFixed(5)}, ${Number(att.longitude).toFixed(5)}`);
+    }
+  }
+
+  html += `<div class="mt-3 pt-2"><p class="text-[11px] font-bold text-slate-300 mb-1">Vérification faciale</p></div>`;
+  if (att.faceVerified === true) {
+    html += ligneDetail('Résultat', `Vérifié (${att.faceScore ?? '?'} %)`, 'ok');
+    if (att.faceThreshold != null) html += ligneDetail('Seuil requis', `${att.faceThreshold} %`);
+  } else if (att.faceVerified === false) {
+    html += ligneDetail('Résultat', `Non concluant (${att.faceScore ?? '?'} %)`, 'ko');
+  } else {
+    html += ligneDetail('Résultat', 'Non activée — selfie conservé comme preuve', 'warn');
+  }
+
+  // Le selfie n'est visible que pour les rôles habilités, et via une URL signée.
+  if (att.selfiePath) {
+    if (canViewPunchEvidence()) {
+      html += `<button type="button" onclick="revealPunchSelfie('${escapeHtml(String(att.id))}')"
+          class="mt-3 w-full min-h-tap py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/40 font-bold text-[11px] transition">
+          AFFICHER LE SELFIE DE POINTAGE
+        </button>
+        <div id="punch-selfie-holder" class="mt-3"></div>`;
+    } else {
+      html += `<p class="mt-3 text-[11px] text-slate-500">
+          Le selfie de ce pointage est une donnée sensible, réservée aux responsables habilités.
+        </p>`;
+    }
+  } else {
+    html += `<p class="mt-3 text-[11px] text-slate-500">Aucun selfie associé à ce pointage.</p>`;
+  }
+
+  body.innerHTML = html;
+  if (window.lucide) lucide.createIcons();
+}
+
+/** Charge le selfie à la demande via une URL signée de courte durée. */
+async function revealPunchSelfie(attendanceId) {
+  const att = (state.attendances || []).find((a) => String(a.id) === String(attendanceId));
+  const holder = document.getElementById('punch-selfie-holder');
+  if (!att || !att.selfiePath || !holder || !supabaseClient) return;
+
+  holder.innerHTML = '<p class="text-[11px] text-slate-400">Chargement de la preuve…</p>';
+
+  try {
+    const { data, error } = await supabaseClient
+      .storage.from('punch-selfies')
+      .createSignedUrl(att.selfiePath, 60); // 60 secondes, non réutilisable ensuite
+
+    if (error || !data) throw error || new Error('URL indisponible');
+
+    holder.innerHTML =
+      `<img src="${escapeHtml(data.signedUrl)}" alt="Selfie de pointage"
+         class="w-full rounded-xl border border-slate-700" />
+       <p class="mt-1 text-[10px] text-slate-500 text-center">
+         Lien valable 60 secondes. Cet accès est journalisé.
+       </p>`;
+  } catch (e) {
+    console.warn('[Pointage] Selfie inaccessible :', e);
+    holder.innerHTML =
+      '<p class="text-[11px] text-amber-300">Preuve inaccessible : vérifiez vos droits ou que le bucket punch-selfies est bien créé.</p>';
+  }
+}
+
+function closeAttendanceDetail() {
+  const modal = document.getElementById('modal-attendance-detail');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+
+/**
+ * Diagnostic du pointage — vérifie chaque prérequis, un par un.
+ *
+ * Quand le pointage échoue, il existe une demi-douzaine de causes possibles
+ * (migration non exécutée, aucun site configuré, fiche employé absente…). Les
+ * distinguer à l'aveugle coûte cher. Cette fonction les teste dans l'ordre et
+ * dit précisément laquelle bloque, avec la correction à appliquer.
+ *
+ * Utilisable depuis la console du navigateur : diagnostiquerPointage()
+ */
+async function diagnostiquerPointage() {
+  const checks = [];
+  const add = (ok, label, fix) => checks.push({ ok, label, fix: fix || null });
+
+  if (!supabaseClient) {
+    add(false, 'Connexion à Supabase', "Le client Supabase n'est pas initialisé dans la page.");
+    return renderPunchDiagnostic(checks);
+  }
+  add(true, 'Connexion à Supabase');
+
+  // 1. Session authentifiée
+  let authUid = null;
+  try {
+    const { data } = await supabaseClient.auth.getSession();
+    authUid = data && data.session ? data.session.user.id : null;
+  } catch (e) { /* traité ci-dessous */ }
+
+  if (!authUid) {
+    add(false, 'Session authentifiée', 'Déconnectez-vous puis reconnectez-vous.');
+    return renderPunchDiagnostic(checks);
+  }
+  add(true, 'Session authentifiée');
+
+  // 2. Fiche employé
+  let dbUser = null;
+  try {
+    const { data } = await supabaseClient.from('users').select('*').eq('id', authUid).maybeSingle();
+    dbUser = data;
+  } catch (e) { /* traité ci-dessous */ }
+
+  if (!dbUser) {
+    add(false, 'Fiche employé dans public.users',
+      "Aucune ligne public.users ne correspond à votre identifiant de connexion. Le service RH doit créer votre fiche.");
+    return renderPunchDiagnostic(checks);
+  }
+  add(true, `Fiche employé (${dbUser.full_name || dbUser.email})`);
+
+  // 3. Entreprise
+  if (!dbUser.company_id) {
+    add(false, 'Entreprise rattachée', "Votre fiche n'est rattachée à aucune entreprise.");
+    return renderPunchDiagnostic(checks);
+  }
+  add(true, 'Entreprise rattachée');
+
+  // 4. Site géolocalisé
+  try {
+    const { data: sites } = await supabaseClient
+      .from('geofences')
+      .select('id,name,latitude,longitude,radius_meters')
+      .eq('company_id', dbUser.company_id);
+
+    const usable = (sites || []).filter((s) => s.latitude != null && s.longitude != null);
+    if (usable.length === 0) {
+      add(false, 'Site de travail géolocalisé',
+        "Aucun site avec coordonnées GPS n'existe pour votre entreprise. Le service RH doit en créer un (latitude, longitude, rayon).");
+    } else {
+      add(true, `Site géolocalisé (${usable[0].name} — rayon ${usable[0].radius_meters} m)`);
+    }
+  } catch (e) {
+    add(false, 'Site de travail géolocalisé', 'La table geofences est inaccessible.');
+  }
+
+  // 5. Fonction serveur installée.
+  // Sonde : un type de pointage invalide déclenche un refus immédiat SANS rien
+  // écrire. Si la fonction n'existe pas, l'erreur est d'une autre nature.
+  try {
+    const { error } = await supabaseClient.rpc('record_attendance', {
+      p_punch_type: '__PROBE__',
+      p_latitude: 0, p_longitude: 0, p_gps_accuracy: 1,
+      p_selfie_path: null, p_face_score: null,
+      p_device_ua: 'diagnostic', p_client_time: new Date().toISOString(),
+    });
+
+    if (!error) {
+      add(true, 'Fonction serveur record_attendance installée');
+    } else {
+      const msg = String(error.message || '');
+      if (error.code === 'PGRST202' || /could not find the function|schema cache/i.test(msg)) {
+        add(false, 'Fonction serveur record_attendance',
+          'NON INSTALLÉE. Exécutez services/supabase_migration_002_attendance.sql dans l\'éditeur SQL Supabase.');
+      } else if (error.code === '42501' || /permission denied/i.test(msg)) {
+        add(false, 'Fonction serveur record_attendance',
+          'Installée mais non autorisée. Vérifiez GRANT EXECUTE ... TO authenticated.');
+      } else {
+        add(false, 'Fonction serveur record_attendance', `Erreur : ${msg}`);
+      }
+    }
+  } catch (e) {
+    add(false, 'Fonction serveur record_attendance', `Erreur : ${e && e.message}`);
+  }
+
+  return renderPunchDiagnostic(checks);
+}
+
+function renderPunchDiagnostic(checks) {
+  const lignes = checks
+    .map((c) => `${c.ok ? '  OK   ' : '  ÉCHEC'} ${c.label}${c.fix ? `\n         → ${c.fix}` : ''}`)
+    .join('\n');
+  console.log('=== Diagnostic du pointage ===\n' + lignes);
+
+  const bloquant = checks.find((c) => !c.ok);
+  const box = document.getElementById('emp-punch-result');
+  if (box && !box.classList.contains('hidden')) {
+    const html = checks
+      .map((c) => {
+        const icon = c.ok ? '✓' : '✗';
+        const color = c.ok ? 'text-emerald-400' : 'text-red-400';
+        return `<div class="flex items-start gap-1.5 text-left">
+            <span class="${color} font-bold">${icon}</span>
+            <span class="text-slate-300">${escapeHtml(c.label)}${c.fix ? `<br/><span class="text-amber-300">${escapeHtml(c.fix)}</span>` : ''}</span>
+          </div>`;
+      })
+      .join('');
+    box.insertAdjacentHTML(
+      'beforeend',
+      `<div class="mt-3 pt-3 border-t border-red-500/30 space-y-1.5 text-[10px]">${html}</div>`
+    );
+  }
+
+  showToast(
+    bloquant ? 'Diagnostic : blocage identifié' : 'Diagnostic : tout est en place',
+    bloquant ? escapeHtml(bloquant.label) : 'Tous les prérequis du pointage sont satisfaits.',
+    bloquant ? 'info' : 'success',
+    9000
+  );
+
+  return checks;
 }
 
 function submitLeaveRequest() {
@@ -4533,9 +4871,27 @@ async function loadSupabaseData() {
             clockOut: a.clock_out ? new Date(a.clock_out).toLocaleTimeString('fr-FR', { timeZone: 'Africa/Abidjan', hour: '2-digit', minute: '2-digit' }) : '--:--',
             workedDuration: a.worked_duration || '--:--',
             status: a.status === 'on_time' ? 'Présent' : (a.status === 'late' ? 'Retard' : 'Absent'),
-            distance: `${a.gps_accuracy_meters || 14}m`,
             method: a.method === 'face_id' ? 'Selfie / IA' : (a.method === 'qr_kiosk' ? 'QR Code Kiosque' : 'GPS'),
-            confidence: a.face_confidence_score || 99.0
+
+            // --- Preuves du pointage, telles que décidées par le serveur -----
+            // Aucune valeur de repli ici : afficher « 14 m » quand la donnée est
+            // absente ferait croire à un contrôle qui n'a pas eu lieu.
+            punchType: a.punch_type || null,
+            decision: a.decision || null,
+            latitude: a.latitude,
+            longitude: a.longitude,
+            gpsAccuracyM: a.gps_accuracy_meters,
+            distanceFromSiteM: a.distance_from_site_m,
+            allowedRadiusM: a.allowed_radius_m,
+            maxAccuracyAtPunch: a.max_accuracy_m_at_punch,
+            selfiePath: a.selfie_path || null,
+            faceVerified: a.face_verified,
+            faceScore: a.face_verification_score,
+            faceThreshold: a.face_threshold_at_punch,
+            serverTime: a.server_time || a.created_at,
+            methodUsed: a.attendance_method_used || null,
+            deviceUa: a.device_user_agent || null,
+            confidence: a.face_confidence_score
           };
         });
       } else {

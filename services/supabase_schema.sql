@@ -146,13 +146,28 @@ ALTER TABLE public.calendar_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.company_memberships ENABLE ROW LEVEL SECURITY;
 
 -- Politiques RLS de base (Accès pour anon et service_role)
+DROP POLICY IF EXISTS "Public & Anon access on companies" ON public.companies;
 CREATE POLICY "Public & Anon access on companies" ON public.companies FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public & Anon access on users" ON public.users;
 CREATE POLICY "Public & Anon access on users" ON public.users FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public & Anon access on geofences" ON public.geofences;
 CREATE POLICY "Public & Anon access on geofences" ON public.geofences FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public & Anon access on attendances" ON public.attendances;
 CREATE POLICY "Public & Anon access on attendances" ON public.attendances FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public & Anon access on payrolls" ON public.payrolls;
 CREATE POLICY "Public & Anon access on payrolls" ON public.payrolls FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public & Anon access on audit_logs" ON public.audit_logs;
 CREATE POLICY "Public & Anon access on audit_logs" ON public.audit_logs FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public & Anon access on calendar_events" ON public.calendar_events;
 CREATE POLICY "Public & Anon access on calendar_events" ON public.calendar_events FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public & Anon access on company_memberships" ON public.company_memberships;
 CREATE POLICY "Public & Anon access on company_memberships" ON public.company_memberships FOR ALL USING (true) WITH CHECK (true);
 
 -- =============================================================================
