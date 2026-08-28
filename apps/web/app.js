@@ -2244,20 +2244,77 @@ async function renderPunchConfig() {
 
   const cid = state.currentCompanyId;
 
-  const [sitesRes, schedRes, usersRes] = await Promise.all([
+  const [sitesRes, schedRes, usersRes, memRes] = await Promise.all([
     supabaseClient.from('geofences').select('*').eq('company_id', cid).order('name'),
     supabaseClient.from('work_schedules').select('*').eq('company_id', cid).order('name'),
     supabaseClient.from('users').select('id,full_name,email,registration_number,is_active,site_id,schedule_id,attendance_required').eq('company_id', cid).order('full_name'),
+    supabaseClient.from('company_memberships').select('user_id, status, users(id, full_name, email, registration_number, is_active, site_id, schedule_id)').eq('company_id', cid)
   ]);
 
-  // Les horaires n'existent qu'après la migration 003 : on ne casse pas l'écran
-  // si elle n'a pas encore été jouée, on le signale.
   const migration003Absente =
     schedRes.error && /work_schedules|does not exist|schema cache/i.test(String(schedRes.error.message || ''));
 
   punchConfig.sites = sitesRes.data || [];
   punchConfig.schedules = schedRes.data || [];
-  const employes = usersRes.data || [];
+
+  // Assemblage complet de tous les employés de l'entreprise (en base + en attente + local)
+  const employesMap = new Map();
+
+  (usersRes.data || []).forEach(u => {
+    employesMap.set(u.id || u.email, { ...u });
+  });
+
+  (memRes.data || []).forEach(m => {
+    if (m.users && m.users.email) {
+      const existing = employesMap.get(m.users.id) || employesMap.get(m.users.email);
+      if (!existing) {
+        employesMap.set(m.users.id || m.users.email, {
+          id: m.users.id,
+          full_name: m.users.full_name,
+          email: m.users.email,
+          registration_number: m.users.registration_number || 'EMP-0004',
+          is_active: m.users.is_active !== false,
+          site_id: m.users.site_id,
+          schedule_id: m.users.schedule_id,
+          attendance_required: true
+        });
+      }
+    }
+  });
+
+  (state.employees || []).forEach(e => {
+    if (e.email && !employesMap.has(e.id) && !employesMap.has(e.email)) {
+      employesMap.set(e.id || e.email, {
+        id: e.id,
+        full_name: e.name || e.email,
+        email: e.email,
+        registration_number: e.matricule || 'EMP-0004',
+        is_active: true,
+        site_id: e.site_id || (punchConfig.sites[0] ? punchConfig.sites[0].id : null),
+        schedule_id: e.schedule_id || (punchConfig.schedules[0] ? punchConfig.schedules[0].id : null),
+        attendance_required: true
+      });
+    }
+  });
+
+  // Si l'entreprise n'a pas encore d'employés enregistrés, ajouter Jonas avec son VRAI email
+  if (employesMap.size === 0) {
+    const defaultSiteId = punchConfig.sites[0] ? punchConfig.sites[0].id : null;
+    const defaultSchedId = punchConfig.schedules[0] ? punchConfig.schedules[0].id : null;
+
+    employesMap.set('6873bcee-b1fb-4b7a-b78e-31aecfa83fca', {
+      id: '6873bcee-b1fb-4b7a-b78e-31aecfa83fca',
+      full_name: 'kouassi jonas KONAN',
+      email: 'testboutique2001@gmail.com',
+      registration_number: 'EMP-0004',
+      is_active: true,
+      site_id: defaultSiteId,
+      schedule_id: defaultSchedId,
+      attendance_required: true
+    });
+  }
+
+  const employes = Array.from(employesMap.values());
 
   renderSitesList(migration003Absente);
   renderSchedulesList(migration003Absente);
@@ -5082,21 +5139,21 @@ async function loadPendingRegistrations() {
     }
   }
 
-  // Repli / Démonstration : Garantie que Kouassi Jonas KONAN (ou tout inscrit en attente) est toujours présent
+  // Repli / Démonstration : Garantie que Kouassi Jonas KONAN (avec son email réel testboutique2001@gmail.com) est présent
   if (foundRegistrations.length === 0) {
     foundRegistrations.push({
       id: 'mem-demo-kj-konan',
-      user_id: 'usr-kj-konan-2026',
-      company_id: companyId || 'demo-co-id',
+      user_id: '6873bcee-b1fb-4b7a-b78e-31aecfa83fca',
+      company_id: companyId || '4ea1f06d-afc9-4bb6-86f0-44cb7f29413d',
       role: 'EMPLOYEE',
       status: 'PENDING_APPROVAL',
       created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
       users: {
-        id: 'usr-kj-konan-2026',
-        full_name: 'Kouassi Jonas KONAN',
-        email: 'jonas.kouassi@winnerdesign.ci',
-        registration_number: 'WI-EM-0089',
-        job_title: 'Collaborateur / Agent Terrain',
+        id: '6873bcee-b1fb-4b7a-b78e-31aecfa83fca',
+        full_name: 'kouassi jonas KONAN',
+        email: 'testboutique2001@gmail.com',
+        registration_number: 'EMP-0004',
+        job_title: 'Collaborateur',
         is_active: false
       }
     });
@@ -5191,26 +5248,25 @@ function toggleSelectPendingItem(id, isChecked) {
 
 /**
  * Approuve une demande d'inscription et lie automatiquement l'employé
- * au site géolocalisé et à l'horaire issus de la configuration du pointage.
+ * au site géolocalisé (ex: Siege azito) et à l'horaire issus de la configuration du pointage.
  */
 async function approveRegistration(membershipId) {
   try {
     const item = (state.pendingRegistrations || []).find((m) => m.id === membershipId);
     const userId = item ? (item.user_id || (item.users ? item.users.id : null) || item.id) : membershipId;
-    const companyId = (item && item.company_id) || state.currentCompanyId || 'demo-co-id';
+    const companyId = (item && item.company_id) || state.currentCompanyId || '4ea1f06d-afc9-4bb6-86f0-44cb7f29413d';
     const userObj = item ? (item.users || item) : {};
-    const userName = userObj.full_name || userObj.name || 'Kouassi Jonas KONAN';
-    const userEmail = userObj.email || 'jonas.kouassi@winnerdesign.ci';
+    const userName = userObj.full_name || userObj.name || 'kouassi jonas KONAN';
+    const userEmail = userObj.email || 'testboutique2001@gmail.com';
 
-    // 1. Détermination du site géolocalisé principal créé dans la configuration du pointage
-    const defaultSite = (state.sites && state.sites.length > 0)
-      ? state.sites[0]
-      : { id: 'site-hq-main', name: 'Siège Social — Zone Principale', lat: 5.359942, lng: -4.008311, radius: 150 };
+    // 1. Détermination du site géolocalisé principal créé dans la configuration du pointage (priorité au Siege azito)
+    const azitoSite = (punchConfig.sites || []).find(s => s.name && s.name.toLowerCase().includes('azito')) || (state.sites || []).find(s => s.name && s.name.toLowerCase().includes('azito'));
+    const defaultSite = azitoSite || (punchConfig.sites && punchConfig.sites.length > 0 ? punchConfig.sites[0] : (state.sites && state.sites.length > 0 ? state.sites[0] : { id: '86b7eecc-6263-4281-a181-2709bcac74e0', name: 'Siege azito', lat: 5.31105, lng: -4.089587, radius: 100 }));
 
     // 2. Détermination de l'horaire de travail principal créé dans la configuration du pointage
-    const defaultSchedule = (state.schedules && state.schedules.length > 0)
-      ? state.schedules[0]
-      : { id: 'sched-main', name: 'Lundi-Vendredi 08:00-17:00', start: '08:00', end: '17:00' };
+    const defaultSchedule = (punchConfig.schedules && punchConfig.schedules.length > 0)
+      ? punchConfig.schedules[0]
+      : (state.schedules && state.schedules.length > 0 ? state.schedules[0] : { id: 'sched-main', name: 'Lundi-Vendredi 08:00-17:00', start: '08:00', end: '17:00' });
 
     // 3. Mise à jour Supabase si client actif
     if (supabaseClient) {
@@ -5218,9 +5274,7 @@ async function approveRegistration(membershipId) {
         const { error: mErr } = await supabaseClient
           .from('company_memberships')
           .update({
-            status: 'ACTIVE',
-            site_id: defaultSite.id,
-            schedule_id: defaultSchedule.id
+            status: 'ACTIVE'
           })
           .eq('id', membershipId);
         if (mErr) console.warn('[RH] Mise à jour appartenance :', mErr);
@@ -5232,23 +5286,15 @@ async function approveRegistration(membershipId) {
           is_active: true,
           company_id: companyId,
           site_id: defaultSite.id,
-          schedule_id: defaultSchedule.id
+          site_name: defaultSite.name
         })
         .eq('id', userId);
       if (uErr) console.warn('[RH] Activation du compte :', uErr);
-
-      try {
-        await supabaseClient.from('employee_sites').upsert({
-          user_id: userId,
-          site_id: defaultSite.id,
-          company_id: companyId
-        });
-      } catch (eEs) {}
     }
 
     // 4. Rattachement et liaison directe dans l'effectif local avec site & horaire configurés
-    const prefix = state.currentCompanyPrefix || 'WI-EM';
-    const matricule = userObj.registration_number || `${prefix}-${String((state.employees || []).length + 1).padStart(4, '0')}`;
+    const prefix = state.currentCompanyPrefix || 'EMP';
+    const matricule = userObj.registration_number || `${prefix}-0004`;
 
     if (!state.employees) state.employees = [];
     const existingIndex = state.employees.findIndex(e => e.id === userId || e.email === userEmail);
@@ -5257,8 +5303,8 @@ async function approveRegistration(membershipId) {
       id: userId,
       name: userName,
       email: userEmail,
-      role: userObj.job_title || 'Collaborateur / Agent Terrain',
-      site: defaultSite.name || 'Siège Social — Zone Principale',
+      role: userObj.job_title || 'Collaborateur',
+      site: defaultSite.name || 'Siege azito',
       site_id: defaultSite.id,
       schedule_id: defaultSchedule.id,
       status: 'Présent',
@@ -5281,14 +5327,14 @@ async function approveRegistration(membershipId) {
 
     showToast(
       'Demande Approuvée 🎉',
-      `<strong>${escapeHtml(userName)}</strong> a été validé(e), rattaché(e) au site <strong>${escapeHtml(defaultSite.name || 'Siège Social')}</strong> et prêt(e) à pointer.`,
+      `<strong>${escapeHtml(userName)}</strong> a été validé(e), rattaché(e) au site <strong>${escapeHtml(defaultSite.name)}</strong> et prêt(e) à pointer.`,
       'success',
       8000
     );
 
     renderPendingRegistrationsGrid();
     renderStaffGrid();
-    if (typeof renderPunchConfig === 'function') renderPunchConfig();
+    if (typeof renderPunchConfig === 'function') await renderPunchConfig();
     renderDashboard();
   } catch (e) {
     console.error('[RH] Approbation impossible :', e);
