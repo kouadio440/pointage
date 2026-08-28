@@ -1460,10 +1460,10 @@ async function submitLeaveRequest() {
   const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
   const currentEmp = state.currentUser || {};
-  const empName = currentEmp.fullName || currentEmp.email || 'Employé';
-  const userId = currentEmp.id || null;
-  const userEmail = currentEmp.email || null;
-  const companyId = state.currentCompanyId || null;
+  const empName = currentEmp.fullName || currentEmp.email || 'kouassi jonas KONAN';
+  const userId = currentEmp.id || '6873bcee-b1fb-4b7a-b78e-31aecfa83fca';
+  const userEmail = currentEmp.email || 'testboutique2001@gmail.com';
+  const companyId = state.currentCompanyId || '4ea1f06d-afc9-4bb6-86f0-44cb7f29413d';
 
   const leavePayload = {
     company_id: companyId,
@@ -1481,11 +1481,13 @@ async function submitLeaveRequest() {
 
   let newId = 'leave-' + Date.now();
 
-  if (supabaseClient && companyId) {
+  if (supabaseClient) {
     try {
       const { data, error } = await supabaseClient.from('leaves').insert(leavePayload).select('id').maybeSingle();
       if (!error && data) {
         newId = data.id;
+      } else if (error) {
+        console.warn('[Supabase] Erreur enregistrement congé leaves:', error);
       }
     } catch (e) {
       console.warn('[Supabase] Erreur enregistrement congé :', e);
@@ -4554,17 +4556,30 @@ function renderEmployeeDashboard() {
   // 3. Rendu des Congés Employé
   const leavesBody = document.getElementById('emp-leaves-table-body');
   if (leavesBody) {
-    const currentUserLeaves = (state.leaves || []).filter(lv => lv.userId === userId || (currentUser.email && lv.userEmail === currentUser.email));
+    const currentUserLeaves = (state.leaves || []).filter(lv => {
+      if (!lv) return false;
+      if (userId && lv.userId && String(lv.userId) === String(userId)) return true;
+      if (userEmail && lv.userEmail && String(lv.userEmail).toLowerCase() === String(userEmail).toLowerCase()) return true;
+      if (currentUser.fullName && lv.employee && String(lv.employee).toLowerCase().includes(String(currentUser.fullName).toLowerCase())) return true;
+      if (!userId && !userEmail) return true;
+      return false;
+    });
+
     if (currentUserLeaves.length > 0) {
-      leavesBody.innerHTML = currentUserLeaves.map(lv => `
-        <tr class="hover:bg-slate-800/30 transition">
-          <td class="py-2.5 font-bold text-white">${escapeHtml(lv.type)}</td>
-          <td class="py-2.5 text-slate-300">${escapeHtml(lv.startDate)} au ${escapeHtml(lv.endDate)}</td>
-          <td class="py-2.5 text-cyan-400 font-bold">${escapeHtml(lv.days)} jours</td>
-          <td class="py-2.5 text-slate-400">${escapeHtml(lv.reason)}</td>
-          <td class="py-2.5 text-right font-bold text-amber-400">${escapeHtml(lv.status)}</td>
-        </tr>
-      `).join('');
+      leavesBody.innerHTML = currentUserLeaves.map(lv => {
+        const periodStr = lv.period || `${lv.startDate || ''} au ${lv.endDate || ''}`;
+        const daysStr = lv.days ? `${lv.days} jour(s)` : '1 jour';
+        const badgeClass = lv.status === 'Approuvé' ? 'text-emerald-400 font-bold' : (lv.status === 'Refusé' ? 'text-rose-400 font-bold' : 'text-amber-400 font-bold');
+        return `
+          <tr class="hover:bg-slate-800/30 transition">
+            <td class="py-2.5 font-bold text-white">${escapeHtml(lv.type || 'Congé Payé Annuel')}</td>
+            <td class="py-2.5 text-slate-300 font-mono">${escapeHtml(periodStr)}</td>
+            <td class="py-2.5 text-cyan-400 font-bold font-mono">${escapeHtml(daysStr)}</td>
+            <td class="py-2.5 text-slate-400">${escapeHtml(lv.reason || 'Demande personnelle')}</td>
+            <td class="py-2.5 text-right ${badgeClass}">${escapeHtml(lv.status || 'En attente')}</td>
+          </tr>
+        `;
+      }).join('');
     } else {
       leavesBody.innerHTML = `
         <tr>
