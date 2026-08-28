@@ -4838,25 +4838,10 @@ async function confirmEmailOtp() {
     }
 
     // Code OTP valide -> Demande transmise à la Direction RH
-    const localPending = {
-      id: 'mem-pending-' + Date.now(),
-      user_id: reg.userId,
-      company_id: state.recognizedCompany ? state.recognizedCompany.id : 'demo-co-id',
-      role: 'EMPLOYEE',
-      status: 'PENDING_APPROVAL',
-      created_at: new Date().toISOString(),
-      users: {
-        id: reg.userId,
-        full_name: reg.fullName,
-        email: reg.email,
-        registration_number: reg.matricule,
-        job_title: 'Collaborateur'
-      }
-    };
-
-    if (!state.pendingRegistrations) state.pendingRegistrations = [];
-    state.pendingRegistrations.unshift(localPending);
-    renderPendingRegistrationsGrid();
+    // La demande est deja enregistree cote serveur dans company_memberships.
+    // On n'ajoute plus d'entree locale : elle portait un identifiant factice
+    // (mem-pending-...) et un company_id de repli, et pouvait survivre au
+    // traitement reel de la demande.
 
     showToast('Code OTP Validé ! 🎉', `Demande transmise au RH avec succès pour ${escapeHtml(reg.companyName)}.`, 'success', 8000);
     closeAuthModal();
@@ -5020,222 +5005,137 @@ function closePendingApprovalModal() {
 
 /* ==================== COCKPIT RH : VALIDATION DES DEMANDES D'INSCRIPTION ==================== */
 
-function savePendingRegistrationsToStorage() {
-  try {
-    localStorage.setItem('winner_pending_registrations', JSON.stringify(state.pendingRegistrations || []));
-  } catch (e) {
-    console.warn('localStorage save pendingRegistrations:', e);
-  }
-}
 
-function loadStoredPendingRegistrations() {
-  try {
-    const saved = localStorage.getItem('winner_pending_registrations');
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) {
-        return parsed.filter(item => item.id && !String(item.id).includes('demo') && item.users?.email !== 'moussa.diabate@winnerdesign.ci');
-      }
-    }
-  } catch (e) {
-    console.warn('localStorage load pendingRegistrations:', e);
-  }
-  return null;
-}
 
+/**
+ * Charge les demandes d'inscription REELLES depuis company_memberships.
+ *
+ * Deux choix explicites :
+ *
+ *  - Seul le statut PENDING_APPROVAL est retenu. Une invitation (INVITED) n'est
+ *    pas une demande : c'est le RH qui l'a emise, il n'a rien a valider.
+ *
+ *  - Aucune fusion avec localStorage. Les entrees locales, ajoutees pour un
+ *    retour immediat apres inscription, survivaient a la realite du serveur :
+ *    une demande deja traitee pouvait reapparaitre indefiniment. La base est
+ *    desormais la seule source de verite de cet ecran.
+ */
 async function loadPendingRegistrations() {
-  let dbPending = [];
+  state.pendingRegistrations = [];
 
-  if (supabaseClient) {
-    try {
-      // 1. Récupération des utilisateurs inactifs dans public.users (is_active = false)
-      const { data: inactiveUsers, error: userErr } = await supabaseClient
-        .from('users')
-        .select('*')
-        .eq('is_active', false);
-
-      if (!userErr && inactiveUsers) {
-        dbPending = inactiveUsers.map(u => ({
-          id: u.id,
-          user_id: u.id,
-          company_id: u.company_id,
-          role: u.role || 'EMPLOYEE',
-          status: 'PENDING_APPROVAL',
-          created_at: u.created_at,
-          users: u
-        }));
-      }
-    } catch (e) {
-      console.warn('Erreur chargement users inactifs Supabase:', e);
-    }
+  // Purge des demandes locales heritees : elles ne sont plus lues, les laisser
+  // ne ferait que conserver des donnees perimees sur l'appareil.
+  try {
+    localStorage.removeItem('winner_pending_registrations');
+  } catch (e) {
+    /* stockage indisponible : sans consequence */
   }
 
-  // 2. Fusionner avec les inscriptions locales conservées dans localStorage
-  let localItems = loadStoredPendingRegistrations() || [];
-  const dbIds = new Set(dbPending.map(m => m.id));
-  const filteredLocal = localItems.filter(l => !dbIds.has(l.id));
-
-  state.pendingRegistrations = [...dbPending, ...filteredLocal];
-
-  savePendingRegistrationsToStorage();
-  renderPendingRegistrationsGrid();
-}
-
-function renderPendingRegistrationsGrid() {
-  const count = state.pendingRegistrations ? state.pendingRegistrations.length : 0;
-
-  const badgeEl = document.getElementById('rh-pending-count-badge');
-  if (badgeEl) badgeEl.innerText = count;
-
-  // Mise à jour de la bannière dans le registre des employés
-  const staffBanner = document.getElementById('staff-pending-banner');
-  const staffCountText = document.getElementById('staff-pending-count-text');
-
-  if (staffBanner && staffCountText) {
-    if (count > 0) {
-      staffCountText.innerText = count;
-      staffBanner.classList.remove('hidden');
-    } else {
-      staffBanner.classList.add('hidden');
-    }
-  }
-
-  const tbody = document.getElementById('rh-pending-requests-body');
-  if (!tbody) return;
-
-  if (count === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="7" class="p-8 text-center text-slate-500 italic">
-          <i data-lucide="user-check" class="w-8 h-8 text-slate-600 mx-auto mb-2"></i>
-          Aucune demande d'inscription en attente de validation.
-        </td>
-      </tr>
-    `;
-    if (window.lucide) window.lucide.createIcons();
+  if (!supabaseClient || !state.currentCompanyId) {
+    renderPendingRegistrationsGrid();
     return;
   }
 
-  tbody.innerHTML = state.pendingRegistrations.map(m => {
-    const u = m.users || {};
-    const name = u.full_name || u.email || 'Nouveau Collaborateur';
-    const email = u.email || 'N/A';
-    const matricule = u.registration_number || 'EMP-TEMP';
-    const reqDate = m.created_at ? new Date(m.created_at).toLocaleDateString('fr-FR') : 'Aujourd\'hui';
+  try {
+    const { data, error } = await supabaseClient
+      .from('company_memberships')
+      .select(
+        'id, user_id, company_id, role, status, created_at, ' +
+          'users(id, full_name, email, registration_number, job_title, is_active)'
+      )
+      .eq('company_id', state.currentCompanyId)
+      .eq('status', 'PENDING_APPROVAL')
+      .order('created_at', { ascending: false });
 
-    return `
-      <tr class="border-b border-slate-800/60 hover:bg-slate-800/30 transition text-xs">
-        <td class="p-3.5 text-center">
-          <input type="checkbox" value="${m.id}" onchange="toggleSelectPendingItem('${m.id}', this.checked)" class="pending-item-chk rounded bg-slate-950 border-slate-700 text-emerald-500 focus:ring-0 cursor-pointer">
-        </td>
-        <td class="p-3.5 font-bold text-white flex items-center gap-2">
-          <div class="w-7 h-7 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center font-bold text-xs">
-            ${name.substring(0, 2).toUpperCase()}
-          </div>
-          ${escapeHtml(name)}
-        </td>
-        <td class="p-3.5 text-slate-300 font-mono">${escapeHtml(email)}</td>
-        <td class="p-3.5"><span class="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono font-bold text-[11px]">${escapeHtml(matricule)}</span></td>
-        <td class="p-3.5 text-slate-400 font-mono">${escapeHtml(reqDate)}</td>
-        <td class="p-3.5 text-center"><span class="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-bold">PENDING_APPROVAL</span></td>
-        <td class="p-3.5 text-right space-x-1.5">
-          <button onclick="approveRegistration('${m.id}')" class="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black text-xs font-bold transition shadow-sm">✅ Accepter</button>
-          <button onclick="rejectRegistration('${m.id}')" class="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/40 text-red-300 border border-red-500/40 text-xs font-bold transition">❌ Refuser</button>
-        </td>
-      </tr>
-    `;
-  }).join('');
+    if (error) throw error;
 
-  if (window.lucide) window.lucide.createIcons();
-}
-
-function toggleSelectAllPending(masterChk) {
-  const chks = document.querySelectorAll('.pending-item-chk');
-  chks.forEach(c => c.checked = masterChk.checked);
-}
-
-function toggleSelectPendingItem(id, isChecked) {
-  if (!state.selectedPendingIds) state.selectedPendingIds = [];
-  if (isChecked) {
-    if (!state.selectedPendingIds.includes(id)) state.selectedPendingIds.push(id);
-  } else {
-    state.selectedPendingIds = state.selectedPendingIds.filter(i => i !== id);
+    state.pendingRegistrations = (data || []).map((m) => ({ ...m, users: m.users || {} }));
+  } catch (e) {
+    console.warn("[RH] Chargement des demandes d'inscription impossible :", e);
   }
+
+  renderPendingRegistrationsGrid();
 }
 
+/**
+ * Approuve une demande.
+ *
+ * On met a jour les DEUX sources qui doivent rester coherentes : le statut du
+ * rattachement, et l'activation du compte. On aligne aussi `users.company_id`
+ * sur l'entreprise validee : ce champ derivait vers une autre entreprise, ce
+ * qui aurait fait echouer le pointage de l'employe.
+ */
 async function approveRegistration(membershipId) {
   try {
-    const pendingItem = (state.pendingRegistrations || []).find(m => m.id === membershipId);
-    const targetUserId = pendingItem ? (pendingItem.user_id || pendingItem.id) : membershipId;
+    const item = (state.pendingRegistrations || []).find((m) => m.id === membershipId);
+    const userId = item ? item.user_id || item.id : membershipId;
+    const companyId = (item && item.company_id) || state.currentCompanyId;
 
     if (supabaseClient) {
-      try {
-        await supabaseClient
-          .from('users')
-          .update({ is_active: true })
-          .eq('id', targetUserId);
-      } catch (errDb) {
-        console.warn('Mise à jour statut Supabase:', errDb);
-      }
+      const { error: mErr } = await supabaseClient
+        .from('company_memberships')
+        .update({ status: 'ACTIVE' })
+        .eq('id', membershipId);
+      if (mErr) throw mErr;
+
+      const { error: uErr } = await supabaseClient
+        .from('users')
+        .update({ is_active: true, company_id: companyId })
+        .eq('id', userId);
+      if (uErr) console.warn('[RH] Activation du compte :', uErr);
     }
 
-    if (pendingItem && pendingItem.users) {
-      const u = pendingItem.users;
-      const prefix = state.currentCompanyPrefix || 'EMP';
-      const newMatricule = u.registration_number || `${prefix}-${String((state.employees || []).length + 1).padStart(4, '0')}`;
-      
-      const existingEmp = (state.employees || []).find(e => e.email === u.email || e.matricule === newMatricule);
-      if (!existingEmp) {
-        if (!state.employees) state.employees = [];
-        state.employees.unshift({
-          id: u.id || Date.now(),
-          name: u.full_name || u.email,
-          role: u.job_title || 'Collaborateur',
-          site: 'Siège Principal',
-          status: 'Présent',
-          matricule: newMatricule,
-          arriveTime: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-          method: 'Code Entreprise',
-          distance: '0m',
-          confidence: 99.0,
-          avatar: 'https://images.unsplash.com/photo-1507152832244-10d45c7eda57?w=150&auto=format&fit=crop&q=80'
-        });
-      }
-    }
+    state.pendingRegistrations = (state.pendingRegistrations || []).filter((m) => m.id !== membershipId);
 
-    state.pendingRegistrations = (state.pendingRegistrations || []).filter(m => m.id !== membershipId);
-    savePendingRegistrationsToStorage();
+    showToast(
+      'Membre approuvé',
+      "Le compte est activé et rattaché à votre entreprise. Il apparaît désormais dans votre effectif.",
+      'success'
+    );
 
-    showToast('Membre Approuvé ! 🎉', 'Le compte employé a été activé. Il apparaît désormais dans votre effectif RH.', 'success');
     renderPendingRegistrationsGrid();
+    await loadSupabaseData();
     renderStaffGrid();
     renderDashboard();
   } catch (e) {
-    console.error('Erreur approbation:', e);
-    showToast('Erreur', e.message || 'Impossible d\'approuver la demande.', 'info');
+    console.error('[RH] Approbation impossible :', e);
+    showToast(
+      'Approbation impossible',
+      typeof traduireErreurEcriture === 'function'
+        ? traduireErreurEcriture(e, 'cette demande')
+        : e.message || 'Erreur serveur.',
+      'info',
+      12000
+    );
   }
 }
 
 async function rejectRegistration(membershipId) {
   try {
     if (supabaseClient) {
-      try {
-        await supabaseClient
-          .from('company_memberships')
-          .update({ status: 'REJECTED' })
-          .eq('id', membershipId);
-      } catch (eDb) {
-        console.warn('Refus Supabase:', eDb);
-      }
+      // membershipId est bien l'identifiant du RATTACHEMENT depuis que le
+      // chargement lit company_memberships : le refus cible donc la bonne ligne.
+      const { error } = await supabaseClient
+        .from('company_memberships')
+        .update({ status: 'REJECTED' })
+        .eq('id', membershipId);
+      if (error) throw error;
     }
 
-    state.pendingRegistrations = (state.pendingRegistrations || []).filter(m => m.id !== membershipId);
-    savePendingRegistrationsToStorage();
+    state.pendingRegistrations = (state.pendingRegistrations || []).filter((m) => m.id !== membershipId);
 
-    showToast('Demande Refusée', 'La demande d\'inscription a été refusée.', 'info');
+    showToast('Demande refusée', "La demande d'inscription a été refusée.", 'info');
     renderPendingRegistrationsGrid();
   } catch (e) {
-    showToast('Erreur', e.message || 'Impossible de refuser la demande.', 'info');
+    console.error('[RH] Refus impossible :', e);
+    showToast(
+      'Refus impossible',
+      typeof traduireErreurEcriture === 'function'
+        ? traduireErreurEcriture(e, 'ce refus')
+        : e.message || 'Erreur serveur.',
+      'info',
+      12000
+    );
   }
 }
 
