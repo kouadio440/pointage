@@ -862,6 +862,9 @@ function switchSection(sectionName) {
   if (sectionName === 'pending-approvals' && typeof loadPendingRegistrations === 'function') {
     loadPendingRegistrations();
   }
+  if (sectionName === 'punch' && typeof renderGeofenceSection === 'function') {
+    renderGeofenceSection();
+  }
   if (sectionName === 'punch-config' && typeof renderPunchConfig === 'function') {
     renderPunchConfig();
   }
@@ -1103,11 +1106,80 @@ function renderLatenessTable() {
   `).join('');
 }
 
-// Geofence Radius Slider Update
+// Geofence Interactive Management (Directement connecté à Supabase DB & Sites Entreprise)
+let activeGeofenceSiteId = null;
+
+async function renderGeofenceSection() {
+  const select = document.getElementById('section-punch-site-select');
+  if (!select) return;
+
+  let sites = punchConfig.sites || [];
+  if (sites.length === 0 && supabaseClient && state.currentCompanyId) {
+    const { data } = await supabaseClient
+      .from('geofences')
+      .select('*')
+      .eq('company_id', state.currentCompanyId)
+      .order('name');
+    sites = data || [];
+    punchConfig.sites = sites;
+  }
+
+  if (sites.length === 0) {
+    select.innerHTML = `<option value="">Aucun site créé — Allez dans Config Pointage</option>`;
+    const siteLabel = document.getElementById('section-punch-site-label');
+    if (siteLabel) siteLabel.innerText = 'Aucun site disponible';
+    return;
+  }
+
+  select.innerHTML = sites.map(s => `
+    <option value="${s.id}" ${s.id === activeGeofenceSiteId ? 'selected' : ''}>
+      ${escapeHtml(s.name)} (${s.radius_meters || 100}m)
+    </option>
+  `).join('');
+
+  if (!activeGeofenceSiteId || !sites.some(s => s.id === activeGeofenceSiteId)) {
+    activeGeofenceSiteId = sites[0].id;
+    select.value = activeGeofenceSiteId;
+  }
+
+  updateGeofenceSectionUi();
+}
+
+function onGeofenceSectionSiteChange(siteId) {
+  activeGeofenceSiteId = siteId;
+  updateGeofenceSectionUi();
+}
+
+function updateGeofenceSectionUi() {
+  const sites = punchConfig.sites || [];
+  const site = sites.find(s => String(s.id) === String(activeGeofenceSiteId)) || sites[0];
+  if (!site) return;
+
+  const siteLabel = document.getElementById('section-punch-site-label');
+  const coordsLabel = document.getElementById('section-punch-coords');
+  const radiusLabel = document.getElementById('current-radius-label');
+  const sliderValBadge = document.getElementById('radius-slider-val-badge');
+  const slider = document.getElementById('radius-slider');
+
+  const radius = site.radius_meters || 100;
+  const latStr = site.latitude != null ? Number(site.latitude).toFixed(6) : '5.311050';
+  const lngStr = site.longitude != null ? Number(site.longitude).toFixed(6) : '-4.089587';
+
+  if (siteLabel) siteLabel.innerText = `Site : ${site.name}`;
+  if (coordsLabel) coordsLabel.innerText = `Lat: ${latStr}° N | Long: ${lngStr}° W`;
+  if (radiusLabel) radiusLabel.innerText = `${radius} m`;
+  if (sliderValBadge) sliderValBadge.innerText = `${radius} m`;
+  if (slider) slider.value = radius;
+
+  updateGeofenceRadius(radius);
+}
+
 function updateGeofenceRadius(radiusVal) {
   state.company.geofenceRadius = radiusVal;
   const label = document.getElementById('current-radius-label');
+  const badge = document.getElementById('radius-slider-val-badge');
   if (label) label.innerText = `${radiusVal} m`;
+  if (badge) badge.innerText = `${radiusVal} m`;
 
   const circle = document.getElementById('geofence-visual-circle');
   if (circle) {
@@ -1115,6 +1187,81 @@ function updateGeofenceRadius(radiusVal) {
     circle.style.width = `${size}px`;
     circle.style.height = `${size}px`;
   }
+}
+
+async function saveGeofenceRadiusToDb(radiusVal) {
+  const radiusNum = parseInt(radiusVal, 10);
+  if (!activeGeofenceSiteId || !supabaseClient || !Number.isFinite(radiusNum)) return;
+
+  const site = (punchConfig.sites || []).find(s => String(s.id) === String(activeGeofenceSiteId));
+  const siteName = site ? site.name : 'du site';
+
+  const { error } = await supabaseClient
+    .from('geofences')
+    .update({ radius_meters: radiusNum })
+    .eq('id', activeGeofenceSiteId);
+
+  if (error) {
+    console.error('[Geofence] Erreur sauvegarde rayon :', error);
+    showToast('Modification impossible', traduireErreurEcriture(error, 'le rayon du site'), 'info');
+    return;
+  }
+
+  if (site) site.radius_meters = radiusNum;
+  showToast('Rayon Mis à Jour 🎯', `Le périmètre autorisé du site <strong>${escapeHtml(siteName)}</strong> a été réglé à <strong>${radiusNum} m</strong> dans Supabase.`, 'success', 4000);
+  if (typeof renderPunchConfig === 'function') renderPunchConfig();
+}
+
+async function captureCurrentLocationForSelectedSite() {
+  if (!activeGeofenceSiteId || !supabaseClient) {
+    showToast('Sélectionnez un site', 'Veuillez choisir un site dans la liste ci-dessus.', 'info');
+    return;
+  }
+  if (!navigator.geolocation) {
+    showToast('GPS Indisponible', 'Votre navigateur ou appareil ne supporte pas la géolocalisation.', 'info');
+    return;
+  }
+
+  const site = (punchConfig.sites || []).find(s => String(s.id) === String(activeGeofenceSiteId));
+  const siteName = site ? site.name : 'le site';
+
+  showToast('Géolocalisation en cours 📡', 'Acquisition des coordonnées GPS réelles de votre appareil…', 'info', 4000);
+
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const acc = Math.round(pos.coords.accuracy || 0);
+
+      const { error } = await supabaseClient
+        .from('geofences')
+        .update({
+          latitude: lat,
+          longitude: lng,
+          address: `Coordonnées GPS capturées (Précision ±${acc}m)`
+        })
+        .eq('id', activeGeofenceSiteId);
+
+      if (error) {
+        console.error('[Geofence] Erreur MàJ GPS :', error);
+        return showToast('Erreur Enregistrement GPS', 'Impossible de sauvegarder la position.', 'info');
+      }
+
+      if (site) {
+        site.latitude = lat;
+        site.longitude = lng;
+      }
+
+      updateGeofenceSectionUi();
+      showToast('Position GPS Mise à Jour 📍', `Coordonnées du site <strong>${escapeHtml(siteName)}</strong> actualisées : <code>${lat.toFixed(6)}, ${lng.toFixed(6)}</code> (Précision ±${acc}m).`, 'success', 8000);
+      if (typeof renderPunchConfig === 'function') renderPunchConfig();
+    },
+    (err) => {
+      console.warn('[Geofence] Erreur capture GPS :', err);
+      showToast('Position Introuvable', 'Impossible de lire le GPS. Vérifiez les autorisations de votre navigateur.', 'info');
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+  );
 }
 
 // Dynamic QR Countdown Timer

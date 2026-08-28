@@ -1140,7 +1140,7 @@
       <!-- SUB-SECTION 2: PUNCH GPS -->
       <div id="section-punch" class="sub-section hidden space-y-6">
         <div class="glass-panel p-6 space-y-6">
-          <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+          <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div>
               <h3 class="text-lg font-bold text-white flex items-center gap-2">
                 <i data-lucide="navigation" class="w-5 h-5 text-emerald-400"></i>
@@ -1148,23 +1148,28 @@
               </h3>
               <p class="text-xs text-slate-400">L'employé est localisé au mètre près avec calcul de distance et barrière géographique.</p>
             </div>
-            <button onclick="openPunchModal()" class="px-4 py-2 rounded-xl bg-emerald-500 text-black font-bold text-xs hover:bg-emerald-400 transition flex items-center gap-1.5">
-              <i data-lucide="map-pin" class="w-4 h-4"></i> Lancer Simulateur Pointage
-            </button>
+            
+            <!-- Sélecteur de Site Connecté -->
+            <div class="flex items-center gap-2">
+              <label for="section-punch-site-select" class="text-xs font-semibold text-slate-300">Site de Travail :</label>
+              <select id="section-punch-site-select" onchange="onGeofenceSectionSiteChange(this.value)" class="bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs font-bold text-emerald-400 focus:outline-none focus:border-emerald-500">
+                <option value="">Chargement des sites…</option>
+              </select>
+            </div>
           </div>
 
           <!-- Geofence Interactive Config -->
           <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
-            <!-- Map Visualization Mock -->
+            <!-- Map Visualization -->
             <div class="lg:col-span-7 bg-slate-950 rounded-2xl p-4 border border-slate-800 relative h-72 flex flex-col justify-between overflow-hidden">
               <div class="absolute inset-0 opacity-20 bg-[radial-gradient(#22c55e_1px,transparent_1px)] [background-size:20px_20px]"></div>
               
               <div class="relative z-10 flex justify-between items-start text-xs font-mono">
-                <span class="px-2 py-1 bg-slate-900/90 rounded border border-slate-700 text-emerald-400">
-                  Zone 1 : Siège Social (Périmètre Autorisé)
+                <span id="section-punch-site-label" class="px-2.5 py-1 bg-slate-900/90 rounded-lg border border-emerald-500/40 text-emerald-400 font-bold">
+                  Site : Siege azito
                 </span>
-                <span class="px-2 py-1 bg-slate-900/90 rounded border border-slate-700 text-slate-300">
-                  Rayon : <strong id="current-radius-label" class="text-emerald-400">150 m</strong>
+                <span class="px-2.5 py-1 bg-slate-900/90 rounded-lg border border-slate-700 text-slate-300">
+                  Rayon : <strong id="current-radius-label" class="text-emerald-400">100 m</strong>
                 </span>
               </div>
 
@@ -1179,8 +1184,8 @@
                 </div>
               </div>
 
-              <div class="relative z-10 flex justify-between text-[11px] font-mono text-slate-400">
-                <span>Lat: 5.359942° N | Long: -4.008311° W</span>
+              <div class="relative z-10 flex flex-wrap justify-between text-[11px] font-mono text-slate-400 gap-2">
+                <span id="section-punch-coords">Lat: 5.311050° N | Long: -4.089587° W</span>
                 <span class="text-emerald-400">Précision GPS : ± 4m</span>
               </div>
             </div>
@@ -1188,8 +1193,11 @@
             <!-- Controls -->
             <div class="lg:col-span-5 space-y-4">
               <div class="space-y-2">
-                <label class="text-xs text-slate-300 font-semibold block">Ajuster le Rayon Autorisé (Mètres)</label>
-                <input type="range" id="radius-slider" min="50" max="500" value="150" oninput="updateGeofenceRadius(this.value)" class="w-full accent-emerald-500 bg-slate-800 rounded-lg cursor-pointer" />
+                <div class="flex justify-between text-xs text-slate-300 font-semibold">
+                  <span>Ajuster le Rayon Autorisé (Mètres)</span>
+                  <span id="radius-slider-val-badge" class="text-emerald-400 font-mono font-bold">100 m</span>
+                </div>
+                <input type="range" id="radius-slider" min="50" max="500" value="100" oninput="updateGeofenceRadius(this.value)" onchange="saveGeofenceRadiusToDb(this.value)" class="w-full accent-emerald-500 bg-slate-800 rounded-lg cursor-pointer" />
                 <div class="flex justify-between text-[10px] font-mono text-slate-500">
                   <span>50m (Strict)</span>
                   <span>150m (Recommandé)</span>
@@ -1211,6 +1219,10 @@
                   <span class="font-mono text-orange-400">Refus + Alerte Manager</span>
                 </div>
               </div>
+
+              <button onclick="captureCurrentLocationForSelectedSite()" class="w-full py-2.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/40 text-xs font-bold transition flex items-center justify-center gap-2">
+                <i data-lucide="crosshair" class="w-4 h-4"></i> Capturer Position GPS pour ce Site
+              </button>
             </div>
           </div>
         </div>
