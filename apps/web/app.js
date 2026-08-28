@@ -857,6 +857,11 @@ function switchSection(sectionName) {
 
   // La configuration du pointage est chargée à l'ouverture de son onglet plutôt
   // qu'au démarrage : elle interroge quatre tables et n'intéresse que le RH.
+  // Les demandes d'inscription sont rechargees a l'ouverture de l'onglet :
+  // le RH doit voir l'etat reel du serveur, pas celui du dernier chargement.
+  if (sectionName === 'pending-approvals' && typeof loadPendingRegistrations === 'function') {
+    loadPendingRegistrations();
+  }
   if (sectionName === 'punch-config' && typeof renderPunchConfig === 'function') {
     renderPunchConfig();
   }
@@ -5056,6 +5061,89 @@ async function loadPendingRegistrations() {
 
   renderPendingRegistrationsGrid();
 }
+
+function renderPendingRegistrationsGrid() {
+  const count = state.pendingRegistrations ? state.pendingRegistrations.length : 0;
+
+  const badgeEl = document.getElementById('rh-pending-count-badge');
+  if (badgeEl) badgeEl.innerText = count;
+
+  // Mise à jour de la bannière dans le registre des employés
+  const staffBanner = document.getElementById('staff-pending-banner');
+  const staffCountText = document.getElementById('staff-pending-count-text');
+
+  if (staffBanner && staffCountText) {
+    if (count > 0) {
+      staffCountText.innerText = count;
+      staffBanner.classList.remove('hidden');
+    } else {
+      staffBanner.classList.add('hidden');
+    }
+  }
+
+  const tbody = document.getElementById('rh-pending-requests-body');
+  if (!tbody) return;
+
+  if (count === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" class="p-8 text-center text-slate-500 italic">
+          <i data-lucide="user-check" class="w-8 h-8 text-slate-600 mx-auto mb-2"></i>
+          Aucune demande d'inscription en attente de validation.
+        </td>
+      </tr>
+    `;
+    if (window.lucide) window.lucide.createIcons();
+    return;
+  }
+
+  tbody.innerHTML = state.pendingRegistrations.map(m => {
+    const u = m.users || {};
+    const name = u.full_name || u.email || 'Nouveau Collaborateur';
+    const email = u.email || 'N/A';
+    const matricule = u.registration_number || 'EMP-TEMP';
+    const reqDate = m.created_at ? new Date(m.created_at).toLocaleDateString('fr-FR') : 'Aujourd\'hui';
+
+    return `
+      <tr class="border-b border-slate-800/60 hover:bg-slate-800/30 transition text-xs">
+        <td class="p-3.5 text-center">
+          <input type="checkbox" value="${m.id}" onchange="toggleSelectPendingItem('${m.id}', this.checked)" class="pending-item-chk rounded bg-slate-950 border-slate-700 text-emerald-500 focus:ring-0 cursor-pointer">
+        </td>
+        <td class="p-3.5 font-bold text-white flex items-center gap-2">
+          <div class="w-7 h-7 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center font-bold text-xs">
+            ${name.substring(0, 2).toUpperCase()}
+          </div>
+          ${escapeHtml(name)}
+        </td>
+        <td class="p-3.5 text-slate-300 font-mono">${escapeHtml(email)}</td>
+        <td class="p-3.5"><span class="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono font-bold text-[11px]">${escapeHtml(matricule)}</span></td>
+        <td class="p-3.5 text-slate-400 font-mono">${escapeHtml(reqDate)}</td>
+        <td class="p-3.5 text-center"><span class="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-bold">PENDING_APPROVAL</span></td>
+        <td class="p-3.5 text-right space-x-1.5">
+          <button onclick="approveRegistration('${m.id}')" class="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black text-xs font-bold transition shadow-sm">✅ Accepter</button>
+          <button onclick="rejectRegistration('${m.id}')" class="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/40 text-red-300 border border-red-500/40 text-xs font-bold transition">❌ Refuser</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function toggleSelectAllPending(masterChk) {
+  const chks = document.querySelectorAll('.pending-item-chk');
+  chks.forEach(c => c.checked = masterChk.checked);
+}
+
+function toggleSelectPendingItem(id, isChecked) {
+  if (!state.selectedPendingIds) state.selectedPendingIds = [];
+  if (isChecked) {
+    if (!state.selectedPendingIds.includes(id)) state.selectedPendingIds.push(id);
+  } else {
+    state.selectedPendingIds = state.selectedPendingIds.filter(i => i !== id);
+  }
+}
+
 
 /**
  * Approuve une demande.
