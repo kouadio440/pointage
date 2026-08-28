@@ -1008,38 +1008,93 @@ function filterStaffGrid() {
   if (window.lucide) window.lucide.createIcons();
 }
 
-// Render Leave Requests Table
+function renderLeaveKpis() {
+  const leaves = state.leaves || [];
+  const total = leaves.length;
+  const pending = leaves.filter(l => l.status === 'En attente').length;
+  const approved = leaves.filter(l => l.status === 'Approuvé').length;
+  const rejected = leaves.filter(l => l.status === 'Refusé').length;
+
+  const kpiTotal = document.getElementById('rh-leave-kpi-total');
+  const kpiPending = document.getElementById('rh-leave-kpi-pending');
+  const kpiApproved = document.getElementById('rh-leave-kpi-approved');
+  const kpiRejected = document.getElementById('rh-leave-kpi-rejected');
+
+  if (kpiTotal) kpiTotal.innerText = total;
+  if (kpiPending) kpiPending.innerText = pending;
+  if (kpiApproved) kpiApproved.innerText = approved;
+  if (kpiRejected) kpiRejected.innerText = rejected;
+}
+
+// Render Leave Requests Table avec Rendu et KPIs réels
 function renderLeaveRequestsTable() {
   const tbody = document.getElementById('leave-requests-table');
   if (!tbody) return;
 
   const leaves = state.leaves || [];
+  renderLeaveKpis();
 
   if (leaves.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-500 text-xs font-mono">Aucune demande de congé enregistrée.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-500 text-xs font-mono">Aucune demande de congé enregistrée pour cette entreprise.</td></tr>`;
     return;
   }
 
   tbody.innerHTML = leaves.map(req => `
     <tr class="hover:bg-slate-800/40 transition">
       <td class="p-3 font-bold text-white">${escapeHtml(req.employee)}</td>
-      <td class="p-3 text-cyan-400">${escapeHtml(req.type)}</td>
-      <td class="p-3 text-slate-400">${escapeHtml(req.period)}</td>
-      <td class="p-3">${req.days} Jours</td>
+      <td class="p-3 text-cyan-400 font-bold">${escapeHtml(req.type)}</td>
+      <td class="p-3 text-slate-300 font-mono">${escapeHtml(req.period || `${req.startDate || ''} au ${req.endDate || ''}`)}</td>
+      <td class="p-3 font-mono font-bold text-white">${req.days} Jours</td>
       <td class="p-3 text-slate-300">${escapeHtml(req.reason)}</td>
       <td class="p-3">
-        <span class="${req.status === 'Approuvé' ? 'badge-verified' : 'badge-alert'} px-2 py-0.5 rounded text-[10px]">
+        <span class="${req.status === 'Approuvé' ? 'badge-verified' : (req.status === 'Refusé' ? 'badge-danger' : 'badge-alert')} px-2 py-0.5 rounded text-[10px] font-bold">
           ${escapeHtml(req.status)}
         </span>
       </td>
-      <td class="p-3 text-right">
+      <td class="p-3 text-right space-x-1">
         ${req.status === 'En attente' ? `
-          <button onclick="approveLeave(${req.id})" class="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/30 mr-1 text-[10px]">Approuver</button>
-          <button onclick="rejectLeave(${req.id})" class="px-2 py-1 rounded bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 text-[10px]">Refuser</button>
-        ` : '<span class="text-slate-500 text-[10px]">Aucune action</span>'}
+          <button onclick="approveLeave('${escapeHtml(String(req.id))}')" class="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black text-xs font-bold transition shadow-sm">✅ Approuver</button>
+          <button onclick="rejectLeave('${escapeHtml(String(req.id))}')" class="px-2.5 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/40 text-red-300 border border-red-500/40 text-xs font-bold transition">❌ Refuser</button>
+        ` : `<span class="text-slate-500 text-[10px] font-mono">Déjà ${escapeHtml(req.status)}</span>`}
       </td>
     </tr>
   `).join('');
+}
+
+async function approveLeave(leaveId) {
+  const req = (state.leaves || []).find(l => String(l.id) === String(leaveId));
+  if (!req) return;
+
+  req.status = 'Approuvé';
+
+  if (supabaseClient) {
+    try {
+      await supabaseClient.from('leaves').update({ status: 'Approuvé' }).eq('id', leaveId);
+    } catch (e) {}
+  }
+
+  showToast('Demande Approuvée ✅', `La demande de congé de <strong>${escapeHtml(req.employee)}</strong> a été validée.`, 'success');
+  renderLeaveRequestsTable();
+  if (typeof renderEmployeeDashboard === 'function') renderEmployeeDashboard();
+  renderDashboard();
+}
+
+async function rejectLeave(leaveId) {
+  const req = (state.leaves || []).find(l => String(l.id) === String(leaveId));
+  if (!req) return;
+
+  req.status = 'Refusé';
+
+  if (supabaseClient) {
+    try {
+      await supabaseClient.from('leaves').update({ status: 'Refusé' }).eq('id', leaveId);
+    } catch (e) {}
+  }
+
+  showToast('Demande Refusée ❌', `La demande de congé de <strong>${escapeHtml(req.employee)}</strong> a été refusée.`, 'info');
+  renderLeaveRequestsTable();
+  if (typeof renderEmployeeDashboard === 'function') renderEmployeeDashboard();
+  renderDashboard();
 }
 
 // Render Overtime Table
@@ -1360,12 +1415,111 @@ function resetPunchScanUI() {
 }
 
 function openLeaveModal() {
-  document.getElementById('modal-leave').classList.remove('hidden');
-  document.getElementById('modal-leave').classList.add('flex');
+  const modal = document.getElementById('modal-leave');
+  const todayStr = new Date().toISOString().split('T')[0];
+  const nextStr = new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0];
+
+  const startEl = document.getElementById('leave-start');
+  const endEl = document.getElementById('leave-end');
+  if (startEl && !startEl.value) startEl.value = todayStr;
+  if (endEl && !endEl.value) endEl.value = nextStr;
+
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  }
 }
+
 function closeLeaveModal() {
-  document.getElementById('modal-leave').classList.add('hidden');
-  document.getElementById('modal-leave').classList.remove('flex');
+  const modal = document.getElementById('modal-leave');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+
+async function submitLeaveRequest() {
+  const typeVal = document.getElementById('leave-type')?.value || 'Congé Payé Annuel';
+  const startVal = document.getElementById('leave-start')?.value;
+  const endVal = document.getElementById('leave-end')?.value;
+  const reasonVal = document.getElementById('leave-reason')?.value.trim();
+
+  if (!startVal || !endVal) {
+    showToast('Champs Requis', 'Veuillez saisir une date de début et une date de fin.', 'info');
+    return;
+  }
+
+  const startDate = new Date(startVal);
+  const endDate = new Date(endVal);
+  if (endDate < startDate) {
+    showToast('Dates Invalides', 'La date de fin ne peut pas être antérieure à la date de début.', 'info');
+    return;
+  }
+
+  const diffTime = Math.abs(endDate - startDate);
+  const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+
+  const currentEmp = state.currentUser || {};
+  const empName = currentEmp.fullName || currentEmp.email || 'Employé';
+  const userId = currentEmp.id || null;
+  const userEmail = currentEmp.email || null;
+  const companyId = state.currentCompanyId || null;
+
+  const leavePayload = {
+    company_id: companyId,
+    user_id: userId,
+    user_email: userEmail,
+    employee: empName,
+    type: typeVal,
+    start_date: startVal,
+    end_date: endVal,
+    period: `${startVal} au ${endVal}`,
+    days: days,
+    reason: reasonVal || 'Demande personnelle',
+    status: 'En attente'
+  };
+
+  let newId = 'leave-' + Date.now();
+
+  if (supabaseClient && companyId) {
+    try {
+      const { data, error } = await supabaseClient.from('leaves').insert(leavePayload).select('id').maybeSingle();
+      if (!error && data) {
+        newId = data.id;
+      }
+    } catch (e) {
+      console.warn('[Supabase] Erreur enregistrement congé :', e);
+    }
+  }
+
+  const newLeaveItem = {
+    id: newId,
+    userId: userId,
+    userEmail: userEmail,
+    employee: empName,
+    type: typeVal,
+    startDate: startVal,
+    endDate: endVal,
+    period: `${startVal} au ${endVal}`,
+    days: days,
+    reason: reasonVal || 'Demande personnelle',
+    status: 'En attente'
+  };
+
+  if (!state.leaves) state.leaves = [];
+  state.leaves.unshift(newLeaveItem);
+
+  closeLeaveModal();
+  showToast(
+    'Demande Transmise 🎉',
+    `Votre demande de congé (<strong>${days} jour(s)</strong>) a été enregistrée et transmise au RH.`,
+    'success',
+    6000
+  );
+
+  if (typeof renderEmployeeDashboard === 'function') renderEmployeeDashboard();
+  if (typeof renderLeaveRequestsTable === 'function') renderLeaveRequestsTable();
+  if (typeof renderDashboard === 'function') renderDashboard();
 }
 
 function openOvertimeModal() {
@@ -6020,8 +6174,40 @@ async function loadSupabaseData() {
       console.warn('Notice chargement attendances Supabase:', errAtt);
     }
 
+    // 5. Charger la table des demandes de congés (leaves) depuis Supabase
+    try {
+      let leaveQuery = supabaseClient
+        .from('leaves')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (state.currentCompanyId) {
+        leaveQuery = leaveQuery.eq('company_id', state.currentCompanyId);
+      }
+
+      const { data: leavesData } = await leaveQuery;
+      if (leavesData && leavesData.length > 0) {
+        state.leaves = leavesData.map(l => ({
+          id: l.id,
+          userId: l.user_id,
+          userEmail: l.user_email || '',
+          employee: l.employee || 'Employé',
+          type: l.type || 'Congé Payé Annuel',
+          startDate: l.start_date || '',
+          endDate: l.end_date || '',
+          period: l.period || `${l.start_date || ''} au ${l.end_date || ''}`,
+          days: l.days || 1,
+          reason: l.reason || 'Demande personnelle',
+          status: l.status || 'En attente'
+        }));
+      }
+    } catch (errLeaves) {
+      console.warn('Notice chargement congés Supabase:', errLeaves);
+    }
+
     renderSaasDashboard();
     renderEmployeeDashboard();
+    renderLeaveRequestsTable();
 
     // La configuration de pointage vient du Cockpit RH. On la charge ici pour
     // que les boutons du Dashboard Employé reflètent immédiatement l'état réel
