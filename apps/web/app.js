@@ -869,45 +869,66 @@ function switchSection(sectionName) {
 
 // Render Dashboard Data & Live Feed
 function renderDashboard() {
-  const presentsCount = state.employees.filter(e => e.status === 'Présent').length;
-  const retardsCount = state.employees.filter(e => e.status === 'Retard').length;
-  const congesCount = state.employees.filter(e => e.status === 'En Congé').length;
-  const absentsCount = state.employees.filter(e => e.status === 'Absent').length;
+  const attendances = state.attendances || [];
+  const employees = state.employees || [];
 
-  document.getElementById('kpi-total').innerText = state.employees.length;
-  document.getElementById('kpi-presents').innerText = presentsCount;
-  document.getElementById('kpi-retards').innerText = retardsCount;
-  document.getElementById('kpi-conges').innerText = congesCount;
+  const presentsCount = attendances.filter(a => a.decision === 'ACCEPTED' || a.status === 'Présent' || a.status === 'on_time').length;
+  const retardsCount = attendances.filter(a => a.status === 'Retard' || a.status === 'late').length;
+  const congesCount = (state.leaves || []).filter(l => l.status === 'Approuvé').length;
 
-  // Render Live Feed Table
+  const kpiTotalEl = document.getElementById('kpi-total');
+  const kpiPresentsEl = document.getElementById('kpi-presents');
+  const kpiRetardsEl = document.getElementById('kpi-retards');
+  const kpiCongesEl = document.getElementById('kpi-conges');
+
+  if (kpiTotalEl) kpiTotalEl.innerText = employees.length;
+  if (kpiPresentsEl) kpiPresentsEl.innerText = presentsCount;
+  if (kpiRetardsEl) kpiRetardsEl.innerText = retardsCount;
+  if (kpiCongesEl) kpiCongesEl.innerText = congesCount;
+
+  // Render Live Feed Table avec les vrais pointages Supabase
   const tableBody = document.getElementById('live-punch-table');
   if (tableBody) {
-    if (state.employees.length === 0) {
+    if (attendances.length === 0) {
       tableBody.innerHTML = `
         <tr>
           <td colspan="5" class="p-6 text-center text-slate-500 text-xs font-mono">
-            Aucun pointage en direct enregistré dans Supabase. Les nouveaux pointages s'afficheront ici.
+            Aucun pointage enregistré pour cette entreprise. Les nouveaux pointages s'afficheront ici en temps réel.
           </td>
         </tr>
       `;
     } else {
-      tableBody.innerHTML = state.employees.map(emp => {
+      tableBody.innerHTML = attendances.map(att => {
         let statusBadge = '';
-        if (emp.status === 'Présent') statusBadge = '<span class="badge-verified px-2 py-0.5 rounded text-[10px]">Présent (À l\'heure)</span>';
-        else if (emp.status === 'Retard') statusBadge = '<span class="badge-alert px-2 py-0.5 rounded text-[10px]">Retard</span>';
-        else if (emp.status === 'En Congé') statusBadge = '<span class="badge-info px-2 py-0.5 rounded text-[10px]">En Congé</span>';
-        else statusBadge = '<span class="badge-danger px-2 py-0.5 rounded text-[10px]">Absent</span>';
+        if (att.decision === 'ACCEPTED' || att.status === 'Présent' || att.status === 'on_time') {
+          statusBadge = '<span class="badge-verified px-2 py-0.5 rounded text-[10px]">Présent (À l\'heure)</span>';
+        } else if (att.status === 'Retard' || att.status === 'late') {
+          statusBadge = '<span class="badge-alert px-2 py-0.5 rounded text-[10px]">Retard</span>';
+        } else if (att.decision === 'REJECTED') {
+          statusBadge = '<span class="badge-danger px-2 py-0.5 rounded text-[10px]">Refusé</span>';
+        } else {
+          statusBadge = `<span class="badge-info px-2 py-0.5 rounded text-[10px]">${escapeHtml(att.status || 'Enregistré')}</span>`;
+        }
+
+        const distanceDisplay = att.distanceFromSiteM != null ? `${Math.round(att.distanceFromSiteM)} m` : '0 m';
 
         return `
-          <tr class="hover:bg-slate-800/40 transition">
+          <tr onclick="openAttendanceDetail('${escapeHtml(String(att.id))}')" class="hover:bg-slate-800/60 transition cursor-pointer group" title="Cliquer pour voir toutes les caractéristiques du pointage">
             <td class="p-2.5 flex items-center space-x-2">
-              <img src="${escapeHtml(emp.avatar)}" class="w-6 h-6 rounded-full object-cover border border-slate-700" alt="${escapeHtml(emp.name)}" />
-              <span class="font-bold text-white">${escapeHtml(emp.name)}</span>
+              <div class="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center font-bold text-[10px]">
+                ${escapeHtml((att.employee || 'E').substring(0, 2).toUpperCase())}
+              </div>
+              <span class="font-bold text-white group-hover:text-cyan-400 transition">${escapeHtml(att.employee || 'Employé')}</span>
             </td>
-            <td class="p-2.5 font-mono text-slate-300">${escapeHtml(emp.arriveTime)}</td>
-            <td class="p-2.5 text-slate-400">${escapeHtml(emp.method)}</td>
-            <td class="p-2.5 text-emerald-400">${escapeHtml(emp.distance)}</td>
-            <td class="p-2.5">${statusBadge}</td>
+            <td class="p-2.5 font-mono text-slate-300">${escapeHtml(att.clockIn || '--:--')}</td>
+            <td class="p-2.5 text-slate-400 font-mono text-[11px]">${escapeHtml(att.method || att.methodUsed || 'GPS Supabase')}</td>
+            <td class="p-2.5 text-emerald-400 font-mono">${escapeHtml(distanceDisplay)}</td>
+            <td class="p-2.5 flex items-center justify-between">
+              ${statusBadge}
+              <button type="button" class="ml-2 px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20 text-[10px] font-mono transition">
+                🔍 Caractéristiques
+              </button>
+            </td>
           </tr>
         `;
       }).join('');
@@ -989,12 +1010,14 @@ function renderLeaveRequestsTable() {
   const tbody = document.getElementById('leave-requests-table');
   if (!tbody) return;
 
-  if (state.leaves.length === 0) {
+  const leaves = state.leaves || [];
+
+  if (leaves.length === 0) {
     tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-500 text-xs font-mono">Aucune demande de congé enregistrée.</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = state.leaves.map(req => `
+  tbody.innerHTML = leaves.map(req => `
     <tr class="hover:bg-slate-800/40 transition">
       <td class="p-3 font-bold text-white">${escapeHtml(req.employee)}</td>
       <td class="p-3 text-cyan-400">${escapeHtml(req.type)}</td>
@@ -1021,12 +1044,14 @@ function renderOvertimeTable() {
   const tbody = document.getElementById('overtime-table');
   if (!tbody) return;
 
-  if (state.overtimes.length === 0) {
+  const overtimes = state.overtimes || [];
+
+  if (overtimes.length === 0) {
     tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-500 text-xs font-mono">Aucune déclaration d'heures supplémentaires.</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = state.overtimes.map(ot => `
+  tbody.innerHTML = overtimes.map(ot => `
     <tr class="hover:bg-slate-800/40 transition">
       <td class="p-3 font-bold text-white">${escapeHtml(ot.employee)}</td>
       <td class="p-3 text-slate-400">${escapeHtml(ot.date)}</td>
@@ -1048,27 +1073,31 @@ function renderOvertimeTable() {
   `).join('');
 }
 
-// Render Lateness Table
+// Render Lateness Table avec les retards réels de Supabase
 function renderLatenessTable() {
   const tbody = document.getElementById('lateness-table');
   if (!tbody) return;
 
-  if (state.latenesses.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-500 text-xs font-mono">Aucun retard enregistré.</td></tr>`;
+  const latenesses = (state.attendances || []).filter(a => a.status === 'Retard' || a.status === 'late');
+
+  if (latenesses.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-500 text-xs font-mono">Aucun retard enregistré pour cette entreprise.</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = state.latenesses.map(lat => `
+  tbody.innerHTML = latenesses.map(lat => `
     <tr class="hover:bg-slate-800/40 transition">
-      <td class="p-3 font-bold text-white">${escapeHtml(lat.employee)}</td>
-      <td class="p-3 text-slate-400">${escapeHtml(lat.date)}</td>
-      <td class="p-3 text-slate-400">${escapeHtml(lat.scheduled)}</td>
-      <td class="p-3 text-orange-400 font-bold">${escapeHtml(lat.actual)}</td>
-      <td class="p-3 text-orange-400 font-bold">+${lat.minutes} min</td>
-      <td class="p-3 text-slate-300">${escapeHtml(lat.justification)}</td>
-      <td class="p-3"><span class="badge-alert px-2 py-0.5 rounded text-[10px]">${escapeHtml(lat.status)}</span></td>
+      <td class="p-3 font-bold text-white">${escapeHtml(lat.employee || 'Employé')}</td>
+      <td class="p-3 text-slate-400">${escapeHtml(lat.date || '')}</td>
+      <td class="p-3 text-slate-400 font-mono">08:00</td>
+      <td class="p-3 text-orange-400 font-bold font-mono">${escapeHtml(lat.clockIn || '--:--')}</td>
+      <td class="p-3 text-orange-400 font-bold">Retard</td>
+      <td class="p-3 text-slate-300">Pointage hors horaire prévu</td>
+      <td class="p-3"><span class="badge-alert px-2 py-0.5 rounded text-[10px]">Signalé</span></td>
       <td class="p-3 text-right">
-        <button onclick="acceptJustification(${lat.id})" class="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px]">Accepter Motifs</button>
+        <button onclick="openAttendanceDetail('${escapeHtml(String(lat.id))}')" class="px-2 py-1 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/30 text-[10px] font-mono transition">
+          🔍 Caractéristiques
+        </button>
       </td>
     </tr>
   `).join('');
