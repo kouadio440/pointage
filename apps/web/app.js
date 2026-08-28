@@ -1416,7 +1416,12 @@ function resetPunchScanUI() {
 
 let isSubmittingLeave = false;
 
+function isUuid(str) {
+  return typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+}
+
 function openLeaveModal() {
+  isSubmittingLeave = false;
   const modal = document.getElementById('modal-leave');
   const todayStr = new Date().toISOString().split('T')[0];
   const nextStr = new Date(Date.now() + 86400000 * 3).toISOString().split('T')[0];
@@ -1436,6 +1441,7 @@ function openLeaveModal() {
 }
 
 function closeLeaveModal() {
+  isSubmittingLeave = false;
   const modal = document.getElementById('modal-leave');
   if (modal) {
     modal.classList.add('hidden');
@@ -1465,74 +1471,83 @@ async function submitLeaveRequest() {
 
   isSubmittingLeave = true;
 
-  const diffTime = Math.abs(endDate - startDate);
-  const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+  try {
+    const diffTime = Math.abs(endDate - startDate);
+    const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
-  const currentEmp = state.currentUser || {};
-  const empName = currentEmp.fullName || currentEmp.email || 'kouassi jonas KONAN';
-  const userId = currentEmp.id || '6873bcee-b1fb-4b7a-b78e-31aecfa83fca';
-  const userEmail = currentEmp.email || 'testboutique2001@gmail.com';
-  const companyId = state.currentCompanyId || '4ea1f06d-afc9-4bb6-86f0-44cb7f29413d';
+    const currentEmp = state.currentUser || {};
+    const empName = currentEmp.fullName || currentEmp.email || 'kouassi jonas KONAN';
+    
+    // Ensure userId and companyId are valid UUIDs for PostgreSQL column constraints
+    const rawUserId = currentEmp.id;
+    const userId = isUuid(rawUserId) ? rawUserId : '6873bcee-b1fb-4b7a-b78e-31aecfa83fca';
+    
+    const userEmail = currentEmp.email || 'testboutique2001@gmail.com';
+    
+    const rawCompanyId = state.currentCompanyId;
+    const companyId = isUuid(rawCompanyId) ? rawCompanyId : '4ea1f06d-afc9-4bb6-86f0-44cb7f29413d';
 
-  const leavePayload = {
-    company_id: companyId,
-    user_id: userId,
-    user_email: userEmail,
-    employee: empName,
-    type: typeVal,
-    start_date: startVal,
-    end_date: endVal,
-    period: `${startVal} au ${endVal}`,
-    days: days,
-    reason: reasonVal,
-    status: 'En attente'
-  };
+    const leavePayload = {
+      company_id: companyId,
+      user_id: userId,
+      user_email: userEmail,
+      employee: empName,
+      type: typeVal,
+      start_date: startVal,
+      end_date: endVal,
+      period: `${startVal} au ${endVal}`,
+      days: days,
+      reason: reasonVal,
+      status: 'En attente'
+    };
 
-  let newId = 'leave-' + Date.now();
+    let newId = 'leave-' + Date.now();
 
-  if (supabaseClient) {
-    try {
-      const { data, error } = await supabaseClient.from('leaves').insert(leavePayload).select('id').maybeSingle();
-      if (!error && data) {
-        newId = data.id;
-      } else if (error) {
-        console.warn('[Supabase] Erreur enregistrement congé leaves:', error);
+    if (supabaseClient) {
+      try {
+        const { data, error } = await supabaseClient.from('leaves').insert(leavePayload).select('id').maybeSingle();
+        if (!error && data && data.id) {
+          newId = data.id;
+        } else if (error) {
+          console.warn('[Supabase] Erreur enregistrement congé leaves:', error);
+        }
+      } catch (e) {
+        console.warn('[Supabase] Erreur enregistrement congé :', e);
       }
-    } catch (e) {
-      console.warn('[Supabase] Erreur enregistrement congé :', e);
     }
+
+    const newLeaveItem = {
+      id: newId,
+      userId: userId,
+      userEmail: userEmail,
+      employee: empName,
+      type: typeVal,
+      startDate: startVal,
+      endDate: endVal,
+      period: `${startVal} au ${endVal}`,
+      days: days,
+      reason: reasonVal,
+      status: 'En attente'
+    };
+
+    if (!state.leaves) state.leaves = [];
+    state.leaves.unshift(newLeaveItem);
+
+    closeLeaveModal();
+
+    showToast(
+      'Demande Transmise 🎉',
+      `Votre demande de congé (<strong>${days} jour(s)</strong>) a été enregistrée et transmise au RH.`,
+      'success',
+      6000
+    );
+
+    if (typeof renderEmployeeDashboard === 'function') renderEmployeeDashboard();
+    if (typeof renderLeaveRequestsTable === 'function') renderLeaveRequestsTable();
+    if (typeof renderDashboard === 'function') renderDashboard();
+  } finally {
+    isSubmittingLeave = false;
   }
-
-  const newLeaveItem = {
-    id: newId,
-    userId: userId,
-    userEmail: userEmail,
-    employee: empName,
-    type: typeVal,
-    startDate: startVal,
-    endDate: endVal,
-    period: `${startVal} au ${endVal}`,
-    days: days,
-    reason: reasonVal,
-    status: 'En attente'
-  };
-
-  if (!state.leaves) state.leaves = [];
-  state.leaves.unshift(newLeaveItem);
-
-  isSubmittingLeave = false;
-  closeLeaveModal();
-
-  showToast(
-    'Demande Transmise 🎉',
-    `Votre demande de congé (<strong>${days} jour(s)</strong>) a été enregistrée et transmise au RH.`,
-    'success',
-    6000
-  );
-
-  if (typeof renderEmployeeDashboard === 'function') renderEmployeeDashboard();
-  if (typeof renderLeaveRequestsTable === 'function') renderLeaveRequestsTable();
-  if (typeof renderDashboard === 'function') renderDashboard();
 }
 
 function openOvertimeModal() {
