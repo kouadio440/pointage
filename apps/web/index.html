@@ -150,7 +150,7 @@
   </header>
 
   <!-- MAIN NAVIGATION BAR (RESPONSIVE WITH BURGER MENU) -->
-  <nav class="max-w-7xl mx-auto px-4 sm:px-6 mt-3 sticky top-12 z-40">
+  <nav class="max-w-7xl mx-auto px-4 sm:px-6 mt-3 sticky top-14 sm:top-12 z-50">
     <div class="glass-pill px-4 py-2 flex items-center justify-between shadow-xl border border-[var(--border-subtle)] relative">
       <!-- Logo & Brand -->
       <div class="flex items-center space-x-2.5 cursor-pointer" onclick="switchView('hero')">
@@ -164,7 +164,9 @@
           </h1>
           <p class="text-[9px] text-[var(--color-muted)] font-mono hidden sm:block">Plateforme SaaS Anti-Fraude</p>
         </div>
-            <!-- DESKTOP NAVIGATION VIEWS (hidden on mobile, visible on md+) -->
+      </div>
+
+      <!-- DESKTOP NAVIGATION VIEWS (hidden on mobile, visible on md+) -->
       <div class="hidden md:flex items-center space-x-1 bg-slate-900/90 p-1 rounded-full border border-slate-800/80">
         <button id="btn-view-hero" onclick="switchView('hero')" class="nav-view-btn px-3 py-1 rounded-full text-xs font-semibold text-slate-300 hover:text-white transition">
           Accueil Vitrine
@@ -194,13 +196,13 @@
       </div>
 
       <!-- MOBILE HAMBURGER BUTTON (visible on mobile only) -->
-      <button id="mobile-menu-btn" onclick="toggleMobileMenu()" class="md:hidden p-2 rounded-lg bg-slate-900/90 text-amber-400 border border-slate-800 hover:bg-slate-800 transition focus:outline-none" aria-label="Menu Mobile">
+      <button id="mobile-menu-btn" onclick="toggleMobileMenu()" class="md:hidden p-2.5 rounded-lg bg-slate-900/95 text-amber-400 border border-slate-800 hover:bg-slate-800 transition focus:outline-none relative z-50 cursor-pointer select-none" aria-label="Menu Mobile">
         <i data-lucide="menu" class="w-5 h-5"></i>
       </button>
     </div>
 
     <!-- MOBILE BURGER MENU DROPDOWN -->
-    <div id="mobile-menu" class="hidden md:hidden mt-2 glass-panel p-4 space-y-3 border border-slate-800/80 shadow-2xl rounded-2xl animate-in fade-in slide-in-from-top-2 duration-200">
+    <div id="mobile-menu" class="hidden md:hidden mt-2 glass-panel p-4 space-y-3 border border-slate-800/80 shadow-2xl rounded-2xl animate-in fade-in slide-in-from-top-2 duration-200 relative z-50 bg-slate-900/95 backdrop-blur-xl">
       <div class="text-[10px] font-mono font-semibold text-slate-500 uppercase tracking-wider px-2">Vues Principales</div>
       <div class="space-y-1">
         <button onclick="switchView('hero')" class="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-slate-800/80 flex items-center justify-between">
@@ -290,13 +292,9 @@
 
           <!-- Action Buttons -->
           <div class="flex flex-wrap items-center gap-4 pt-2">
-            <button onclick="switchView('dashboard')" class="magnetic-btn px-6 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white font-bold text-sm flex items-center gap-2 shadow-xl shadow-amber-500/25">
-              <i data-lucide="building-2" class="w-4 h-4 text-amber-950 font-bold"></i>
-              Dashboard Employeur
-            </button>
-            <button onclick="switchView('employee')" class="px-6 py-3.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-bold text-sm border border-emerald-500/40 flex items-center gap-2 transition glow-green">
-              <i data-lucide="user-check" class="w-4 h-4 text-emerald-400"></i>
-              Dashboard Employé
+            <button onclick="openAuthModal('login')" class="magnetic-btn px-7 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white font-bold text-sm flex items-center gap-2.5 shadow-xl shadow-orange-500/25 transition transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer">
+              <span>Commencer</span>
+              <i data-lucide="arrow-right" class="w-4 h-4 text-white"></i>
             </button>
             <button onclick="openPunchModal()" class="px-6 py-3.5 rounded-xl bg-[var(--border-subtle)] hover:bg-[var(--border-accent)] text-[var(--color-offwhite)] font-semibold text-sm border border-[var(--border-subtle)] flex items-center gap-2 transition">
               <i data-lucide="play" class="w-4 h-4 fill-white"></i>
@@ -859,80 +857,100 @@
     <section id="view-dashboard" class="view-section hidden space-y-6">
 
       <!-- Dashboard Header avec Entreprise & Utilisateur Connecté -->
-      <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800/80 pb-4 bg-slate-900/60 p-4 rounded-2xl border border-slate-800/80 shadow-lg">
-        <div class="space-y-2">
-          <!-- Nom de l'Entreprise Connectée & Titre Cockpit -->
-          <div class="flex flex-wrap items-center gap-3">
-            <div class="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 px-3.5 py-1.5 rounded-xl shadow-sm">
-              <i data-lucide="building-2" class="w-5 h-5 text-amber-400"></i>
-              <span id="dash-company-name" class="text-base font-extrabold text-amber-300 tracking-wide">Entreprise</span>
-            </div>
-            
-            <span class="text-slate-600 font-bold hidden sm:inline">•</span>
-            
-            <h2 class="text-xl font-extrabold text-white flex items-center gap-2">
-              Cockpit Client RH
-              <span class="text-xs font-mono font-normal text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full hidden md:inline-block">Zone Principale HQ</span>
-            </h2>
-          </div>
+      <div class="glass-panel p-4 sm:p-5 space-y-4 border border-slate-800/80 shadow-xl bg-slate-900/80 backdrop-blur-xl rounded-2xl">
+        
+        <!-- ROW 1: Identity & Session Bar -->
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/70 pb-3">
           
-          <!-- Responsable Connecté (CEO / RH) -->
-          <div class="flex flex-wrap items-center gap-2 text-xs">
-            <div class="flex items-center gap-2 bg-slate-800/90 border border-slate-700/80 px-3 py-1 rounded-xl shadow-inner">
-              <i data-lucide="user-check" class="w-4 h-4 text-emerald-400"></i>
-              <span class="text-slate-400">Connecté(e) :</span>
-              <strong id="dash-user-name" class="text-white font-bold">Non connecté</strong>
-              <span id="rh-cockpit-role-badge"></span>
+          <!-- Left: Company Brand & Cockpit Title -->
+          <div class="flex items-center gap-2.5 min-w-0 flex-1">
+            <div class="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-xl shadow-sm shrink-0">
+              <i data-lucide="building-2" class="w-4 h-4 text-amber-400"></i>
+              <span id="dash-company-name" class="text-xs sm:text-sm font-extrabold text-amber-300 tracking-wide truncate max-w-[140px] xs:max-w-[180px] sm:max-w-xs">Entreprise</span>
             </div>
             
-            <span class="text-slate-500 hidden lg:inline">•</span>
-            <p class="text-xs text-slate-400 hidden lg:inline">Espace Responsables : Suivi direct de l'effectif, retards, congés et alertes anti-fraude.</p>
+            <span class="text-slate-700 font-bold hidden sm:inline">•</span>
+            
+            <div class="min-w-0">
+              <h2 class="text-sm sm:text-lg font-extrabold text-white tracking-tight truncate flex items-center gap-2">
+                Cockpit Client RH
+                <span class="text-[10px] font-mono font-normal text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full hidden md:inline-block">Zone HQ</span>
+              </h2>
+            </div>
           </div>
 
-          <!-- Code Entreprise Public & Raccourcis Connexion Employé -->
-          <div class="flex flex-wrap items-center gap-2 pt-1">
-            <div class="flex items-center gap-2 bg-slate-950/90 border border-amber-500/40 px-3 py-1.5 rounded-xl shadow-inner text-xs">
-              <i data-lucide="key-round" class="w-4 h-4 text-amber-400"></i>
-              <span class="text-slate-400 font-medium">Code Connexion Employé :</span>
-              <strong id="dash-header-company-code" class="text-amber-300 font-mono font-extrabold tracking-wider text-sm">WD-7K9P-X4M2</strong>
+          <!-- Right: Connected User Info & Prominent Logout Button -->
+          <div class="flex items-center gap-2 shrink-0">
+            <div class="flex items-center gap-1.5 bg-slate-800/90 border border-slate-700/80 px-2.5 py-1 rounded-xl shadow-inner text-xs max-w-[200px] xs:max-w-[260px] sm:max-w-none">
+              <i data-lucide="user-check" class="w-3.5 h-3.5 text-emerald-400 shrink-0"></i>
+              <span class="text-slate-400 hidden xs:inline">Connecté :</span>
+              <strong id="dash-user-name" class="text-white font-bold truncate">Non connecté</strong>
+              <span id="rh-cockpit-role-badge" class="shrink-0"></span>
             </div>
-
-            <div class="flex items-center gap-1">
-              <button onclick="copyCompanyCode()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold transition flex items-center gap-1" title="Copier le code entreprise">
-                <i data-lucide="copy" class="w-3.5 h-3.5 text-amber-400"></i> Copier Code
-              </button>
-              <button onclick="copyCompanyJoinLink()" class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-[11px] font-bold transition flex items-center gap-1" title="Copier le lien d'auto-inscription">
-                <i data-lucide="link" class="w-3.5 h-3.5 text-amber-400"></i> Copier Lien
-              </button>
-              <button onclick="openCompanyQrModal()" class="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold transition flex items-center gap-1" title="Afficher le QR Code d'inscription">
-                <i data-lucide="qr-code" class="w-3.5 h-3.5"></i> QR Code
-              </button>
-            </div>
+            
+            <!-- Dedicated Logout Button -->
+            <button onclick="handleLogout()" class="min-h-tap px-3 py-1.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-500/40 transition flex items-center gap-1.5 text-xs font-bold shrink-0 shadow-sm" title="Se déconnecter de la session">
+              <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+              <span class="hidden xs:inline">Déconnexion</span>
+            </button>
           </div>
         </div>
 
-        <!-- Filters & Actions -->
-        <div class="flex items-center space-x-2">
-          <button onclick="openAddEmployeeModal()" class="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs flex items-center gap-1.5 transition shadow-lg shadow-emerald-500/20">
+        <!-- ROW 2: Employee Code & Quick Share Bar -->
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-3 items-center bg-slate-950/70 p-3 rounded-xl border border-amber-500/20">
+          <div class="md:col-span-6 flex items-center gap-2 text-xs min-w-0">
+            <div class="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <i data-lucide="key-round" class="w-4 h-4"></i>
+            </div>
+            <div class="min-w-0">
+              <span class="text-slate-400 text-[11px] block leading-none mb-0.5">Code Connexion Employé</span>
+              <strong id="dash-header-company-code" class="text-amber-300 font-mono font-extrabold tracking-wider text-sm sm:text-base">WD-7K9P-X4M2</strong>
+            </div>
+          </div>
+
+          <div class="md:col-span-6 grid grid-cols-3 gap-1.5 sm:flex sm:items-center sm:justify-end sm:gap-2">
+            <button onclick="copyCompanyCode()" class="w-full sm:w-auto px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold transition flex items-center justify-center gap-1 shadow-sm" title="Copier le code entreprise">
+              <i data-lucide="copy" class="w-3.5 h-3.5 text-amber-400"></i> Copier Code
+            </button>
+            <button onclick="copyCompanyJoinLink()" class="w-full sm:w-auto px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-[11px] font-bold transition flex items-center justify-center gap-1 shadow-sm" title="Copier le lien d'auto-inscription">
+              <i data-lucide="link" class="w-3.5 h-3.5 text-amber-400"></i> Copier Lien
+            </button>
+            <button onclick="openCompanyQrModal()" class="w-full sm:w-auto px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold transition flex items-center justify-center gap-1 shadow-sm" title="Afficher le QR Code d'inscription">
+              <i data-lucide="qr-code" class="w-3.5 h-3.5"></i> QR Code
+            </button>
+          </div>
+        </div>
+
+        <!-- ROW 3: Actions & Filters Toolbar -->
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-1">
+          <!-- Primary CTA Button -->
+          <button onclick="openAddEmployeeModal()" class="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-extrabold text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-500/20 glow-green-sm">
             <i data-lucide="user-plus" class="w-4 h-4"></i>
-            + Ajouter un Collaborateur
+            <span>+ Ajouter un Collaborateur</span>
           </button>
-          <button onclick="openCompanySettingsModal()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 border border-slate-700 transition flex items-center gap-1.5 text-xs font-semibold shadow-sm" title="Paramètres & Préfixe Matricule">
-            <i data-lucide="settings" class="w-4 h-4"></i>
-            <span>Paramètres</span>
-          </button>
-          <select id="site-filter" onchange="renderDashboard()" class="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500">
-            <option value="all">Tous les sites (1 Site actif)</option>
-            <option value="hq" selected>Siège Social — Zone Principale</option>
-          </select>
-          <button onclick="triggerRefreshSimulatedData()" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition" title="Actualiser le flux">
-            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-          </button>
+
+          <!-- Controls Grid -->
+          <div class="flex items-center gap-2 w-full sm:w-auto">
+            <select id="site-filter" onchange="renderDashboard()" class="flex-1 min-w-0 sm:w-64 bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-xl px-3 py-2.5 focus:outline-none focus:border-emerald-500 truncate">
+              <option value="all">Tous les sites (1 Site actif)</option>
+              <option value="hq" selected>Siège Social — Zone Principale</option>
+            </select>
+            
+            <button onclick="openCompanySettingsModal()" class="px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 border border-slate-700 transition flex items-center gap-1.5 text-xs font-semibold shrink-0 shadow-sm" title="Paramètres & Préfixe Matricule">
+              <i data-lucide="settings" class="w-4 h-4"></i>
+              <span class="hidden xs:inline">Paramètres</span>
+            </button>
+            
+            <button onclick="triggerRefreshSimulatedData()" class="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition shrink-0 shadow-sm" title="Actualiser les données">
+              <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+            </button>
+          </div>
         </div>
+
       </div>
 
       <!-- MAIN SECTION SWITCHER TABS -->
-      <div class="flex items-center space-x-2 border-b border-slate-800/60 pb-2 overflow-x-auto">
+      <div class="tab-strip flex items-center gap-2 border-b border-slate-800/60 pb-2 overflow-x-auto">
         <button onclick="switchSection('overview')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold transition text-emerald-400 bg-emerald-500/10 border border-emerald-500/30" data-section="overview">
           Vue d'Ensemble
         </button>
@@ -2407,7 +2425,7 @@
       </div>
 
       <!-- SAAS SUB-SECTION SWITCHER TABS -->
-      <div class="flex items-center space-x-2 border-b border-slate-800/80 pb-2 overflow-x-auto">
+      <div class="tab-strip flex items-center gap-2 border-b border-slate-800/80 pb-2 overflow-x-auto">
         <button onclick="switchSaasSection('overview')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-bold transition text-amber-400 bg-amber-500/10 border border-amber-500/30" data-saas-section="overview">
           📊 Vue d'Ensemble & Revenus
         </button>
@@ -2865,7 +2883,7 @@
       </div>
 
       <!-- EMPLOYEE SUB-SECTION NAVIGATION TABS -->
-      <div class="flex items-center space-x-2 border-b border-slate-800/80 pb-2 overflow-x-auto">
+      <div class="tab-strip flex items-center gap-2 border-b border-slate-800/80 pb-2 overflow-x-auto">
         <button onclick="switchEmployeeSection('history')" class="emp-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-bold transition text-emerald-400 bg-emerald-500/10 border border-emerald-500/30" data-emp-section="history">
           📋 Historique des Pointages
         </button>

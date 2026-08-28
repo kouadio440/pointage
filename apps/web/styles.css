@@ -256,3 +256,61 @@ body {
 .animate-scan-laser {
   animation: scan-laser 1.8s ease-in-out infinite;
 }
+
+/* ==========================================================================
+   Responsivité des barres d'onglets et des en-têtes de tableau de bord
+
+   Les barres d'onglets sont en `flex ... overflow-x-auto`, mais leurs boutons
+   n'avaient aucune contrainte de rétrécissement. Flexbox les compressait donc
+   sous leur largeur de contenu au lieu de laisser le conteneur défiler, et le
+   texte se cassait en plein mot (« Sécurité & Faux GPS » devenait « urité aux
+   PS »). On interdit le rétrécissement et le retour à la ligne : la barre
+   défile horizontalement, comme prévu.
+   ========================================================================== */
+
+.subtab-btn,
+.emp-subtab-btn,
+.saas-subtab-btn,
+.cal-filter-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Barre d'onglets défilante : masque la barre de défilement sur mobile tout en
+   conservant le geste tactile, et suggère la suite par un léger dégradé. */
+.tab-strip {
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.tab-strip::-webkit-scrollbar {
+  display: none;
+}
+
+/* Un enfant flex a `min-width: auto` par défaut : il refuse de se réduire
+   sous la largeur de son contenu, ce qui faisait déborder tout l'en-tête du
+   Cockpit hors de l'écran. */
+.header-shrink {
+  min-width: 0;
+}
+
+/* Aucun contenu ne doit provoquer de défilement horizontal de la page. */
+@media (max-width: 640px) {
+  #view-dashboard select,
+  #view-employee select,
+  #view-saas select {
+    max-width: 100%;
+  }
+
+  .view-section {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+}
+
+/* Touch momentum horizontal scrolling for all table containers */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+

@@ -167,14 +167,58 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         console.log('[Supabase Auth] Session synchronisée en arrière-plan pour :', realFullName, '(', email, ')');
+      } else if (state.isAuthenticated) {
+        // L'interface se croit connectée (session restaurée depuis localStorage)
+        // alors que le serveur ne reconnaît plus personne. C'est exactement ce
+        // qui se produit après plusieurs jours : le jeton de rafraîchissement
+        // a expiré, ou le projet Supabase a été mis en pause.
+        //
+        // Sans cet avertissement, l'utilisateur découvre le problème seulement
+        // au moment d'enregistrer, sous la forme d'une erreur PostgreSQL brute.
+        console.warn('[Supabase Auth] Session serveur absente alors que l\'interface affiche un compte connecté.');
+        showToast(
+          'Reconnexion nécessaire',
+          "Votre session de sécurité a expiré pendant votre absence. Vous pouvez consulter vos données, " +
+            'mais toute modification sera refusée par le serveur. Déconnectez-vous puis reconnectez-vous.',
+          'info',
+          14000
+        );
       }
     } catch (e) {
       console.warn('[Supabase Auth] Erreur vérification session :', e);
     }
+
+    // Garde l'état de l'application aligné sur la session réelle : une
+    // déconnexion côté serveur ne doit pas laisser une interface qui prétend
+    // le contraire.
+    try {
+      supabaseClient.auth.onAuthStateChange((event) => {
+        if (event === 'SIGNED_OUT') {
+          state.isAuthenticated = false;
+          state.currentUser = null;
+          try { localStorage.removeItem('winner_auth_session'); } catch (err) {}
+          showToast('Session terminée', 'Vous avez été déconnecté. Reconnectez-vous pour continuer.', 'info', 10000);
+        }
+      });
+    } catch (e) {
+      console.warn('[Supabase Auth] Ecoute des changements de session indisponible :', e);
+    }
+
     await loadSupabaseData();
     checkUrlJoinCode();
     checkUrlInvitation();
   }
+
+  // Fermer le menu mobile lors d'un clic en dehors
+  document.addEventListener('click', (e) => {
+    const menu = document.getElementById('mobile-menu');
+    const btn = document.getElementById('mobile-menu-btn');
+    if (menu && !menu.classList.contains('hidden')) {
+      if (!menu.contains(e.target) && !btn.contains(e.target)) {
+        closeMobileMenu();
+      }
+    }
+  });
 });
 
 // Toast Notification System (Replaces native browser alerts)
@@ -378,16 +422,27 @@ function switchView(viewName) {
 
 function toggleMobileMenu() {
   const menu = document.getElementById('mobile-menu');
+  const btnIcon = document.querySelector('#mobile-menu-btn i');
   if (menu) {
-    menu.classList.toggle('hidden');
+    const isHidden = menu.classList.contains('hidden');
+    if (isHidden) {
+      menu.classList.remove('hidden');
+      if (btnIcon) btnIcon.setAttribute('data-lucide', 'x');
+    } else {
+      menu.classList.add('hidden');
+      if (btnIcon) btnIcon.setAttribute('data-lucide', 'menu');
+    }
     if (window.lucide) window.lucide.createIcons();
   }
 }
 
 function closeMobileMenu() {
   const menu = document.getElementById('mobile-menu');
+  const btnIcon = document.querySelector('#mobile-menu-btn i');
   if (menu) {
     menu.classList.add('hidden');
+    if (btnIcon) btnIcon.setAttribute('data-lucide', 'menu');
+    if (window.lucide) window.lucide.createIcons();
   }
 }
 
@@ -2040,6 +2095,103 @@ function closeEmployeePunch() {
 }
 
 // =============================================================================
+//  SESSION SUPABASE — cohérence entre l'interface et le serveur
+//
+//  L'application restaure `state.isAuthenticated` depuis localStorage, ce qui
+//  survit au rechargement de page MAIS PAS à l'expiration du jeton Supabase.
+//  Après plusieurs jours (projet mis en pause, jeton de rafraîchissement
+//  périmé), l'interface continuait donc d'afficher un CEO connecté alors que
+//  les requêtes partaient avec le seul rôle `anon`.
+//
+//  Conséquence observée : « new row violates row-level security policy for
+//  table geofences ». Les politiques sont accordées `TO authenticated` ; sans
+//  session réelle, aucune ne s'applique et l'écriture est refusée.
+//
+//  On vérifie donc la session AVANT toute écriture privilégiée, et on le dit
+//  clairement plutôt que d'afficher une erreur PostgreSQL brute.
+// =============================================================================
+
+/**
+ * Vérifie qu'une session Supabase réelle existe.
+ * @returns {Promise<{ok: boolean, raison?: string}>}
+ */
+async function assurerSessionSupabase() {
+  if (!supabaseClient) return { ok: false, raison: 'CLIENT_ABSENT' };
+
+  try {
+    const { data, error } = await supabaseClient.auth.getSession();
+    if (error) return { ok: false, raison: 'ERREUR_SESSION' };
+
+    const session = data && data.session;
+    if (!session) return { ok: false, raison: 'SESSION_ABSENTE' };
+
+    // Jeton sur le point d'expirer : on tente un rafraîchissement avant de conclure.
+    const expire = session.expires_at ? session.expires_at * 1000 : 0;
+    if (expire && expire < Date.now() + 30000) {
+      const { data: refreshed, error: refreshErr } = await supabaseClient.auth.refreshSession();
+      if (refreshErr || !refreshed || !refreshed.session) {
+        return { ok: false, raison: 'SESSION_EXPIREE' };
+      }
+    }
+
+    return { ok: true };
+  } catch (e) {
+    console.warn('[Session] Verification impossible :', e);
+    return { ok: false, raison: 'ERREUR_SESSION' };
+  }
+}
+
+/** Signale la désynchronisation et propose de se reconnecter. */
+function signalerSessionPerdue(raison) {
+  const messages = {
+    SESSION_ABSENTE:
+      "Votre session de securite a expire. L'affichage est encore celui de votre compte, mais le serveur ne vous reconnait plus.",
+    SESSION_EXPIREE: "Votre session de securite a expire et n'a pas pu etre renouvelee.",
+    CLIENT_ABSENT: 'La connexion au serveur est indisponible.',
+    ERREUR_SESSION: 'Impossible de verifier votre session.',
+  };
+
+  showToast(
+    'Reconnexion necessaire',
+    (messages[raison] || messages.ERREUR_SESSION) +
+      ' Deconnectez-vous puis reconnectez-vous pour enregistrer vos modifications.',
+    'info',
+    12000
+  );
+}
+
+/**
+ * Traduit une erreur d'écriture Supabase en message exploitable.
+ * Un code PostgreSQL brut affiché à un responsable RH ne lui apprend rien.
+ */
+function traduireErreurEcriture(error, quoi) {
+  const msg = String((error && error.message) || '');
+  const code = (error && error.code) || '';
+
+  if (code === '42501' || /row-level security/i.test(msg)) {
+    return (
+      "Le serveur a refuse l'enregistrement de " + quoi + ".\n\n" +
+      'Cause la plus frequente : votre session de securite a expire. ' +
+      'Deconnectez-vous, reconnectez-vous, puis reessayez.\n\n' +
+      "Si le probleme persiste, verifiez que votre compte a bien le role CEO ou RH."
+    );
+  }
+  if (code === '23505' || /duplicate key/i.test(msg)) {
+    return 'Un element portant ce nom existe deja. Choisissez un autre nom.';
+  }
+  if (/violates check constraint/i.test(msg)) {
+    return 'Une valeur saisie est hors des limites autorisees. Verifiez le rayon (20 a 5000 m) et les heures.';
+  }
+  if (code === 'PGRST202' || /schema cache|could not find/i.test(msg)) {
+    return (
+      "Cette fonctionnalite n'est pas encore installee sur le serveur.\n" +
+      'A transmettre au service technique : executer les migrations SQL Supabase.'
+    );
+  }
+  return msg || 'Erreur serveur inconnue.';
+}
+
+// =============================================================================
 //  CONFIGURATION DU POINTAGE — Cockpit Client RH
 //
 //  Cette section est la SOURCE DE VÉRITÉ du pointage. Le Dashboard Employé lit
@@ -2434,13 +2586,22 @@ async function saveSite() {
     is_active: active,
   };
 
+  // La session Supabase peut avoir expire alors que l'interface affiche encore
+  // un CEO connecte : sans elle, les politiques « TO authenticated » ne
+  // s'appliquent pas et l'insertion est refusee.
+  const sess = await assurerSessionSupabase();
+  if (!sess.ok) {
+    signalerSessionPerdue(sess.raison);
+    return;
+  }
+
   const { error } = id
     ? await supabaseClient.from('geofences').update(payload).eq('id', id)
     : await supabaseClient.from('geofences').insert(payload);
 
   if (error) {
     console.error('[Config] Enregistrement du site :', error);
-    return showToast('Enregistrement impossible', escapeHtml(error.message || 'Erreur serveur.'), 'info', 9000);
+    return showToast('Enregistrement impossible', traduireErreurEcriture(error, 'ce site'), 'info', 14000);
   }
 
   showToast('Site enregistré', `${escapeHtml(name)} — rayon ${radius} m.`, 'success');
@@ -2456,7 +2617,7 @@ async function toggleSiteActive(siteId) {
   const { error } = await supabaseClient
     .from('geofences').update({ is_active: s.is_active === false }).eq('id', siteId);
 
-  if (error) return showToast('Modification impossible', escapeHtml(error.message || ''), 'info');
+  if (error) return showToast('Modification impossible', traduireErreurEcriture(error, 'ce site'), 'info', 14000);
   await renderPunchConfig();
 }
 
@@ -2516,13 +2677,19 @@ async function saveSchedule() {
     is_active: true,
   };
 
+  const sess = await assurerSessionSupabase();
+  if (!sess.ok) {
+    signalerSessionPerdue(sess.raison);
+    return;
+  }
+
   const { error } = id
     ? await supabaseClient.from('work_schedules').update(payload).eq('id', id)
     : await supabaseClient.from('work_schedules').insert(payload);
 
   if (error) {
     console.error('[Config] Enregistrement horaire :', error);
-    return showToast('Enregistrement impossible', escapeHtml(error.message || ''), 'info', 9000);
+    return showToast('Enregistrement impossible', traduireErreurEcriture(error, 'cet horaire'), 'info', 14000);
   }
 
   showToast('Horaire enregistré', escapeHtml(name), 'success');
@@ -2540,12 +2707,18 @@ async function assignEmployeeConfig(userId, champ, valeur) {
   const patch = {};
   patch[champ] = valeur === '' ? null : valeur;
 
+  const sess = await assurerSessionSupabase();
+  if (!sess.ok) {
+    signalerSessionPerdue(sess.raison);
+    return;
+  }
+
   const { error } = await supabaseClient
     .from('users').update(patch).eq('id', userId).eq('company_id', state.currentCompanyId);
 
   if (error) {
     console.error('[Config] Affectation employé :', error);
-    return showToast('Modification impossible', escapeHtml(error.message || ''), 'info', 9000);
+    return showToast('Modification impossible', traduireErreurEcriture(error, 'cette affectation'), 'info', 14000);
   }
 
   showToast('Configuration mise à jour', "L'employé utilisera ces paramètres à son prochain pointage.", 'success', 4000);
