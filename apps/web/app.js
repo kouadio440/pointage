@@ -1414,6 +1414,8 @@ function resetPunchScanUI() {
   if (window.lucide) lucide.createIcons();
 }
 
+let isSubmittingLeave = false;
+
 function openLeaveModal() {
   const modal = document.getElementById('modal-leave');
   const todayStr = new Date().toISOString().split('T')[0];
@@ -1421,8 +1423,11 @@ function openLeaveModal() {
 
   const startEl = document.getElementById('leave-start');
   const endEl = document.getElementById('leave-end');
-  if (startEl && !startEl.value) startEl.value = todayStr;
-  if (endEl && !endEl.value) endEl.value = nextStr;
+  const reasonEl = document.getElementById('leave-reason');
+
+  if (startEl) startEl.value = todayStr;
+  if (endEl) endEl.value = nextStr;
+  if (reasonEl) reasonEl.value = '';
 
   if (modal) {
     modal.classList.remove('hidden');
@@ -1439,10 +1444,12 @@ function closeLeaveModal() {
 }
 
 async function submitLeaveRequest() {
+  if (isSubmittingLeave) return;
+
   const typeVal = document.getElementById('leave-type')?.value || 'Congé Payé Annuel';
   const startVal = document.getElementById('leave-start')?.value;
   const endVal = document.getElementById('leave-end')?.value;
-  const reasonVal = document.getElementById('leave-reason')?.value.trim();
+  const reasonVal = document.getElementById('leave-reason')?.value.trim() || '';
 
   if (!startVal || !endVal) {
     showToast('Champs Requis', 'Veuillez saisir une date de début et une date de fin.', 'info');
@@ -1455,6 +1462,8 @@ async function submitLeaveRequest() {
     showToast('Dates Invalides', 'La date de fin ne peut pas être antérieure à la date de début.', 'info');
     return;
   }
+
+  isSubmittingLeave = true;
 
   const diffTime = Math.abs(endDate - startDate);
   const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
@@ -1475,7 +1484,7 @@ async function submitLeaveRequest() {
     end_date: endVal,
     period: `${startVal} au ${endVal}`,
     days: days,
-    reason: reasonVal || 'Demande personnelle',
+    reason: reasonVal,
     status: 'En attente'
   };
 
@@ -1504,14 +1513,16 @@ async function submitLeaveRequest() {
     endDate: endVal,
     period: `${startVal} au ${endVal}`,
     days: days,
-    reason: reasonVal || 'Demande personnelle',
+    reason: reasonVal,
     status: 'En attente'
   };
 
   if (!state.leaves) state.leaves = [];
   state.leaves.unshift(newLeaveItem);
 
+  isSubmittingLeave = false;
   closeLeaveModal();
+
   showToast(
     'Demande Transmise 🎉',
     `Votre demande de congé (<strong>${days} jour(s)</strong>) a été enregistrée et transmise au RH.`,
