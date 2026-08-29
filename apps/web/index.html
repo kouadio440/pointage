@@ -1011,7 +1011,7 @@
               <i data-lucide="user-check" class="w-4 h-4 text-emerald-400"></i>
             </div>
             <div id="kpi-presents" class="text-2xl font-bold font-mono text-emerald-400">8</div>
-            <div class="text-[10px] text-emerald-500/80 mt-1">Taux : 80.0%</div>
+            <div id="kpi-presence-rate" class="text-[10px] text-emerald-500/80 mt-1">Taux : —</div>
           </div>
 
           <!-- KPI 3: Retards -->
@@ -1040,7 +1040,7 @@
               <span>Heures Supp.</span>
               <i data-lucide="trending-up" class="w-4 h-4 text-emerald-400"></i>
             </div>
-            <div id="kpi-heures-supp" class="text-2xl font-bold font-mono text-emerald-400">14.5 h</div>
+            <div id="kpi-heures-supp" class="text-2xl font-bold font-mono text-emerald-400">—</div>
             <div class="text-[10px] text-slate-500 mt-1">Cumul du mois</div>
           </div>
 
@@ -1690,21 +1690,8 @@
                     <th class="p-2.5">Décision</th>
                   </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-800 text-slate-300">
-                  <tr>
-                    <td class="p-2.5 text-slate-400">08:02:14 GMT</td>
-                    <td class="p-2.5 font-bold text-white">Marc KOUASSI</td>
-                    <td class="p-2.5">Signal GPS Standard • Precision 4m</td>
-                    <td class="p-2.5 text-emerald-400 font-bold">0 / 100</td>
-                    <td class="p-2.5"><span class="badge-verified px-2 py-0.5 rounded">Autorisé</span></td>
-                  </tr>
-                  <tr>
-                    <td class="p-2.5 text-slate-400">07:58:30 GMT</td>
-                    <td class="p-2.5 font-bold text-white">Awa KONE</td>
-                    <td class="p-2.5">Signal GPS Standard • Distance 12m</td>
-                    <td class="p-2.5 text-emerald-400 font-bold">0 / 100</td>
-                    <td class="p-2.5"><span class="badge-verified px-2 py-0.5 rounded">Autorisé</span></td>
-                  </tr>
+                <tbody id="security-audit-body" class="divide-y divide-slate-800 text-slate-300">
+                  <!-- Rempli par renderSecurityAuditLog() depuis attendance_attempts. -->
                 </tbody>
               </table>
             </div>
@@ -1904,10 +1891,7 @@
       <div>
         <label class="text-xs text-slate-300 font-semibold mb-1 block">Sélectionner l'Employé pour le Test :</label>
         <select id="punch-employee-select" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-mono">
-          <option value="1">Marc KOUASSI (Chef d'Atelier Packaging)</option>
-          <option value="2">Awa KONE (Responsable Qualité)</option>
-          <option value="3">Jean-Luc BAMBA (Commercial Terrain)</option>
-          <option value="4">Sarah DIABATE (Graphiste & Designer Packaging)</option>
+          <!-- Rempli par remplirSelecteursEmployes() depuis les employes reels. -->
         </select>
       </div>
 
@@ -2130,25 +2114,40 @@
         <div>
           <label class="text-slate-300 font-semibold mb-1 block">Employé Concerné :</label>
           <select id="overtime-employee" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200">
-            <option>Marc KOUASSI (Chef d'Atelier)</option>
-            <option>Jean-Luc BAMBA (Commercial)</option>
+            <!-- Rempli par remplirSelecteursEmployes() depuis les employes reels. -->
           </select>
+        </div>
+
+        <!-- Champs identifiés et VIDES : les valeurs pre-remplies precedentes
+             etaient fictives et n'etaient de toute facon jamais lues. -->
+        <div>
+          <label class="text-slate-300 font-semibold mb-1 block">Date concernée :</label>
+          <input type="date" id="overtime-date" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200" />
         </div>
 
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="text-slate-300 font-semibold mb-1 block">Heure de Début :</label>
-            <input type="time" value="17:00" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200" />
+            <input type="time" id="overtime-start" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200" />
           </div>
           <div>
             <label class="text-slate-300 font-semibold mb-1 block">Heure de Fin :</label>
-            <input type="time" value="19:30" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200" />
+            <input type="time" id="overtime-end" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200" />
           </div>
         </div>
 
         <div>
+          <label class="text-slate-300 font-semibold mb-1 block">Taux de majoration :</label>
+          <select id="overtime-rate" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200">
+            <option value="25">+25 % (heures supplémentaires standard)</option>
+            <option value="50">+50 % (nuit)</option>
+            <option value="100">+100 % (dimanche ou jour férié)</option>
+          </select>
+        </div>
+
+        <div>
           <label class="text-slate-300 font-semibold mb-1 block">Motif de la Mission Prolongée :</label>
-          <input type="text" value="Commandes urgentes étiquetage packaging" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200" />
+          <input type="text" id="overtime-reason" placeholder="Ex : commande urgente à livrer" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2 text-slate-200" />
         </div>
       </div>
 
@@ -2161,88 +2160,65 @@
 
   <!-- MODAL 4: REPORT PREVIEW (PDF MODAL) -->
   <div id="modal-report-preview" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-md hidden items-center justify-center p-4">
-    <div class="bg-slate-950 text-slate-100 max-w-3xl w-full max-h-[90vh] rounded-2xl border border-slate-800 overflow-y-auto p-8 relative space-y-6 shadow-2xl">
+    <div class="bg-slate-950 text-slate-100 max-w-3xl w-full max-h-[90vh] rounded-2xl border border-slate-800 overflow-y-auto p-6 sm:p-8 relative space-y-6 shadow-2xl">
       <button onclick="closeReportPreviewModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white p-1">
         <i data-lucide="x" class="w-6 h-6"></i>
       </button>
 
-      <!-- PDF Document Header -->
-      <div class="border-b border-slate-800 pb-6 flex items-center justify-between">
-        <div>
-          <div class="text-xs font-mono font-bold text-emerald-400">WINNER DIGITAL SARL — PACKAGING PERSONNALISÉ</div>
-          <h2 class="text-xl font-extrabold text-white">RAPPORT DE PRÉSENCE & HEURES TRAVAILLÉES</h2>
-          <div class="text-xs text-slate-400 font-mono mt-1">Période : 01 Août 2026 au 06 Août 2026 • Réf: WPN-2026-08-001</div>
+      <!--
+        Tous les champs de ce rapport sont renseignes par renderReportPreview()
+        a partir des donnees reellement chargees depuis Supabase. Aucune valeur
+        n'est ecrite en dur : un rapport qui affiche des chiffres inventes est
+        pire qu'un rapport vide, car il sera signe et archive.
+      -->
+      <div class="border-b border-slate-800 pb-6 flex items-start justify-between gap-4">
+        <div class="min-w-0">
+          <div id="report-company-name" class="text-xs font-mono font-bold text-emerald-400 truncate">—</div>
+          <h2 class="text-lg sm:text-xl font-extrabold text-white">RAPPORT DE PRÉSENCE &amp; HEURES TRAVAILLÉES</h2>
+          <div id="report-period" class="text-xs text-slate-400 font-mono mt-1">—</div>
         </div>
-        <div class="w-12 h-12 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold">
-          WD
-        </div>
+        <div id="report-company-initials" class="w-12 h-12 shrink-0 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold">—</div>
       </div>
 
-      <!-- KPI Summary Table -->
-      <div class="grid grid-cols-4 gap-4 p-4 rounded-xl bg-slate-900 border border-slate-800 text-center font-mono">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-xl bg-slate-900 border border-slate-800 text-center font-mono">
         <div>
           <span class="text-[10px] text-slate-400 uppercase">Taux Présence</span>
-          <div class="text-lg font-bold text-emerald-400">80.0%</div>
+          <div id="report-kpi-presence" class="text-lg font-bold text-emerald-400">—</div>
         </div>
         <div>
           <span class="text-[10px] text-slate-400 uppercase">Total Retards</span>
-          <div class="text-lg font-bold text-orange-400">18 min</div>
+          <div id="report-kpi-late" class="text-lg font-bold text-orange-400">—</div>
         </div>
         <div>
           <span class="text-[10px] text-slate-400 uppercase">Heures Supp</span>
-          <div class="text-lg font-bold text-emerald-400">14.5 h</div>
+          <div id="report-kpi-overtime" class="text-lg font-bold text-emerald-400">—</div>
         </div>
         <div>
-          <span class="text-[10px] text-slate-400 uppercase">Fraud Alertes</span>
-          <div class="text-lg font-bold text-emerald-400">0</div>
+          <span class="text-[10px] text-slate-400 uppercase">Pointages refusés</span>
+          <div id="report-kpi-rejected" class="text-lg font-bold text-slate-300">—</div>
         </div>
       </div>
 
-      <!-- Detailed Attendance List -->
       <div class="space-y-2">
         <h4 class="text-xs font-mono font-bold text-slate-400 uppercase">Registre Nominatif des Pointages</h4>
-        <table class="w-full text-left text-xs font-mono border-collapse">
-          <thead>
-            <tr class="border-b border-slate-800 text-slate-400">
-              <th class="py-2">Employé</th>
-              <th class="py-2">Date</th>
-              <th class="py-2">Entrée</th>
-              <th class="py-2">Sortie</th>
-              <th class="py-2">GPS Status</th>
-              <th class="py-2">Selfie</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-800/60 text-slate-300">
-            <tr>
-              <td class="py-2 font-bold text-white">Marc KOUASSI</td>
-              <td class="py-2">06/08/2026</td>
-              <td class="py-2 text-emerald-400">07:58 GMT</td>
-              <td class="py-2">17:00 GMT</td>
-              <td class="py-2">14m (Conforme)</td>
-              <td class="py-2 text-emerald-400">Vérifié (99%)</td>
-            </tr>
-            <tr>
-              <td class="py-2 font-bold text-white">Awa KONE</td>
-              <td class="py-2">06/08/2026</td>
-              <td class="py-2 text-emerald-400">08:02 GMT</td>
-              <td class="py-2">17:15 GMT</td>
-              <td class="py-2">12m (Conforme)</td>
-              <td class="py-2 text-emerald-400">Vérifié (98%)</td>
-            </tr>
-            <tr>
-              <td class="py-2 font-bold text-white">Jean-Luc BAMBA</td>
-              <td class="py-2">06/08/2026</td>
-              <td class="py-2 text-orange-400">08:18 GMT (Retard)</td>
-              <td class="py-2">18:00 GMT</td>
-              <td class="py-2">Client Plateau</td>
-              <td class="py-2 text-emerald-400">Vérifié (96%)</td>
-            </tr>
-          </tbody>
-        </table>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs font-mono border-collapse">
+            <thead>
+              <tr class="border-b border-slate-800 text-slate-400">
+                <th class="py-2">Employé</th>
+                <th class="py-2">Date</th>
+                <th class="py-2">Entrée</th>
+                <th class="py-2">Sortie</th>
+                <th class="py-2">Distance / GPS</th>
+                <th class="py-2">Selfie</th>
+              </tr>
+            </thead>
+            <tbody id="report-attendance-body" class="divide-y divide-slate-800/60 text-slate-300"></tbody>
+          </table>
+        </div>
       </div>
 
-      <!-- Signatures Footer -->
-      <div class="grid grid-cols-2 gap-8 border-t border-slate-800 pt-6 text-xs text-slate-400 font-mono">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-8 border-t border-slate-800 pt-6 text-xs text-slate-400 font-mono">
         <div>
           <span>Visa de la Direction RH :</span>
           <div class="mt-8 border-b border-slate-700 w-48"></div>
@@ -2254,7 +2230,7 @@
       </div>
 
       <div class="flex justify-end space-x-3 pt-4">
-        <button onclick="window.print()" class="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs flex items-center gap-2">
+        <button onclick="window.print()" class="min-h-tap px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs flex items-center gap-2">
           <i data-lucide="printer" class="w-4 h-4"></i> Imprimer / Télécharger le PDF
         </button>
       </div>

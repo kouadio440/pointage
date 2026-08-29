@@ -889,6 +889,28 @@ function renderDashboard() {
   if (kpiRetardsEl) kpiRetardsEl.innerText = retardsCount;
   if (kpiCongesEl) kpiCongesEl.innerText = congesCount;
 
+  // Trois KPI restaient figes dans le HTML : « Taux : 80.0% », « 14.5 h » et
+  // le compteur d alertes. Ils ne bougeaient jamais, quelle que soit la realite.
+  const tauxEl = document.getElementById('kpi-presence-rate');
+  if (tauxEl) {
+    tauxEl.innerText = employees.length > 0
+      ? 'Taux : ' + ((presentsCount / employees.length) * 100).toFixed(1) + ' %'
+      : 'Taux : —';
+  }
+
+  const supEl = document.getElementById('kpi-heures-supp');
+  if (supEl) {
+    const minutesValidees = (state.overtimes || [])
+      .filter((o) => o.status === 'Validé')
+      .reduce((t, o) => t + (Number(o.minutes) || 0), 0);
+    supEl.innerText = minutesValidees > 0 ? (minutesValidees / 60).toFixed(1) + ' h' : '0 h';
+  }
+
+  const alertesEl = document.getElementById('kpi-alertes');
+  if (alertesEl) {
+    alertesEl.innerText = String(attendances.filter((a) => a.decision === 'REJECTED').length);
+  }
+
   // Render Live Feed Table avec les vrais pointages Supabase
   const tableBody = document.getElementById('live-punch-table');
   if (tableBody) {
@@ -1098,6 +1120,224 @@ async function rejectLeave(leaveId) {
 }
 
 // Render Overtime Table
+let isSubmittingOvertime = false;
+
+/**
+ * Declare des heures supplementaires — enregistrement REEL en base.
+ *
+ * L'ancienne version empilait un objet entierement code en dur sans jamais
+ * lire le formulaire ni ecrire quoi que ce soit : la declaration semblait
+ * partir, mais n'existait nulle part.
+ *
+ * La duree est CALCULEE a partir des heures saisies, jamais saisie a la main :
+ * c'est elle qui alimentera la paie, elle ne doit pas dependre d'une frappe.
+ */
+async function submitOvertimeRequest() {
+  if (isSubmittingOvertime) return;
+
+  const val = (id) => {
+    const el = document.getElementById(id);
+    return el ? String(el.value || '').trim() : '';
+  };
+
+  const dateVal = val('overtime-date');
+  const startVal = val('overtime-start');
+  const endVal = val('overtime-end');
+  const reasonVal = val('overtime-reason');
+  const ratePct = parseInt(val('overtime-rate'), 10) || 25;
+
+  if (!dateVal || !startVal || !endVal) {
+    showToast('Champs requis', "Renseignez la date, l'heure de début et l'heure de fin.", 'info');
+    return;
+  }
+  if (!reasonVal) {
+    showToast('Motif requis', 'Indiquez le motif de ces heures supplémentaires.', 'info');
+    return;
+  }
+
+  const toMin = (v) => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(v);
+    return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+  };
+  const startMin = toMin(startVal);
+  const endMin = toMin(endVal);
+  if (startMin === null || endMin === null) {
+    showToast('Heures invalides', 'Les heures doivent être au format HH:MM.', 'info');
+    return;
+  }
+
+  // Passage par minuit gere : 22:00 -> 02:00 vaut 4 h, pas -20 h.
+  const minutes = endMin > startMin ? endMin - startMin : endMin + 1440 - startMin;
+  if (minutes <= 0 || minutes > 720) {
+    showToast('Durée invalide', 'La durée doit être comprise entre 1 minute et 12 heures.', 'info');
+    return;
+  }
+
+  isSubmittingOvertime = true;
+
+  try {
+    if (!supabaseClient) {
+      showToast('Service indisponible', 'La connexion au serveur est indisponible. Réessayez.', 'info');
+      return;
+    }
+
+    const sess = await assurerSessionSupabase();
+    if (!sess.ok) {
+      signalerSessionPerdue(sess.raison);
+      return;
+    }
+
+    const me = state.currentUser || {};
+    // Un RH peut declarer pour un employe : on respecte la selection si elle existe.
+    const selectEl = document.getElementById('overtime-employee');
+    const selectedId = selectEl && isUuid(selectEl.value) ? selectEl.value : null;
+    const target = selectedId
+      ? (state.employees || []).find((e) => String(e.id) === String(selectedId))
+      : null;
+
+    const payload = {
+      company_id: state.currentCompanyId,
+      user_id: selectedId || (isUuid(me.id) ? me.id : null),
+      user_email: target ? target.email || null : me.email || null,
+      employee: target ? target.name : me.fullName || me.email || 'Employé',
+      work_date: dateVal,
+      start_time: startVal,
+      end_time: endVal,
+      slot: startVal + ' - ' + endVal,
+      minutes: minutes,
+      rate_pct: ratePct,
+      reason: reasonVal,
+      status: 'En attente',
+    };
+
+    const { error } = await supabaseClient.from('overtimes').insert(payload);
+    if (error) throw error;
+
+    closeOvertimeModal();
+
+    const h = Math.floor(minutes / 60);
+    const m = String(minutes % 60).padStart(2, '0');
+    showToast(
+      'Déclaration enregistrée',
+      h + ' h ' + m + ' à +' + ratePct + ' %, transmises au service RH.',
+      'success',
+      6000,
+    );
+
+    await loadOvertimesFromDb();
+
+    // Selecteurs et journal de securite alimentes par les donnees reelles.
+    if (typeof remplirSelecteursEmployes === 'function') remplirSelecteursEmployes();
+    if (typeof renderSecurityAuditLog === 'function') renderSecurityAuditLog();
+  } catch (e) {
+    console.error('[Heures supp] Enregistrement impossible :', e);
+    showToast(
+      'Enregistrement impossible',
+      typeof traduireErreurEcriture === 'function'
+        ? traduireErreurEcriture(e, 'cette déclaration')
+        : e.message || 'Erreur serveur.',
+      'info',
+      12000,
+    );
+  } finally {
+    isSubmittingOvertime = false;
+  }
+}
+
+/** Recharge les heures supplementaires depuis la base et rafraichit les deux vues. */
+async function loadOvertimesFromDb() {
+  if (!supabaseClient || !state.currentCompanyId) return;
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('overtimes')
+      .select('*')
+      .eq('company_id', state.currentCompanyId)
+      .order('work_date', { ascending: false });
+
+    if (error) throw error;
+
+    // Affectation inconditionnelle : la base est la seule source de verite,
+    // y compris quand elle ne renvoie rien.
+    state.overtimes = (data || []).map((o) => {
+      const h = Math.floor((o.minutes || 0) / 60);
+      const m = (o.minutes || 0) % 60;
+      return {
+        id: o.id,
+        userId: o.user_id,
+        userEmail: o.user_email || '',
+        employee: o.employee || 'Employé',
+        date: o.work_date ? new Date(o.work_date).toLocaleDateString('fr-FR') : '',
+        slot: o.slot || (o.start_time || '') + ' - ' + (o.end_time || ''),
+        minutes: o.minutes || 0,
+        duration: m === 0 ? h + ' h' : h + ' h ' + String(m).padStart(2, '0'),
+        multiplier: '+' + (o.rate_pct === undefined || o.rate_pct === null ? 25 : o.rate_pct) + '%',
+        reason: o.reason || '',
+        status: o.status || 'En attente',
+      };
+    });
+  } catch (e) {
+    console.warn('[Heures supp] Chargement impossible :', e);
+    state.overtimes = [];
+  }
+
+  if (typeof renderOvertimeTable === 'function') renderOvertimeTable();
+  if (typeof renderEmployeeDashboard === 'function') renderEmployeeDashboard();
+}
+
+async function approveOvertime(id) {
+  await decideOvertime(id, 'Validé');
+}
+
+async function rejectOvertime(id) {
+  await decideOvertime(id, 'Refusé');
+}
+
+async function decideOvertime(id, statut) {
+  const item = (state.overtimes || []).find((o) => String(o.id) === String(id));
+
+  try {
+    if (supabaseClient) {
+      const sess = await assurerSessionSupabase();
+      if (!sess.ok) {
+        signalerSessionPerdue(sess.raison);
+        return;
+      }
+
+      const me = state.currentUser || {};
+      const { error } = await supabaseClient
+        .from('overtimes')
+        .update({
+          status: statut,
+          decided_by: isUuid(me.id) ? me.id : null,
+          decided_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+      if (error) throw error;
+    }
+
+    showToast(
+      statut === 'Validé' ? 'Heures validées' : 'Heures refusées',
+      'Déclaration de ' + escapeHtml(item ? item.employee : 'cet employé') + ' : ' + statut.toLowerCase() + '.',
+      statut === 'Validé' ? 'success' : 'info',
+    );
+
+    await loadOvertimesFromDb();
+    renderDashboard();
+  } catch (e) {
+    console.error('[Heures supp] Décision impossible :', e);
+    showToast(
+      'Décision impossible',
+      typeof traduireErreurEcriture === 'function'
+        ? traduireErreurEcriture(e, 'cette décision')
+        : e.message || 'Erreur serveur.',
+      'info',
+      12000,
+    );
+  }
+}
+
 function renderOvertimeTable() {
   const tbody = document.getElementById('overtime-table');
   if (!tbody) return;
@@ -1124,7 +1364,8 @@ function renderOvertimeTable() {
       </td>
       <td class="p-3 text-right">
         ${ot.status === 'En attente' ? `
-          <button onclick="approveOvertime(${ot.id})" class="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px]">Valider</button>
+          <button onclick="approveOvertime('${ot.id}')" class="px-2 py-1 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] mr-1">Valider</button>
+          <button onclick="rejectOvertime('${ot.id}')" class="px-2 py-1 rounded bg-red-500/20 text-red-400 border border-red-500/30 text-[10px]">Refuser</button>
         ` : '<span class="text-slate-500 text-[10px]">Transmis Paie</span>'}
       </td>
     </tr>
@@ -1559,7 +1800,221 @@ function closeOvertimeModal() {
   document.getElementById('modal-overtime').classList.remove('flex');
 }
 
+// =============================================================================
+//  RAPPORTS & SELECTEURS — alimentes par les donnees reelles
+//
+//  Ces trois ecrans affichaient des employes inventes (Marc KOUASSI, Awa KONE,
+//  Jean-Luc BAMBA) qui n'existent dans aucune entreprise. Sur un rapport
+//  destine a etre signe et archive, c'est le pire defaut possible : le document
+//  a l'air officiel et ne l'est pas.
+//
+//  Regle appliquee : quand une donnee manque, on ecrit un tiret ou un etat vide
+//  explicite. Jamais une valeur de complaisance.
+// =============================================================================
+
+/** Remplit les selecteurs d'employe a partir de l'effectif reel. */
+function remplirSelecteursEmployes() {
+  const employes = state.employees || [];
+
+  const options = employes.length
+    ? employes
+        .map((e) => {
+          const libelle = e.role ? e.name + ' (' + e.role + ')' : e.name;
+          return '<option value="' + escapeHtml(String(e.id)) + '">' + escapeHtml(libelle) + '</option>';
+        })
+        .join('')
+    : '<option value="">Aucun employé enregistré</option>';
+
+  for (const id of ['overtime-employee', 'punch-employee-select']) {
+    const sel = document.getElementById(id);
+    if (!sel) continue;
+    const precedent = sel.value;
+    sel.innerHTML = options;
+    if (precedent) sel.value = precedent;
+  }
+}
+
+/**
+ * Remplit l'apercu du rapport PDF.
+ *
+ * Toutes les valeurs proviennent de state, lui-meme charge depuis Supabase.
+ * Les KPI sont CALCULES, pas recopies : un taux de presence doit pouvoir etre
+ * refait a la main a partir des lignes affichees en dessous.
+ */
+function renderReportPreview() {
+  const set = (id, valeur) => {
+    const el = document.getElementById(id);
+    if (el) el.innerText = valeur;
+  };
+
+  const nomEntreprise = state.currentCompanyName || 'Entreprise';
+  set('report-company-name', nomEntreprise.toUpperCase());
+
+  const initiales = nomEntreprise
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((m) => m[0])
+    .join('')
+    .toUpperCase();
+  set('report-company-initials', initiales || '—');
+
+  const attendances = state.attendances || [];
+  const employes = state.employees || [];
+  const overtimes = state.overtimes || [];
+
+  // Periode reelle, deduite des pointages presents.
+  const dates = attendances.map((a) => a.date).filter(Boolean);
+  const reference =
+    'RAP-' +
+    new Date().toISOString().slice(0, 10).replace(/-/g, '') +
+    '-' +
+    String(attendances.length).padStart(3, '0');
+  set(
+    'report-period',
+    dates.length
+      ? 'Période : ' + dates[dates.length - 1] + ' au ' + dates[0] + ' • Réf : ' + reference
+      : 'Aucune période couverte — aucun pointage enregistré • Réf : ' + reference,
+  );
+
+  // --- KPI, tous calcules ---------------------------------------------------
+  const presents = attendances.filter((a) => a.decision === 'ACCEPTED' || !a.decision).length;
+  const effectif = employes.length;
+  set('report-kpi-presence', effectif > 0 ? ((presents / effectif) * 100).toFixed(1) + ' %' : '—');
+
+  const retardMin = attendances.reduce((t, a) => t + (Number(a.lateMinutes) || 0), 0);
+  set('report-kpi-late', retardMin > 0 ? retardMin + ' min' : '0 min');
+
+  const supMin = overtimes
+    .filter((o) => o.status === 'Validé')
+    .reduce((t, o) => t + (Number(o.minutes) || 0), 0);
+  set('report-kpi-overtime', supMin > 0 ? (supMin / 60).toFixed(1) + ' h' : '0 h');
+
+  const refuses = attendances.filter((a) => a.decision === 'REJECTED').length;
+  set('report-kpi-rejected', String(refuses));
+
+  // --- Registre nominatif ----------------------------------------------------
+  const body = document.getElementById('report-attendance-body');
+  if (!body) return;
+
+  if (attendances.length === 0) {
+    body.innerHTML =
+      '<tr><td colspan="6" class="py-6 text-center text-slate-500 italic">' +
+      "Aucun pointage enregistré sur la période. Le rapport sera renseigné dès les premiers pointages." +
+      '</td></tr>';
+    return;
+  }
+
+  body.innerHTML = attendances
+    .slice(0, 50)
+    .map((a) => {
+      const dist =
+        a.distanceFromSiteM != null
+          ? Math.round(a.distanceFromSiteM) + ' m' + (a.allowedRadiusM != null ? ' / ' + a.allowedRadiusM + ' m' : '')
+          : '—';
+      const selfie =
+        a.faceVerified === true
+          ? 'Vérifié'
+          : a.selfiePath
+            ? 'Selfie conservé'
+            : '—';
+      const retard = Number(a.lateMinutes) || 0;
+      return (
+        '<tr>' +
+        '<td class="py-2 font-bold text-white">' + escapeHtml(a.employee || '—') + '</td>' +
+        '<td class="py-2">' + escapeHtml(a.date || '—') + '</td>' +
+        '<td class="py-2 ' + (retard > 0 ? 'text-orange-400' : 'text-emerald-400') + '">' +
+          escapeHtml(a.clockIn || '—') + (retard > 0 ? ' (retard ' + retard + ' min)' : '') +
+        '</td>' +
+        '<td class="py-2">' + escapeHtml(a.clockOut || '—') + '</td>' +
+        '<td class="py-2">' + escapeHtml(dist) + '</td>' +
+        '<td class="py-2 ' + (a.faceVerified === true ? 'text-emerald-400' : 'text-slate-400') + '">' +
+          escapeHtml(selfie) +
+        '</td>' +
+        '</tr>'
+      );
+    })
+    .join('');
+}
+
+/** Journal de securite : tentatives de pointage refusees, reellement enregistrees. */
+async function renderSecurityAuditLog() {
+  const body = document.getElementById('security-audit-body');
+  if (!body) return;
+
+  if (!supabaseClient || !state.currentCompanyId) {
+    body.innerHTML =
+      '<tr><td colspan="5" class="p-4 text-center text-slate-500 italic text-xs">Connectez-vous pour consulter le journal.</td></tr>';
+    return;
+  }
+
+  try {
+    const { data, error } = await supabaseClient
+      .from('attendance_attempts')
+      .select('*, users(full_name)')
+      .eq('company_id', state.currentCompanyId)
+      .order('server_time', { ascending: false })
+      .limit(25);
+
+    if (error) throw error;
+
+    if (!data || data.length === 0) {
+      body.innerHTML =
+        '<tr><td colspan="5" class="p-4 text-center text-slate-500 italic text-xs">' +
+        'Aucune tentative de pointage refusée. Les incidents apparaîtront ici automatiquement.' +
+        '</td></tr>';
+      return;
+    }
+
+    const libelles = {
+      OUTSIDE_GEOFENCE: 'Hors de la zone autorisée',
+      GPS_TOO_IMPRECISE: 'Position GPS trop imprécise',
+      NO_SITE_ASSIGNED: 'Aucun site affecté',
+      SITE_WITHOUT_COORDINATES: 'Site sans coordonnées GPS',
+      SELFIE_REQUIRED: 'Selfie manquant',
+      FACE_MISMATCH: 'Visage non reconnu',
+      ALREADY_CHECKED_IN: 'Double pointage',
+      NO_OPEN_CHECK_IN: 'Départ sans arrivée',
+      DUPLICATE_PUNCH: 'Pointage trop rapproché',
+    };
+
+    body.innerHTML = data
+      .map((a) => {
+        const heure = a.server_time
+          ? new Date(a.server_time).toLocaleTimeString('fr-FR', {
+              timeZone: 'Africa/Abidjan',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+            }) + ' GMT'
+          : '—';
+        const nom = a.users ? a.users.full_name || '—' : '—';
+        const detail = a.rejection_detail || libelles[a.rejection_code] || a.rejection_code;
+        return (
+          '<tr>' +
+          '<td class="p-2.5 text-slate-400">' + escapeHtml(heure) + '</td>' +
+          '<td class="p-2.5 font-bold text-white">' + escapeHtml(nom) + '</td>' +
+          '<td class="p-2.5">' + escapeHtml(detail) + '</td>' +
+          '<td class="p-2.5 text-orange-400 font-bold">' +
+            escapeHtml(libelles[a.rejection_code] || a.rejection_code) +
+          '</td>' +
+          '<td class="p-2.5"><span class="badge-danger px-2 py-0.5 rounded">Refusé</span></td>' +
+          '</tr>'
+        );
+      })
+      .join('');
+  } catch (e) {
+    console.warn('[Sécurité] Journal indisponible :', e);
+    body.innerHTML =
+      '<tr><td colspan="5" class="p-4 text-center text-slate-500 italic text-xs">Journal momentanément indisponible.</td></tr>';
+  }
+}
+
 function openReportPreviewModal() {
+  // Le rapport est recalcule a chaque ouverture : il doit refleter l'etat
+  // courant, jamais un rendu fige.
+  if (typeof renderReportPreview === 'function') renderReportPreview();
+
   document.getElementById('modal-report-preview').classList.remove('hidden');
   document.getElementById('modal-report-preview').classList.add('flex');
 }
@@ -3431,33 +3886,9 @@ function renderPunchDiagnostic(checks) {
 }
 
 
-function submitOvertimeRequest() {
-  state.overtimes.push({
-    id: Date.now(),
-    employee: state.currentUser ? escapeHtml(state.currentUser.email) : 'Marc KOUASSI',
-    date: '06/08/2026',
-    slot: '17:00 - 19:30',
-    duration: '2.5 h',
-    multiplier: '+25%',
-    reason: 'Surcroît impression packaging urgent',
-    status: 'En attente'
-  });
-
-  showToast('Heures Supp Transmises', 'La déclaration d\'heures supplémentaires a été soumise au manager RH.', 'success');
-  closeOvertimeModal();
-  renderDashboard();
-}
 
 
 
-function approveOvertime(id) {
-  const item = state.overtimes.find(o => o.id === id);
-  if (item) {
-    item.status = 'Validé';
-    showToast('Heures Supp Validées', `Les heures supplémentaires de ${item.employee} ont été validées.`, 'success');
-  }
-  renderDashboard();
-}
 
 function acceptJustification(id) {
   const item = state.latenesses.find(l => l.id === id);
@@ -4588,10 +5019,10 @@ function renderEmployeeDashboard() {
         <tr class="hover:bg-slate-800/30 transition">
           <td class="py-2.5 font-bold text-white">${escapeHtml(ot.date)}</td>
           <td class="py-2.5 text-slate-300">${escapeHtml(ot.slot)}</td>
-          <td class="py-2.5 text-emerald-400 font-bold">${escapeHtml(ot.hours)}</td>
-          <td class="py-2.5 text-amber-400 font-mono">${escapeHtml(ot.multiplier || '+25%')}</td>
+          <td class="py-2.5 text-emerald-400 font-bold">${escapeHtml(ot.duration || '')}</td>
+          <td class="py-2.5 text-amber-400 font-mono">${escapeHtml(ot.multiplier || '')}</td>
           <td class="py-2.5 text-slate-400">${escapeHtml(ot.reason)}</td>
-          <td class="py-2.5 text-right font-bold text-emerald-400">${escapeHtml(ot.status || 'Validé')}</td>
+          <td class="py-2.5 text-right font-bold ${ot.status === 'Validé' ? 'text-emerald-400' : ot.status === 'Refusé' ? 'text-red-400' : 'text-amber-400'}">${escapeHtml(ot.status || 'En attente')}</td>
         </tr>
       `).join('');
     } else {
@@ -6159,6 +6590,8 @@ async function loadSupabaseData() {
             gpsAccuracyM: a.gps_accuracy_meters,
             distanceFromSiteM: a.distance_from_site_m,
             allowedRadiusM: a.allowed_radius_m,
+            // Retard calcule par le serveur depuis l horaire affecte (migration 003).
+            lateMinutes: a.late_minutes,
             maxAccuracyAtPunch: a.max_accuracy_m_at_punch,
             selfiePath: a.selfie_path || null,
             faceVerified: a.face_verified,
@@ -6210,6 +6643,8 @@ async function loadSupabaseData() {
     } catch (errLeaves) {
       console.warn('Notice chargement congés Supabase:', errLeaves);
     }
+
+    await loadOvertimesFromDb();
 
     renderSaasDashboard();
     renderEmployeeDashboard();
