@@ -210,6 +210,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     await loadSupabaseData();
     checkUrlJoinCode();
+    checkUrlPunchToken();
     checkUrlInvitation();
   }
 
@@ -3084,6 +3085,249 @@ function traduireErreurEcriture(error, quoi) {
   return msg || 'Erreur serveur inconnue.';
 }
 
+/**
+ * Construit l'URL encodee dans le QR de la borne.
+ *
+ * Le QR contenait le jeton brut : scanne avec l'appareil photo du telephone,
+ * il n'affichait qu'une chaine incomprehensible et ne menait nulle part.
+ * Il encode desormais une adresse qui ouvre l'application et declenche le
+ * pointage. L'origine est deduite de la page courante, pour que la borne
+ * fonctionne aussi bien en local qu'une fois deployee.
+ */
+function construireUrlPointageQr(token) {
+  const base = window.location.origin + window.location.pathname;
+  return base + '#pointer?t=' + encodeURIComponent(token);
+}
+
+/**
+ * Extrait le jeton, que l'on ait scanne l'URL complete (appareil photo natif)
+ * ou le jeton seul (ancienne borne encore affichee quelque part).
+ */
+function extraireJetonQr(valeur) {
+  if (!valeur) return null;
+  const brut = String(valeur).trim();
+
+  const i = brut.indexOf('t=');
+  if (i >= 0) {
+    const apres = brut.slice(i + 2).split('&')[0];
+    try {
+      return decodeURIComponent(apres);
+    } catch (e) {
+      return apres;
+    }
+  }
+  // Forme « site.compteur.signature »
+  return brut.split('.').length === 3 ? brut : null;
+}
+
+/**
+ * Traite un lien de pointage ouvert depuis l'appareil photo du telephone.
+ *
+ * Appelee au demarrage. Le jeton ne vit que quelques secondes : on agit tout
+ * de suite, sans ecran intermediaire, mais on ne decide de rien — c'est
+ * record_attendance qui tranche.
+ */
+async function checkUrlPunchToken() {
+  const hash = window.location.hash || '';
+  if (!hash.includes('#pointer')) return;
+
+  const token = extraireJetonQr(hash);
+
+  // On nettoie l'adresse immediatement : un jeton ne doit pas rester dans
+  // l'historique du navigateur ni etre repartage par copier-coller.
+  try {
+    history.replaceState(null, '', window.location.pathname);
+  } catch (e) {}
+
+  if (!token) {
+    showToast('QR code illisible', 'Ce lien de pointage est incomplet. Scannez à nouveau la borne.', 'info', 9000);
+    return;
+  }
+
+  if (!state.isAuthenticated || !supabaseClient) {
+    showToast(
+      'Connexion requise',
+      'Connectez-vous à votre espace employé, puis scannez à nouveau le QR code de la borne.',
+      'info',
+      12000,
+    );
+    openAuthModal('login');
+    return;
+  }
+
+  await pointerAvecJetonQr(token);
+}
+
+/**
+ * Effectue le pointage a partir d'un jeton QR, en determinant seul s'il s'agit
+ * d'une arrivee ou d'un depart : l'employe devant la borne n'a pas a choisir.
+ */
+async function pointerAvecJetonQr(token) {
+  showToast('QR reconnu', 'Recherche de votre position…', 'info', 6000);
+
+  // Le geofencing reste applique : on a besoin de la position.
+  empPunch.gpsAbort = false;
+  empPunch.position = null;
+  empPunch.gpsState = 'idle';
+  startEmployeePunchGps();
+
+  const limite = Date.now() + 15000;
+  while (
+    !['ready', 'imprecise', 'denied', 'timeout', 'unavailable'].includes(empPunch.gpsState) &&
+    Date.now() < limite
+  ) {
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  empPunch.gpsAbort = true;
+
+  if (empPunch.gpsState === 'denied') {
+    showToast(
+      'Localisation nécessaire',
+      "Activez l'accès à votre position pour pouvoir pointer, puis scannez à nouveau.",
+      'info',
+      12000,
+    );
+    return;
+  }
+  if (!empPunch.position) {
+    showToast(
+      'Position introuvable',
+      "Nous n'avons pas pu déterminer votre position. Rapprochez-vous d'une fenêtre puis scannez à nouveau.",
+      'info',
+      12000,
+    );
+    return;
+  }
+
+  // Arrivee ou depart : deduit de la journee en cours. Le serveur revalidera.
+  const type = await deduireTypePointage();
+  const c = empPunch.position.coords;
+
+  try {
+    const { data, error } = await supabaseClient.rpc('record_attendance', {
+      p_punch_type: type,
+      p_latitude: c.latitude,
+      p_longitude: c.longitude,
+      p_gps_accuracy: c.accuracy,
+      p_selfie_path: null,
+      p_face_score: null,
+      p_device_ua: navigator.userAgent,
+      p_client_time: new Date().toISOString(),
+      p_qr_token: token,
+    });
+    if (error) throw error;
+
+    if (!data || !data.accepted) {
+      afficherRefusQr(data);
+      return;
+    }
+
+    const estArrivee = data.punch_type === 'CHECK_IN';
+    showToast(
+      estArrivee ? 'Arrivée enregistrée' : 'Départ enregistré',
+      '<strong>' + escapeHtml(data.server_time) + '</strong> — ' +
+        escapeHtml(data.site_name || 'site') + ' • ' + data.distance_m + ' m' +
+        (data.late_minutes > 0 ? '<br/>Retard de ' + data.late_minutes + ' min' : ''),
+      'success',
+      10000,
+    );
+
+    await loadSupabaseData();
+    if (state.currentUserRole === 'EMPLOYEE') switchView('employee');
+  } catch (e) {
+    console.error('[QR] Pointage impossible :', e);
+    showToast(
+      'Pointage impossible',
+      'Le serveur a refusé la demande. Vérifiez votre connexion puis réessayez.',
+      'info',
+      10000,
+    );
+  }
+}
+
+/** Arrivee si aucune n'est ouverte aujourd'hui, depart sinon. */
+async function deduireTypePointage() {
+  try {
+    const { data } = await supabaseClient.auth.getSession();
+    const uid = data && data.session ? data.session.user.id : null;
+    if (!uid) return 'CHECK_IN';
+
+    const debutJour = new Date();
+    debutJour.setHours(0, 0, 0, 0);
+
+    const { data: rows } = await supabaseClient
+      .from('attendances')
+      .select('punch_type, clock_out, server_time')
+      .eq('user_id', uid)
+      .eq('decision', 'ACCEPTED')
+      .gte('server_time', debutJour.toISOString())
+      .order('server_time', { ascending: false })
+      .limit(1);
+
+    const dernier = rows && rows[0];
+    return dernier && dernier.punch_type === 'CHECK_IN' && !dernier.clock_out ? 'CHECK_OUT' : 'CHECK_IN';
+  } catch (e) {
+    return 'CHECK_IN';
+  }
+}
+
+/** Messages de refus, dont le cas « déjà pointé » que l'employé doit comprendre. */
+function afficherRefusQr(data) {
+  const code = (data && data.code) || 'INCONNU';
+
+  const messages = {
+    ALREADY_CHECKED_IN: {
+      titre: 'Vous avez déjà pointé',
+      corps: "Votre arrivée est déjà enregistrée pour aujourd'hui. Aucune action n'est nécessaire.",
+    },
+    NO_OPEN_CHECK_IN: {
+      titre: 'Aucune arrivée enregistrée',
+      corps: "Vous n'avez pas encore pointé votre arrivée aujourd'hui. Signalez-le à votre service RH.",
+    },
+    DUPLICATE_PUNCH: {
+      titre: 'Pointage déjà pris en compte',
+      corps: "Un pointage vient d'être enregistré. Patientez quelques secondes.",
+    },
+    QR_EXPIRED: {
+      titre: 'QR code expiré',
+      corps: 'Ce code change toutes les 30 secondes. Scannez celui affiché maintenant.',
+    },
+    QR_REPLAY: {
+      titre: 'QR code déjà utilisé',
+      corps: 'Ce code a déjà servi à un pointage. Scannez celui affiché à l\'écran.',
+    },
+    QR_FORGED: {
+      titre: 'QR code non reconnu',
+      corps: "Ce code ne provient pas d'une borne de votre entreprise.",
+    },
+    OUTSIDE_GEOFENCE: {
+      titre: 'Pointage impossible — hors de la zone',
+      corps: data
+        ? 'Vous êtes à environ ' + data.distance_m + ' m du site. Distance autorisée : ' + data.radius_m + ' m.'
+        : 'Vous êtes hors de la zone autorisée.',
+    },
+    GPS_TOO_IMPRECISE: {
+      titre: 'Position trop imprécise',
+      corps: "Rapprochez-vous d'une zone offrant une meilleure réception GPS, puis scannez à nouveau.",
+    },
+    ATTENDANCE_NOT_REQUIRED: {
+      titre: 'Pointage non requis',
+      corps: "Votre poste n'est pas soumis au pointage.",
+    },
+    EMPLOYEE_INACTIVE: {
+      titre: 'Compte désactivé',
+      corps: 'Votre compte est désactivé. Contactez votre service RH.',
+    },
+  };
+
+  const m = messages[code] || {
+    titre: 'Pointage refusé',
+    corps: (data && data.message) || "Le pointage n'a pas pu être validé.",
+  };
+
+  showToast(m.titre, escapeHtml(m.corps), 'info', 12000);
+}
+
 // =============================================================================
 //  BORNE QR — Cockpit RH
 //
@@ -3270,7 +3514,9 @@ function peindreQr(token) {
   try {
     // Type 0 = version choisie automatiquement selon la longueur du jeton.
     const qr = qrcode(0, 'M');
-    qr.addData(token);
+    // On encode une URL, pas le jeton seul : scanne avec l'appareil photo du
+    // telephone, un jeton brut n'affichait qu'une chaine incomprehensible.
+    qr.addData(construireUrlPointageQr(token));
     qr.make();
 
     img.src = qr.createDataURL(8, 2);
@@ -3412,8 +3658,9 @@ function boucleScan() {
 
     if (code && code.data) {
       scanQr.actif = false;
+      // Le code lu peut etre une URL complete ou un jeton nu : on extrait.
       majStatutScan('QR détecté — vérification en cours…', 'ok');
-      envoyerPointageQr(code.data);
+      envoyerPointageQr(extraireJetonQr(code.data) || code.data);
       return;
     }
   }
