@@ -128,6 +128,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   setTheme('terracotta');
   updateRoiCalculator();
 
+  // Chargement automatique et immédiat des données réelles Supabase au démarrage
+  if (supabaseClient) {
+    loadSupabaseData().catch(e => console.warn('[Init Data] Exception chargement Supabase :', e));
+  }
+
   // Restaurer la session Supabase en arrière-plan sans réémettre de toast ni rediriger si déjà sur la bonne vue
   if (supabaseClient) {
     try {
