@@ -1491,18 +1491,18 @@
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div class="p-4 rounded-xl bg-slate-900/80 border border-emerald-500/20">
               <span class="text-xs text-slate-400">Cumul du Mois (Équipe)</span>
-              <div class="text-2xl font-bold font-mono text-emerald-400">14.5 Heures</div>
+              <div id="ot-kpi-total" class="text-2xl font-bold font-mono text-emerald-400">—</div>
               <span class="text-[10px] text-slate-500">Plafond légal : 40h/mois</span>
             </div>
             <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800">
               <span class="text-xs text-slate-400">Heures Validées</span>
-              <div class="text-2xl font-bold font-mono text-white">12.0 Heures</div>
+              <div id="ot-kpi-validated" class="text-2xl font-bold font-mono text-white">—</div>
               <span class="text-[10px] text-emerald-400">Prêtes pour la Paie</span>
             </div>
             <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800">
               <span class="text-xs text-slate-400">En Attente de Validation</span>
-              <div class="text-2xl font-bold font-mono text-orange-400">2.5 Heures</div>
-              <span class="text-[10px] text-slate-500">1 demande en attente</span>
+              <div id="ot-kpi-pending" class="text-2xl font-bold font-mono text-orange-400">—</div>
+              <span id="ot-kpi-pending-sub" class="text-[10px] text-slate-500">—</span>
             </div>
           </div>
 
@@ -1660,19 +1660,19 @@
 
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
-              <span class="text-xs text-slate-400">Tentatives de Faux GPS</span>
-              <div class="text-2xl font-bold font-mono text-emerald-400">0 Détectées</div>
-              <span class="text-[10px] text-slate-500">Dernières 24h</span>
+              <span class="text-xs text-slate-400">Tentatives refusées</span>
+              <div id="sec-kpi-attempts" class="text-2xl font-bold font-mono text-emerald-400">—</div>
+              <span id="sec-kpi-attempts-sub" class="text-[10px] text-slate-500">Toutes causes confondues</span>
             </div>
             <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
-              <span class="text-xs text-slate-400">Intégrité des Selfies</span>
-              <div class="text-2xl font-bold font-mono text-emerald-400">100% Conformes</div>
-              <span class="text-[10px] text-slate-500">Liveness Test OK</span>
+              <span class="text-xs text-slate-400">Pointages avec selfie</span>
+              <div id="sec-kpi-selfie" class="text-2xl font-bold font-mono text-emerald-400">—</div>
+              <span class="text-[10px] text-slate-500">Preuve conservée, vérification faciale non activée</span>
             </div>
             <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-1">
-              <span class="text-xs text-slate-400">Score de Risque Moyen</span>
-              <div class="text-2xl font-bold font-mono text-emerald-400">2 / 100</div>
-              <span class="text-[10px] text-slate-500">Niveau de Risque Faible</span>
+              <span class="text-xs text-slate-400">Pointages hors zone</span>
+              <div id="sec-kpi-outside" class="text-2xl font-bold font-mono text-emerald-400">—</div>
+              <span id="sec-kpi-outside-sub" class="text-[10px] text-slate-500">Refusés par le géofencing</span>
             </div>
           </div>
 

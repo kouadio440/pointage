@@ -1339,6 +1339,34 @@ async function decideOvertime(id, statut) {
 }
 
 function renderOvertimeTable() {
+  // Les trois cartes de synthese etaient ecrites en dur dans le HTML
+  // (14.5 / 12.0 / 2.5 Heures) et ne bougeaient jamais. On les calcule ici,
+  // a partir des memes lignes que celles affichees dans le tableau ci-dessous :
+  // le RH doit pouvoir refaire l addition a la main.
+  {
+    const liste = state.overtimes || [];
+    const minutes = (filtre) =>
+      liste.filter(filtre).reduce((t, o) => t + (Number(o.minutes) || 0), 0);
+
+    const totalMin = minutes(() => true);
+    const valideMin = minutes((o) => o.status === 'Validé');
+    const attenteMin = minutes((o) => o.status === 'En attente');
+    const nbAttente = liste.filter((o) => o.status === 'En attente').length;
+
+    const heures = (m) => (m / 60).toFixed(1) + ' Heures';
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
+
+    set('ot-kpi-total', heures(totalMin));
+    set('ot-kpi-validated', heures(valideMin));
+    set('ot-kpi-pending', heures(attenteMin));
+    set(
+      'ot-kpi-pending-sub',
+      nbAttente === 0
+        ? 'Aucune demande en attente'
+        : nbAttente + (nbAttente > 1 ? ' demandes en attente' : ' demande en attente'),
+    );
+  }
+
   const tbody = document.getElementById('overtime-table');
   if (!tbody) return;
 
@@ -1938,6 +1966,32 @@ function renderReportPreview() {
 }
 
 /** Journal de securite : tentatives de pointage refusees, reellement enregistrees. */
+/**
+ * Cartes de synthese securite.
+ *
+ * Elles affichaient « 0 Détectées », « 100% Conformes » et « 2 / 100 » en dur.
+ * La deuxieme etait doublee de « Liveness Test OK », qui annoncait un controle
+ * de vivacite inexistant dans ce produit : une affirmation de securite fausse.
+ */
+function renderSecurityKpis(tentatives) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
+  const liste = tentatives || [];
+  const pointages = state.attendances || [];
+
+  set('sec-kpi-attempts', String(liste.length));
+
+  const horsZone = liste.filter((a) => a.rejection_code === 'OUTSIDE_GEOFENCE').length;
+  set('sec-kpi-outside', String(horsZone));
+
+  const avecSelfie = pointages.filter((p) => p.selfiePath).length;
+  set(
+    'sec-kpi-selfie',
+    pointages.length > 0
+      ? Math.round((avecSelfie / pointages.length) * 100) + ' %'
+      : '—',
+  );
+}
+
 async function renderSecurityAuditLog() {
   const body = document.getElementById('security-audit-body');
   if (!body) return;
@@ -1959,6 +2013,7 @@ async function renderSecurityAuditLog() {
     if (error) throw error;
 
     if (!data || data.length === 0) {
+      renderSecurityKpis([]);
       body.innerHTML =
         '<tr><td colspan="5" class="p-4 text-center text-slate-500 italic text-xs">' +
         'Aucune tentative de pointage refusée. Les incidents apparaîtront ici automatiquement.' +
@@ -1977,6 +2032,8 @@ async function renderSecurityAuditLog() {
       NO_OPEN_CHECK_IN: 'Départ sans arrivée',
       DUPLICATE_PUNCH: 'Pointage trop rapproché',
     };
+
+    renderSecurityKpis(data);
 
     body.innerHTML = data
       .map((a) => {
