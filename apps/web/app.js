@@ -1987,6 +1987,16 @@ function renderSecurityKpis(tentatives) {
 
   set('sec-kpi-attempts', String(liste.length));
 
+  // Etat du bouclier : reflet des controles REELLEMENT actifs, pas un
+  // « Niveau 4 » decoratif. La verification faciale et la detection de
+  // fausse position ne sont pas branchees : on ne les annonce pas.
+  const badge = document.getElementById('sec-shield-status');
+  if (badge) {
+    const actifs = ['Géofencing', 'Précision GPS', 'Heure serveur'];
+    badge.innerText = actifs.length + ' contrôles actifs';
+    badge.title = actifs.join(' • ') + " — vérification faciale et détection de fausse position non activées";
+  }
+
   const horsZone = liste.filter((a) => a.rejection_code === 'OUTSIDE_GEOFENCE').length;
   set('sec-kpi-outside', String(horsZone));
 
@@ -6753,6 +6763,12 @@ async function loadSupabaseData() {
     }
 
     await loadOvertimesFromDb();
+
+    // Selecteurs et journal de securite alimentes des le chargement.
+    // Ces appels etaient a tort places dans submitOvertimeRequest : le
+    // Bouclier ne se remplissait qu apres une declaration d heures.
+    if (typeof remplirSelecteursEmployes === 'function') remplirSelecteursEmployes();
+    if (typeof renderSecurityAuditLog === 'function') await renderSecurityAuditLog();
 
     renderSaasDashboard();
     renderEmployeeDashboard();
