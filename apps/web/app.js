@@ -3430,28 +3430,6 @@ function renderPunchDiagnostic(checks) {
   return checks;
 }
 
-function submitLeaveRequest() {
-  const typeEl = document.getElementById('leave-type');
-  const reasonEl = document.getElementById('leave-reason');
-  
-  const type = typeEl ? escapeHtml(typeEl.value) : 'Congé Payé Annuel';
-  const rawReason = reasonEl ? reasonEl.value : '';
-  const reason = rawReason.trim() ? escapeHtml(rawReason) : 'Sans commentaire';
-
-  state.leaves.push({
-    id: Date.now(),
-    employee: state.currentUser ? escapeHtml(state.currentUser.email) : 'Employé',
-    type: type,
-    period: '10/08/2026 au 14/08/2026',
-    days: 5,
-    reason: reason,
-    status: 'En attente'
-  });
-
-  showToast('Demande Transmise', 'Votre demande de congé a été soumise au manager RH avec succès.', 'success');
-  closeLeaveModal();
-  renderDashboard();
-}
 
 function submitOvertimeRequest() {
   state.overtimes.push({
@@ -3470,23 +3448,7 @@ function submitOvertimeRequest() {
   renderDashboard();
 }
 
-function approveLeave(id) {
-  const item = state.leaves.find(l => l.id === id);
-  if (item) {
-    item.status = 'Approuvé';
-    showToast('Congé Approuvé', `La demande de congé de ${item.employee} a été validée.`, 'success');
-  }
-  renderDashboard();
-}
 
-function rejectLeave(id) {
-  const item = state.leaves.find(l => l.id === id);
-  if (item) {
-    item.status = 'Refusé';
-    showToast('Congé Refusé', `La demande de congé de ${item.employee} a été refusée.`, 'info');
-  }
-  renderDashboard();
-}
 
 function approveOvertime(id) {
   const item = state.overtimes.find(o => o.id === id);
@@ -6226,9 +6188,13 @@ async function loadSupabaseData() {
         leaveQuery = leaveQuery.eq('company_id', state.currentCompanyId);
       }
 
-      const { data: leavesData } = await leaveQuery;
-      if (leavesData && leavesData.length > 0) {
-        state.leaves = leavesData.map(l => ({
+      const { data: leavesData, error: leavesErr } = await leaveQuery;
+      if (leavesErr) throw leavesErr;
+
+      // Affectation INCONDITIONNELLE : avec un garde `length > 0`, une liste
+      // videe cote serveur laissait l'ancienne en place a l'ecran. La base est
+      // la seule source de verite, y compris quand elle ne renvoie rien.
+      state.leaves = (leavesData || []).map(l => ({
           id: l.id,
           userId: l.user_id,
           userEmail: l.user_email || '',
@@ -6241,7 +6207,6 @@ async function loadSupabaseData() {
           reason: l.reason || 'Demande personnelle',
           status: l.status || 'En attente'
         }));
-      }
     } catch (errLeaves) {
       console.warn('Notice chargement congés Supabase:', errLeaves);
     }
