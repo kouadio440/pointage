@@ -869,6 +869,14 @@ function switchSection(sectionName) {
   if (sectionName === 'punch' && typeof renderGeofenceSection === 'function') {
     renderGeofenceSection();
   }
+  // La borne QR ne tourne que lorsque son onglet est ouvert : inutile de
+  // solliciter le serveur toutes les secondes en arriere-plan.
+  if (sectionName === 'qr' && typeof remplirSelecteurBorneQr === 'function') {
+    remplirSelecteurBorneQr();
+  } else if (typeof arreterBorneQr === 'function') {
+    arreterBorneQr();
+  }
+
   if (sectionName === 'punch-config' && typeof renderPunchConfig === 'function') {
     renderPunchConfig();
   }
@@ -3096,9 +3104,30 @@ const borneQr = {
 };
 
 /** Remplit le selecteur de site de la borne. */
-function remplirSelecteurBorneQr() {
+/**
+ * Remplit le selecteur de la borne.
+ *
+ * Charge les sites lui-meme si punchConfig est vide : cette liste n'etait
+ * alimentee qu'a l'ouverture de l'onglet « Configuration Pointage », si bien
+ * qu'en venant directement sur l'onglet QR le selecteur restait vide.
+ */
+async function remplirSelecteurBorneQr() {
   const sel = document.getElementById('qr-site-select');
   if (!sel) return;
+
+  if ((!punchConfig.sites || punchConfig.sites.length === 0) && supabaseClient && state.currentCompanyId) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('geofences')
+        .select('*')
+        .eq('company_id', state.currentCompanyId)
+        .order('name');
+      if (error) throw error;
+      punchConfig.sites = data || [];
+    } catch (e) {
+      console.warn('[Borne QR] Chargement des sites impossible :', e);
+    }
+  }
 
   const sites = (punchConfig.sites || []).filter((s) => s.is_active !== false);
   if (sites.length === 0) {
@@ -3111,7 +3140,13 @@ function remplirSelecteurBorneQr() {
   sel.innerHTML = sites
     .map((s) => '<option value="' + escapeHtml(String(s.id)) + '">' + escapeHtml(s.name) + '</option>')
     .join('');
-  if (precedent) sel.value = precedent;
+  if (precedent && sites.some((s) => String(s.id) === precedent)) sel.value = precedent;
+
+  // La borne s'ouvre sur le premier site sans attendre une action : un ecran
+  // d'accueil qui exige un clic n'a pas de sens sur une tablette d'entree.
+  if (sel.value && borneQr.siteId !== sel.value) {
+    await demarrerBorneQr();
+  }
 }
 
 function majStatutBorne(texte, ton) {
