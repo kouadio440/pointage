@@ -109,7 +109,6 @@ function restoreSessionFromStorage() {
 document.addEventListener('DOMContentLoaded', async () => {
   initIcons();
   startLiveClock();
-  startQRCountdown();
   
   // 1. Restaurer la session locale immédiatement de manière synchrone
   restoreSessionFromStorage();
@@ -1594,26 +1593,6 @@ async function captureCurrentLocationForSelectedSite() {
 }
 
 // Dynamic QR Countdown Timer
-function startQRCountdown() {
-  const timerEl = document.getElementById('qr-timer');
-  const barEl = document.getElementById('qr-progress-bar');
-
-  setInterval(() => {
-    state.qrTimer--;
-    if (state.qrTimer <= 0) {
-      state.qrTimer = 30;
-      // Animate QR SVG flash to simulate token rotation
-      const qrSvg = document.getElementById('qr-code-svg');
-      if (qrSvg) {
-        qrSvg.style.opacity = '0.3';
-        setTimeout(() => { qrSvg.style.opacity = '1'; }, 300);
-      }
-    }
-
-    if (timerEl) timerEl.innerText = `${state.qrTimer}s`;
-    if (barEl) barEl.style.width = `${(state.qrTimer / 30) * 100}%`;
-  }, 1000);
-}
 
 // Modals Trigger Handlers & Media Stream
 let punchMediaStream = null;
@@ -3098,6 +3077,382 @@ function traduireErreurEcriture(error, quoi) {
 }
 
 // =============================================================================
+//  BORNE QR — Cockpit RH
+//
+//  Le QR affiche n'est pas un identifiant fixe : c'est un jeton signe par le
+//  serveur (HMAC-SHA256 avec un secret propre au site), valable une fenetre
+//  courte, et consommable une seule fois par employe.
+//
+//  Le navigateur ne fabrique JAMAIS de jeton : il demande, affiche, et laisse
+//  le serveur juger au moment du scan. Un QR photographie est donc inutile.
+// =============================================================================
+
+const borneQr = {
+  siteId: null,
+  token: null,
+  rotationSec: 30,
+  restant: 0,
+  timer: null,
+};
+
+/** Remplit le selecteur de site de la borne. */
+function remplirSelecteurBorneQr() {
+  const sel = document.getElementById('qr-site-select');
+  if (!sel) return;
+
+  const sites = (punchConfig.sites || []).filter((s) => s.is_active !== false);
+  if (sites.length === 0) {
+    sel.innerHTML = '<option value="">Aucun site configuré</option>';
+    majStatutBorne("Créez d'abord un site dans « Configuration Pointage ».");
+    return;
+  }
+
+  const precedent = sel.value;
+  sel.innerHTML = sites
+    .map((s) => '<option value="' + escapeHtml(String(s.id)) + '">' + escapeHtml(s.name) + '</option>')
+    .join('');
+  if (precedent) sel.value = precedent;
+}
+
+function majStatutBorne(texte, ton) {
+  const el = document.getElementById('qr-status');
+  if (!el) return;
+  el.innerText = texte || '';
+  el.className =
+    'text-[11px] min-h-[1.2rem] ' +
+    (ton === 'erreur' ? 'text-red-300' : ton === 'ok' ? 'text-emerald-300' : 'text-slate-400');
+}
+
+/** Ouvre la borne pour le site selectionne et lance la rotation. */
+async function demarrerBorneQr() {
+  const sel = document.getElementById('qr-site-select');
+  const siteId = sel ? sel.value : null;
+
+  arreterBorneQr();
+
+  if (!siteId) {
+    majStatutBorne('Sélectionnez un site pour ouvrir la borne.');
+    return;
+  }
+  if (!supabaseClient) {
+    majStatutBorne('Connexion au serveur indisponible.', 'erreur');
+    return;
+  }
+
+  borneQr.siteId = siteId;
+  await renouvelerJetonQr();
+
+  // Une seconde d'intervalle : le compte a rebours doit etre lisible, et le
+  // renouvellement declenche exactement a l'expiration.
+  borneQr.timer = setInterval(async () => {
+    borneQr.restant -= 1;
+    majCompteARebours();
+    if (borneQr.restant <= 0) await renouvelerJetonQr();
+  }, 1000);
+}
+
+function arreterBorneQr() {
+  if (borneQr.timer) {
+    clearInterval(borneQr.timer);
+    borneQr.timer = null;
+  }
+}
+
+async function renouvelerJetonQr() {
+  if (!borneQr.siteId || !supabaseClient) return;
+
+  try {
+    const { data, error } = await supabaseClient.rpc('generate_site_qr_token', {
+      p_site_id: borneQr.siteId,
+    });
+    if (error) throw error;
+
+    if (!data || !data.ok) {
+      const messages = {
+        FORBIDDEN: "Seuls le CEO et le service RH peuvent ouvrir une borne.",
+        QR_DISABLED: 'Le pointage par QR est désactivé pour ce site.',
+        SITE_NOT_FOUND: 'Site introuvable.',
+      };
+      majStatutBorne((data && (messages[data.code] || data.message)) || 'Borne indisponible.', 'erreur');
+      masquerQr();
+      return;
+    }
+
+    borneQr.token = data.token;
+    borneQr.rotationSec = data.rotation_sec || 30;
+    borneQr.restant = data.expires_in || borneQr.rotationSec;
+
+    await peindreQr(data.token);
+    majCompteARebours();
+    majStatutBorne('Borne active — ' + data.site_name, 'ok');
+  } catch (e) {
+    console.error('[Borne QR] Génération impossible :', e);
+    const msg = String((e && e.message) || '');
+    majStatutBorne(
+      /schema cache|could not find/i.test(msg)
+        ? "Fonction serveur absente. Exécutez services/supabase_migration_007_qr_kiosk.sql."
+        : 'Impossible de générer le QR code. Vérifiez votre connexion.',
+      'erreur',
+    );
+    masquerQr();
+  }
+}
+
+function masquerQr() {
+  const canvas = document.getElementById('qr-canvas');
+  const ph = document.getElementById('qr-placeholder');
+  if (canvas) canvas.classList.add('hidden');
+  if (ph) ph.classList.remove('hidden');
+}
+
+async function peindreQr(token) {
+  const canvas = document.getElementById('qr-canvas');
+  const ph = document.getElementById('qr-placeholder');
+  if (!canvas) return;
+
+  if (typeof QRCode === 'undefined' || !QRCode.toCanvas) {
+    majStatutBorne('Bibliothèque QR non chargée. Vérifiez votre connexion réseau.', 'erreur');
+    masquerQr();
+    return;
+  }
+
+  await new Promise((resolve) => {
+    QRCode.toCanvas(
+      canvas,
+      token,
+      { width: 192, margin: 1, errorCorrectionLevel: 'M', color: { dark: '#000000', light: '#ffffff' } },
+      () => resolve(),
+    );
+  });
+
+  canvas.classList.remove('hidden');
+  if (ph) ph.classList.add('hidden');
+}
+
+function majCompteARebours() {
+  const t = document.getElementById('qr-timer');
+  const bar = document.getElementById('qr-progress-bar');
+  const restant = Math.max(0, borneQr.restant);
+  if (t) t.innerText = restant + 's';
+  if (bar) bar.style.width = Math.round((restant / borneQr.rotationSec) * 100) + '%';
+}
+
+/** Plein ecran, pour une tablette posee a l'entree. */
+function basculerPleinEcranBorne() {
+  const el = document.getElementById('section-qr');
+  if (!el) return;
+  if (!document.fullscreenElement) {
+    el.requestFullscreen().catch(() => showToast('Plein écran refusé', "Votre navigateur a refusé le passage en plein écran.", 'info'));
+  } else {
+    document.exitFullscreen();
+  }
+}
+
+/** Invalide instantanement tous les QR deja affiches ou photographies. */
+async function regenererSecretQr() {
+  if (!borneQr.siteId || !supabaseClient) {
+    showToast('Aucun site sélectionné', 'Choisissez le site de la borne.', 'info');
+    return;
+  }
+
+  try {
+    const { data, error } = await supabaseClient.rpc('rotate_site_qr_secret', {
+      p_site_id: borneQr.siteId,
+    });
+    if (error) throw error;
+
+    if (!data || !data.ok) {
+      showToast('Action refusée', (data && data.message) || 'Régénération impossible.', 'info');
+      return;
+    }
+
+    showToast('Secret régénéré', 'Tous les QR codes précédents sont désormais invalides.', 'success', 8000);
+    await renouvelerJetonQr();
+  } catch (e) {
+    console.error('[Borne QR] Rotation du secret :', e);
+    showToast('Régénération impossible', traduireErreurEcriture(e, 'ce secret'), 'info', 12000);
+  }
+}
+
+// =============================================================================
+//  SCAN DU QR — Dashboard Employé
+//
+//  Meme operation que le pointage selfie : la camera et le GPS demarrent
+//  ensemble. Le selfie n'est pas demande ici, la presence physique etant deja
+//  etablie par un jeton a fenetre de quelques secondes. Le geofencing, lui,
+//  reste applique cote serveur.
+// =============================================================================
+
+const scanQr = {
+  type: null,
+  stream: null,
+  actif: false,
+  raf: null,
+};
+
+async function ouvrirScanQr(type) {
+  if (scanQr.actif) return;
+
+  if (!state.isAuthenticated) {
+    showToast('Connexion requise', 'Reconnectez-vous pour pouvoir pointer.', 'info');
+    return;
+  }
+
+  scanQr.type = type === 'CHECK_OUT' ? 'CHECK_OUT' : 'CHECK_IN';
+  scanQr.actif = true;
+
+  const modal = document.getElementById('modal-qr-scan');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  }
+
+  const titre = document.querySelector('#modal-qr-scan h3 span');
+  if (titre) titre.innerText = scanQr.type === 'CHECK_IN' ? 'Pointer mon arrivée par QR' : 'Pointer mon départ par QR';
+
+  majStatutScan('Démarrage de la caméra…');
+
+  // GPS lance en parallele, comme pour le pointage selfie.
+  startEmployeePunchGps();
+
+  const video = document.getElementById('qr-scan-video');
+  try {
+    scanQr.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' },
+      audio: false,
+    });
+    if (video) {
+      video.srcObject = scanQr.stream;
+      await video.play();
+    }
+    majStatutScan('Visez le QR code affiché sur la borne.');
+    boucleScan();
+  } catch (e) {
+    majStatutScan("Caméra refusée. Autorisez-la puis réessayez.", 'erreur');
+  }
+}
+
+function majStatutScan(texte, ton) {
+  const el = document.getElementById('qr-scan-status');
+  if (!el) return;
+  el.innerText = texte;
+  el.className =
+    'text-xs text-center min-h-[1.2rem] ' +
+    (ton === 'erreur' ? 'text-red-300' : ton === 'ok' ? 'text-emerald-300' : 'text-slate-300');
+}
+
+function boucleScan() {
+  const video = document.getElementById('qr-scan-video');
+  const canvas = document.getElementById('qr-scan-canvas');
+  if (!video || !canvas || !scanQr.actif) return;
+
+  if (video.readyState === video.HAVE_ENOUGH_DATA && typeof jsQR !== 'undefined') {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(image.data, image.width, image.height, { inversionAttempts: 'dontInvert' });
+
+    if (code && code.data) {
+      scanQr.actif = false;
+      majStatutScan('QR détecté — vérification en cours…', 'ok');
+      envoyerPointageQr(code.data);
+      return;
+    }
+  }
+
+  scanQr.raf = requestAnimationFrame(boucleScan);
+}
+
+async function envoyerPointageQr(token) {
+  arreterScanQr();
+
+  // On attend la position, bornee : le geofencing reste applique.
+  const limite = Date.now() + 12000;
+  while (!['ready', 'imprecise', 'denied', 'timeout', 'unavailable'].includes(empPunch.gpsState) && Date.now() < limite) {
+    await new Promise((r) => setTimeout(r, 300));
+  }
+
+  if (!empPunch.position) {
+    majStatutScan("Position introuvable. Activez la localisation puis réessayez.", 'erreur');
+    return;
+  }
+
+  const c = empPunch.position.coords;
+
+  try {
+    const { data, error } = await supabaseClient.rpc('record_attendance', {
+      p_punch_type: scanQr.type,
+      p_latitude: c.latitude,
+      p_longitude: c.longitude,
+      p_gps_accuracy: c.accuracy,
+      p_selfie_path: null,
+      p_face_score: null,
+      p_device_ua: navigator.userAgent,
+      p_client_time: new Date().toISOString(),
+      p_qr_token: token,
+    });
+    if (error) throw error;
+
+    if (!data || !data.accepted) {
+      const messages = {
+        QR_EXPIRED: 'Ce QR code a expiré. Scannez celui affiché maintenant.',
+        QR_REPLAY: 'Ce QR code a déjà servi. Scannez le code actuellement affiché.',
+        QR_FORGED: "Ce QR code ne provient pas d'un poste de votre entreprise.",
+        OUTSIDE_GEOFENCE: 'Vous êtes à ' + data.distance_m + ' m du site. Distance autorisée : ' + data.radius_m + ' m.',
+        ALREADY_CHECKED_IN: "Votre arrivée a déjà été enregistrée aujourd'hui.",
+        NO_OPEN_CHECK_IN: "Aucune arrivée enregistrée aujourd'hui.",
+      };
+      majStatutScan((data && (messages[data.code] || data.message)) || 'Pointage refusé.', 'erreur');
+      return;
+    }
+
+    majStatutScan(
+      (scanQr.type === 'CHECK_IN' ? 'Arrivée enregistrée à ' : 'Départ enregistré à ') + data.server_time,
+      'ok',
+    );
+    showToast(
+      'Pointage enregistré',
+      escapeHtml(data.site_name) + ' • ' + data.distance_m + ' m du site',
+      'success',
+      7000,
+    );
+
+    setTimeout(fermerScanQr, 1800);
+    await loadSupabaseData();
+  } catch (e) {
+    console.error('[Scan QR] Erreur :', e);
+    majStatutScan('Le serveur a refusé la demande. Réessayez.', 'erreur');
+  }
+}
+
+function arreterScanQr() {
+  scanQr.actif = false;
+  if (scanQr.raf) {
+    cancelAnimationFrame(scanQr.raf);
+    scanQr.raf = null;
+  }
+  if (scanQr.stream) {
+    scanQr.stream.getTracks().forEach((t) => t.stop());
+    scanQr.stream = null;
+  }
+  const v = document.getElementById('qr-scan-video');
+  if (v) v.srcObject = null;
+}
+
+function fermerScanQr() {
+  arreterScanQr();
+  empPunch.gpsAbort = true;
+  const modal = document.getElementById('modal-qr-scan');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+}
+
+// =============================================================================
 //  CONFIGURATION DU POINTAGE — Cockpit Client RH
 //
 //  Cette section est la SOURCE DE VÉRITÉ du pointage. Le Dashboard Employé lit
@@ -3204,6 +3559,7 @@ async function renderPunchConfig() {
 
   const employes = Array.from(employesMap.values());
 
+  remplirSelecteurBorneQr();
   renderSitesList(migration003Absente);
   renderSchedulesList(migration003Absente);
   renderReadinessTable(employes, migration003Absente);

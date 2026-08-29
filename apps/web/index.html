@@ -104,6 +104,12 @@
 
   <!-- Lucide Icons (Fixed version) -->
   <script src="https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js"></script>
+
+  <!-- Generation du QR de la borne (Cockpit RH) et lecture par l'employe.
+       Versions epinglees : un CDN non epingle sur une page qui manipule des
+       jetons de pointage serait une prise de controle a distance. -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   
   <!-- GSAP Animation Library CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
@@ -1700,60 +1706,66 @@
 
       <!-- SUB-SECTION 8: QR CODE DYNAMIQUE -->
       <div id="section-qr" class="sub-section hidden space-y-6">
-        <div class="glass-panel p-6 space-y-6 text-center max-w-xl mx-auto">
+        <div class="glass-panel p-6 space-y-5 text-center max-w-xl mx-auto">
           <div class="space-y-1">
             <h3 class="text-lg font-bold text-white flex items-center justify-center gap-2">
               <i data-lucide="qr-code" class="w-5 h-5 text-emerald-400"></i>
               Borne QR Code Dynamique d'Entrée
             </h3>
-            <p class="text-xs text-slate-400">Le QR code se régénère toutes les 30 secondes pour empêcher la capture d'écran frauduleuse.</p>
+            <p class="text-xs text-slate-400">
+              Chaque QR code est signé par le serveur, valable quelques secondes, et
+              utilisable une seule fois par employé. Une capture d'écran ne fonctionne pas.
+            </p>
           </div>
 
-          <!-- Dynamic QR Container -->
-          <div class="p-6 bg-white rounded-2xl inline-block shadow-2xl relative border-4 border-emerald-500/50">
-            <svg id="qr-code-svg" class="w-48 h-48 mx-auto text-black" viewBox="0 0 100 100">
-              <!-- Simple generated QR Pattern -->
-              <rect width="100" height="100" fill="white" />
-              <rect x="10" y="10" width="30" height="30" fill="black" />
-              <rect x="15" y="15" width="20" height="20" fill="white" />
-              <rect x="20" y="20" width="10" height="10" fill="black" />
-
-              <rect x="60" y="10" width="30" height="30" fill="black" />
-              <rect x="65" y="15" width="20" height="20" fill="white" />
-              <rect x="70" y="20" width="10" height="10" fill="black" />
-
-              <rect x="10" y="60" width="30" height="30" fill="black" />
-              <rect x="15" y="65" width="20" height="20" fill="white" />
-              <rect x="20" y="70" width="10" height="10" fill="black" />
-
-              <!-- Random Data Dots -->
-              <rect x="45" y="15" width="8" height="8" fill="black" />
-              <rect x="45" y="35" width="8" height="8" fill="black" />
-              <rect x="45" y="55" width="8" height="8" fill="black" />
-              <rect x="45" y="75" width="8" height="8" fill="black" />
-              <rect x="15" y="45" width="8" height="8" fill="black" />
-              <rect x="35" y="45" width="8" height="8" fill="black" />
-              <rect x="55" y="45" width="8" height="8" fill="black" />
-              <rect x="75" y="45" width="8" height="8" fill="black" />
-              <rect x="60" y="60" width="12" height="12" fill="black" />
-              <rect x="78" y="78" width="12" height="12" fill="black" />
-            </svg>
+          <!-- Choix du site : le QR est propre a un site, pas a l'entreprise. -->
+          <div class="max-w-xs mx-auto text-left">
+            <label class="text-[11px] text-slate-400 font-semibold block mb-1">Site de la borne</label>
+            <select id="qr-site-select" onchange="demarrerBorneQr()"
+              class="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500">
+            </select>
           </div>
 
-          <!-- Countdown Progress -->
+          <!-- Le QR est peint ici par la bibliotheque, jamais dessine a la main. -->
+          <div class="p-5 bg-white rounded-2xl inline-block shadow-2xl relative border-4 border-emerald-500/50">
+            <canvas id="qr-canvas" class="w-48 h-48 mx-auto block"></canvas>
+            <div id="qr-placeholder" class="w-48 h-48 flex items-center justify-center text-center text-[11px] text-slate-500 px-3">
+              Sélectionnez un site pour ouvrir la borne.
+            </div>
+          </div>
+
           <div class="space-y-2">
             <div class="flex justify-between text-xs font-mono text-slate-300 max-w-xs mx-auto">
               <span>Prochain renouvellement :</span>
-              <span id="qr-timer" class="text-emerald-400 font-bold">28s</span>
+              <span id="qr-timer" class="text-emerald-400 font-bold">—</span>
             </div>
             <div class="w-full max-w-xs mx-auto bg-slate-800 h-2 rounded-full overflow-hidden">
-              <div id="qr-progress-bar" class="bg-emerald-500 h-full w-[90%] transition-all duration-1000"></div>
+              <div id="qr-progress-bar" class="bg-emerald-500 h-full w-0 transition-all duration-1000"></div>
             </div>
+          </div>
+
+          <p id="qr-status" class="text-[11px] text-slate-400 min-h-[1.2rem]"></p>
+
+          <div class="flex flex-wrap items-center justify-center gap-2 pt-1">
+            <button onclick="basculerPleinEcranBorne()"
+              class="min-h-tap px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 font-bold text-xs transition flex items-center gap-1.5">
+              <i data-lucide="maximize" class="w-4 h-4"></i> Mode borne plein écran
+            </button>
+            <button onclick="regenererSecretQr()"
+              class="min-h-tap px-4 py-2 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-500/40 font-bold text-xs transition flex items-center gap-1.5"
+              title="Invalide immédiatement tous les QR codes déjà affichés ou photographiés">
+              <i data-lucide="refresh-cw" class="w-4 h-4"></i> Régénérer le secret
+            </button>
+          </div>
+
+          <div class="text-left text-[11px] text-slate-400 border-t border-slate-800 pt-4 space-y-1">
+            <p class="font-bold text-slate-300">Comment l'employé pointe</p>
+            <p>Il ouvre son Dashboard Employé, choisit « Pointer par QR », et scanne cet écran.</p>
+            <p>Le géofencing reste appliqué : le QR prouve la présence devant la borne, il ne dispense pas d'être dans la zone autorisée.</p>
           </div>
         </div>
       </div>
 
-      <!-- SUB-SECTION 9: REPORTS PDF -->
       <div id="section-reports" class="sub-section hidden space-y-6">
         <div class="glass-panel p-6 space-y-6">
           <div class="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -1962,6 +1974,39 @@
     Conçu mobile d'abord : c'est depuis un téléphone que se fera l'essentiel des
     pointages, souvent en réseau dégradé.
   -->
+  <!--
+    SCAN QR — Dashboard Employé.
+    La camera arriere et le GPS demarrent ensemble, comme pour le pointage
+    selfie. Le geofencing reste applique cote serveur : le QR prouve la
+    presence devant la borne, il ne dispense pas d'etre dans la zone.
+  -->
+  <div id="modal-qr-scan" class="fixed inset-0 z-[60] bg-black/90 backdrop-blur-md hidden items-center justify-center p-3 sm:p-4">
+    <div class="glass-panel-elevated w-full max-w-md p-5 space-y-4 border border-emerald-500/40 relative">
+      <button onclick="fermerScanQr()" class="absolute top-3 right-3 text-slate-400 hover:text-white p-2 min-h-tap" aria-label="Fermer">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <h3 class="text-base font-bold text-white flex items-center gap-2 pr-8">
+        <i data-lucide="qr-code" class="w-5 h-5 text-emerald-400"></i>
+        <span>Pointer par QR</span>
+      </h3>
+
+      <div class="relative w-full aspect-square rounded-2xl overflow-hidden bg-slate-950 border border-slate-700">
+        <video id="qr-scan-video" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover"></video>
+        <canvas id="qr-scan-canvas" class="hidden"></canvas>
+        <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div class="w-48 h-48 border-2 border-emerald-400/80 rounded-xl"></div>
+        </div>
+      </div>
+
+      <p id="qr-scan-status" class="text-xs text-center text-slate-300 min-h-[1.2rem]"></p>
+
+      <button onclick="fermerScanQr()" class="w-full min-h-tap py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 font-bold text-xs transition">
+        ANNULER
+      </button>
+    </div>
+  </div>
+
   <div id="modal-emp-punch" class="fixed inset-0 z-[60] bg-black/85 backdrop-blur-md hidden items-center justify-center p-3 sm:p-4">
     <div class="glass-panel-elevated w-full max-w-md p-5 sm:p-6 space-y-4 border border-emerald-500/40 relative max-h-[95vh] overflow-y-auto">
       <button id="emp-punch-close" onclick="closeEmployeePunch()" class="absolute top-3 right-3 text-slate-400 hover:text-white p-2 min-h-tap" aria-label="Fermer">
@@ -2809,6 +2854,11 @@
               class="min-h-tap px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 font-bold text-xs flex items-center justify-center gap-2 transition disabled:opacity-50 disabled:cursor-not-allowed">
               <i data-lucide="log-out" class="w-4 h-4"></i>
               Pointer mon départ
+            </button>
+            <button id="btn-emp-qr" onclick="ouvrirScanQr('CHECK_IN')"
+              class="min-h-tap px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2 transition">
+              <i data-lucide="qr-code" class="w-4 h-4"></i>
+              Pointer par QR
             </button>
           </div>
         </div>
