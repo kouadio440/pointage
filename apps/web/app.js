@@ -2054,13 +2054,22 @@ async function renderSecurityAuditLog() {
 
     body.innerHTML = data
       .map((a) => {
+        // La DATE est indispensable : sans elle, une tentative du 17/08 semble
+        // avoir eu lieu aujourd hui et parait contredire un pointage valide.
         const heure = a.server_time
-          ? new Date(a.server_time).toLocaleTimeString('fr-FR', {
+          ? new Date(a.server_time).toLocaleDateString('fr-FR', {
+              timeZone: 'Africa/Abidjan',
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+            }) +
+            ' ' +
+            new Date(a.server_time).toLocaleTimeString('fr-FR', {
               timeZone: 'Africa/Abidjan',
               hour: '2-digit',
               minute: '2-digit',
-              second: '2-digit',
-            }) + ' GMT'
+            }) +
+            ' GMT'
           : '—';
         const nom = a.users ? a.users.full_name || '—' : '—';
         const detail = a.rejection_detail || libelles[a.rejection_code] || a.rejection_code;
@@ -4372,7 +4381,7 @@ async function handleAuthSubmit(e) {
   }
 }
 
-function selectCompanyWorkspace(companyId, role, attendanceRequired, companyName) {
+async function selectCompanyWorkspace(companyId, role, attendanceRequired, companyName) {
   state.currentCompanyId = companyId;
   state.currentUserRole = role || 'EMPLOYEE';
   state.currentUserAttendanceRequired = attendanceRequired !== false;
@@ -4430,7 +4439,10 @@ function selectCompanyWorkspace(companyId, role, attendanceRequired, companyName
   }
 
   adaptCockpitRhPermissions();
-  loadSupabaseData();
+
+  // « await » indispensable : sans lui, les vues etaient dessinees avant
+  // l arrivee des donnees, et il fallait recharger la page pour les voir.
+  await loadSupabaseData();
 }
 
 function adaptCockpitRhPermissions() {
@@ -5285,7 +5297,7 @@ async function handleAddEmployeeSubmit(e) {
 
     closeAddEmployeeModal();
     openInviteCreatedModal(fullName, state.currentCompanyName || 'Votre Entreprise', inviteCode, generatedMatricule, email);
-    loadSupabaseData();
+    await loadSupabaseData();
   } catch (err) {
     console.error('Erreur création membre Supabase:', err);
     showToast('Erreur d\'Enregistrement', err.message || 'Impossible d\'enregistrer le membre.', 'info');
@@ -6770,6 +6782,12 @@ async function loadSupabaseData() {
     if (typeof remplirSelecteursEmployes === 'function') remplirSelecteursEmployes();
     if (typeof renderSecurityAuditLog === 'function') await renderSecurityAuditLog();
 
+    // renderDashboard() n etait appele qu AVANT le chargement des pointages :
+    // le « Journal de Pointage en Direct » se dessinait donc vide, et il fallait
+    // recharger la page pour le voir. On redessine ici, une fois toutes les
+    // donnees arrivees.
+    renderDashboard();
+    renderStaffGrid();
     renderSaasDashboard();
     renderEmployeeDashboard();
     renderLeaveRequestsTable();
