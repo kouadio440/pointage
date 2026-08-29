@@ -1744,17 +1744,24 @@ async function submitLeaveRequest() {
     const diffTime = Math.abs(endDate - startDate);
     const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
 
+    // Aucune identite de repli. Ces valeurs pointaient vers un employe REEL :
+    // une session incomplete aurait depose la demande de conge en son nom.
     const currentEmp = state.currentUser || {};
-    const empName = currentEmp.fullName || currentEmp.email || 'kouassi jonas KONAN';
-    
-    // Ensure userId and companyId are valid UUIDs for PostgreSQL column constraints
-    const rawUserId = currentEmp.id;
-    const userId = isUuid(rawUserId) ? rawUserId : '6873bcee-b1fb-4b7a-b78e-31aecfa83fca';
-    
-    const userEmail = currentEmp.email || 'testboutique2001@gmail.com';
-    
-    const rawCompanyId = state.currentCompanyId;
-    const companyId = isUuid(rawCompanyId) ? rawCompanyId : '4ea1f06d-afc9-4bb6-86f0-44cb7f29413d';
+    const userId = isUuid(currentEmp.id) ? currentEmp.id : null;
+    const companyId = isUuid(state.currentCompanyId) ? state.currentCompanyId : null;
+
+    if (!userId || !companyId) {
+      showToast(
+        'Session incomplète',
+        "Votre compte n'a pas pu être identifié. Reconnectez-vous avant de soumettre votre demande.",
+        'info',
+        10000,
+      );
+      return;
+    }
+
+    const empName = currentEmp.fullName || currentEmp.email || 'Employé';
+    const userEmail = currentEmp.email || null;
 
     const leavePayload = {
       company_id: companyId,
@@ -3167,22 +3174,9 @@ async function renderPunchConfig() {
     }
   });
 
-  // Si l'entreprise n'a pas encore d'employés enregistrés, ajouter Jonas avec son VRAI email
-  if (employesMap.size === 0) {
-    const defaultSiteId = punchConfig.sites[0] ? punchConfig.sites[0].id : null;
-    const defaultSchedId = punchConfig.schedules[0] ? punchConfig.schedules[0].id : null;
-
-    employesMap.set('6873bcee-b1fb-4b7a-b78e-31aecfa83fca', {
-      id: '6873bcee-b1fb-4b7a-b78e-31aecfa83fca',
-      full_name: 'kouassi jonas KONAN',
-      email: 'testboutique2001@gmail.com',
-      registration_number: 'EMP-0004',
-      is_active: true,
-      site_id: defaultSiteId,
-      schedule_id: defaultSchedId,
-      attendance_required: true
-    });
-  }
+  // Aucun employe n est injecte quand l effectif est vide. Une version
+  // precedente ajoutait ici une fiche codee en dur : le RH voyait un
+  // collaborateur qui n existait pas dans sa base.
 
   const employes = Array.from(employesMap.values());
 
@@ -5891,6 +5885,58 @@ function closePendingApprovalModal() {
 
 
 /**
+ * Repare les rattachements « demi-approuves » avant d'afficher les demandes.
+ *
+ * Une ancienne version de approveRegistration() activait le compte
+ * (users.is_active = true) SANS passer le rattachement a ACTIVE. Le RH voyait
+ * donc revenir indefiniment une demande deja traitee, pour un employe qui
+ * figurait pourtant dans l'effectif et pouvait pointer.
+ *
+ * La signature est sans ambiguite : une auto-inscription cree TOUJOURS
+ * l'utilisateur avec is_active = false (voir le flux de code entreprise).
+ * Un compte actif, rattache a cette meme entreprise, mais dont le rattachement
+ * reste PENDING_APPROVAL, ne peut donc provenir que de ce defaut.
+ *
+ * On termine l'approbation au lieu d'afficher une demande fantome.
+ *
+ * @returns {Promise<number>} nombre de rattachements repares
+ */
+async function reconcilierRattachementsDemiApprouves(lignes) {
+  if (!supabaseClient || !Array.isArray(lignes) || lignes.length === 0) return 0;
+
+  const aReparer = lignes.filter((m) => {
+    const u = m.users || {};
+    return (
+      m.status === 'PENDING_APPROVAL' &&
+      u.is_active === true &&
+      String(u.company_id || '') === String(m.company_id || '')
+    );
+  });
+
+  if (aReparer.length === 0) return 0;
+
+  try {
+    const { error } = await supabaseClient
+      .from('company_memberships')
+      .update({ status: 'ACTIVE', updated_at: new Date().toISOString() })
+      .in(
+        'id',
+        aReparer.map((m) => m.id),
+      );
+
+    if (error) throw error;
+
+    console.info(
+      '[RH] ' + aReparer.length + ' rattachement(s) deja actif(s) ont ete finalises automatiquement.',
+    );
+    return aReparer.length;
+  } catch (e) {
+    console.warn('[RH] Reconciliation des rattachements impossible :', e);
+    return 0;
+  }
+}
+
+/**
  * Charge les demandes d'inscription REELLES depuis company_memberships.
  *
  * Deux choix explicites :
@@ -5907,7 +5953,8 @@ async function loadPendingRegistrations() {
   state.pendingRegistrations = [];
 
   const companyId = state.currentCompanyId;
-  const foundRegistrations = [];
+  // « let » et non « const » : la liste est refiltree apres reconciliation.
+  let foundRegistrations = [];
 
   if (supabaseClient && companyId) {
     // Stream A: Appartenances en attente de l'entreprise
@@ -5916,7 +5963,7 @@ async function loadPendingRegistrations() {
         .from('company_memberships')
         .select(
           'id, user_id, company_id, role, status, created_at, ' +
-            'users(id, full_name, email, registration_number, job_title, is_active)'
+            'users(id, full_name, email, registration_number, job_title, is_active, company_id)'
         )
         .eq('company_id', companyId)
         .in('status', ['PENDING_APPROVAL', 'PENDING', 'pending', 'WAITING_APPROVAL'])
@@ -5960,23 +6007,22 @@ async function loadPendingRegistrations() {
     }
   }
 
-  // Repli / Démonstration : Garantie que Kouassi Jonas KONAN (avec son email réel testboutique2001@gmail.com) est présent
-  if (foundRegistrations.length === 0) {
-    foundRegistrations.push({
-      id: 'mem-demo-kj-konan',
-      user_id: '6873bcee-b1fb-4b7a-b78e-31aecfa83fca',
-      company_id: companyId || '4ea1f06d-afc9-4bb6-86f0-44cb7f29413d',
-      role: 'EMPLOYEE',
-      status: 'PENDING_APPROVAL',
-      created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-      users: {
-        id: '6873bcee-b1fb-4b7a-b78e-31aecfa83fca',
-        full_name: 'kouassi jonas KONAN',
-        email: 'testboutique2001@gmail.com',
-        registration_number: 'EMP-0004',
-        job_title: 'Collaborateur',
-        is_active: false
-      }
+  // Aucun repli de demonstration ici. Une version precedente injectait une
+  // fausse demande pour « kouassi jonas KONAN » des que la liste etait vide :
+  // le RH approuvait la demande, la liste se vidait, et la demande fantome
+  // reapparaissait aussitot. Une liste vide doit rester vide.
+
+  // Les rattachements deja actifs sont finalises plutot que presentes comme
+  // des demandes en attente (sequelle d une ancienne approbation incomplete).
+  const repares = await reconcilierRattachementsDemiApprouves(foundRegistrations);
+  if (repares > 0) {
+    foundRegistrations = foundRegistrations.filter((m) => {
+      const u = m.users || {};
+      const demiApprouve =
+        m.status === 'PENDING_APPROVAL' &&
+        u.is_active === true &&
+        String(u.company_id || '') === String(m.company_id || '');
+      return !demiApprouve;
     });
   }
 
@@ -6075,19 +6121,22 @@ async function approveRegistration(membershipId) {
   try {
     const item = (state.pendingRegistrations || []).find((m) => m.id === membershipId);
     const userId = item ? (item.user_id || (item.users ? item.users.id : null) || item.id) : membershipId;
-    const companyId = (item && item.company_id) || state.currentCompanyId || '4ea1f06d-afc9-4bb6-86f0-44cb7f29413d';
+    const companyId = (item && item.company_id) || state.currentCompanyId;
     const userObj = item ? (item.users || item) : {};
-    const userName = userObj.full_name || userObj.name || 'kouassi jonas KONAN';
-    const userEmail = userObj.email || 'testboutique2001@gmail.com';
+    const userName = userObj.full_name || userObj.name || 'Employé';
+    const userEmail = userObj.email || null;
 
-    // 1. Détermination du site géolocalisé principal créé dans la configuration du pointage (priorité au Siege azito)
-    const azitoSite = (punchConfig.sites || []).find(s => s.name && s.name.toLowerCase().includes('azito')) || (state.sites || []).find(s => s.name && s.name.toLowerCase().includes('azito'));
-    const defaultSite = azitoSite || (punchConfig.sites && punchConfig.sites.length > 0 ? punchConfig.sites[0] : (state.sites && state.sites.length > 0 ? state.sites[0] : { id: '86b7eecc-6263-4281-a181-2709bcac74e0', name: 'Siege azito', lat: 5.31105, lng: -4.089587, radius: 100 }));
+    // 1. Site principal reellement configure dans le Cockpit. Aucun repli
+    //    invente : si l entreprise n a pas de site, l employe sera approuve
+    //    sans affectation, et le Cockpit le signalera comme « configuration
+    //    incomplete » plutot que de le rattacher a un site imaginaire.
+    const sitesDisponibles = (punchConfig.sites && punchConfig.sites.length ? punchConfig.sites : state.sites) || [];
+    const defaultSite = sitesDisponibles[0] || null;
 
     // 2. Détermination de l'horaire de travail principal créé dans la configuration du pointage
     const defaultSchedule = (punchConfig.schedules && punchConfig.schedules.length > 0)
       ? punchConfig.schedules[0]
-      : (state.schedules && state.schedules.length > 0 ? state.schedules[0] : { id: 'sched-main', name: 'Lundi-Vendredi 08:00-17:00', start: '08:00', end: '17:00' });
+      : (state.schedules && state.schedules.length > 0 ? state.schedules[0] : null);
 
     // 3. Mise à jour Supabase si client actif
     if (supabaseClient) {
@@ -6106,8 +6155,8 @@ async function approveRegistration(membershipId) {
         .update({
           is_active: true,
           company_id: companyId,
-          site_id: defaultSite.id,
-          site_name: defaultSite.name
+          // Site affecte seulement s il en existe un reellement configure.
+          ...(defaultSite ? { site_id: defaultSite.id } : {}),
         })
         .eq('id', userId);
       if (uErr) console.warn('[RH] Activation du compte :', uErr);
@@ -6125,9 +6174,9 @@ async function approveRegistration(membershipId) {
       name: userName,
       email: userEmail,
       role: userObj.job_title || 'Collaborateur',
-      site: defaultSite.name || 'Siege azito',
-      site_id: defaultSite.id,
-      schedule_id: defaultSchedule.id,
+      site: defaultSite ? defaultSite.name : 'Aucun site affecté',
+      site_id: defaultSite ? defaultSite.id : null,
+      schedule_id: defaultSchedule ? defaultSchedule.id : null,
       status: 'Présent',
       matricule: matricule,
       arriveTime: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
@@ -6148,7 +6197,9 @@ async function approveRegistration(membershipId) {
 
     showToast(
       'Demande Approuvée 🎉',
-      `<strong>${escapeHtml(userName)}</strong> a été validé(e), rattaché(e) au site <strong>${escapeHtml(defaultSite.name)}</strong> et prêt(e) à pointer.`,
+      defaultSite
+        ? `<strong>${escapeHtml(userName)}</strong> a été validé(e) et rattaché(e) au site <strong>${escapeHtml(defaultSite.name)}</strong>.`
+        : `<strong>${escapeHtml(userName)}</strong> a été validé(e). Aucun site n'étant configuré, affectez-lui un lieu de travail pour qu'il puisse pointer.`,
       'success',
       8000
     );
