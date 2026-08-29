@@ -108,7 +108,7 @@
   <!-- Generation du QR de la borne (Cockpit RH) et lecture par l'employe.
        Versions epinglees : un CDN non epingle sur une page qui manipule des
        jetons de pointage serait une prise de controle a distance. -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
   
   <!-- GSAP Animation Library CDN -->
@@ -1728,7 +1728,7 @@
 
           <!-- Le QR est peint ici par la bibliotheque, jamais dessine a la main. -->
           <div class="p-5 bg-white rounded-2xl inline-block shadow-2xl relative border-4 border-emerald-500/50">
-            <canvas id="qr-canvas" class="w-48 h-48 mx-auto hidden"></canvas>
+            <img id="qr-canvas" alt="QR code de pointage" class="w-48 h-48 mx-auto hidden [image-rendering:pixelated]" />
             <div id="qr-placeholder" class="w-48 h-48 flex items-center justify-center text-center text-[11px] text-slate-500 px-3">
               Sélectionnez un site pour ouvrir la borne.
             </div>

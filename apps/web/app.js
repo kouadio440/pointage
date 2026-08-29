@@ -3217,9 +3217,18 @@ async function renouvelerJetonQr() {
     borneQr.rotationSec = data.rotation_sec || 30;
     borneQr.restant = data.expires_in || borneQr.rotationSec;
 
-    await peindreQr(data.token);
+    const peint = peindreQr(data.token);
     majCompteARebours();
-    majStatutBorne('Borne active — ' + data.site_name, 'ok');
+
+    // On n'annonce « Borne active » que si le QR est REELLEMENT affiche.
+    if (peint) {
+      majStatutBorne('Borne active — ' + data.site_name, 'ok');
+    } else {
+      majStatutBorne(
+        "Le QR code n'a pas pu être affiché : la bibliothèque de génération n'est pas chargée. Vérifiez votre connexion réseau.",
+        'erreur',
+      );
+    }
   } catch (e) {
     console.error('[Borne QR] Génération impossible :', e);
     const msg = String((e && e.message) || '');
@@ -3240,28 +3249,39 @@ function masquerQr() {
   if (ph) ph.classList.remove('hidden');
 }
 
-async function peindreQr(token) {
-  const canvas = document.getElementById('qr-canvas');
+/**
+ * Peint le QR a partir du jeton serveur.
+ *
+ * @returns {boolean} true si le code a bien ete rendu. Le retour est utilise :
+ *   la version precedente signalait son echec puis se faisait ecraser par le
+ *   message « Borne active », si bien qu'une bibliotheque absente restait
+ *   totalement invisible.
+ */
+function peindreQr(token) {
+  const img = document.getElementById('qr-canvas');
   const ph = document.getElementById('qr-placeholder');
-  if (!canvas) return;
+  if (!img) return false;
 
-  if (typeof QRCode === 'undefined' || !QRCode.toCanvas) {
-    majStatutBorne('Bibliothèque QR non chargée. Vérifiez votre connexion réseau.', 'erreur');
+  if (typeof qrcode !== 'function') {
     masquerQr();
-    return;
+    return false;
   }
 
-  await new Promise((resolve) => {
-    QRCode.toCanvas(
-      canvas,
-      token,
-      { width: 192, margin: 1, errorCorrectionLevel: 'M', color: { dark: '#000000', light: '#ffffff' } },
-      () => resolve(),
-    );
-  });
+  try {
+    // Type 0 = version choisie automatiquement selon la longueur du jeton.
+    const qr = qrcode(0, 'M');
+    qr.addData(token);
+    qr.make();
 
-  canvas.classList.remove('hidden');
-  if (ph) ph.classList.add('hidden');
+    img.src = qr.createDataURL(8, 2);
+    img.classList.remove('hidden');
+    if (ph) ph.classList.add('hidden');
+    return true;
+  } catch (e) {
+    console.error('[Borne QR] Rendu impossible :', e);
+    masquerQr();
+    return false;
+  }
 }
 
 function majCompteARebours() {
