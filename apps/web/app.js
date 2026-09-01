@@ -2263,6 +2263,10 @@ const empPunch = {
   submitting: false,
   finished: false,
   selfieBlob: null,
+  // Empreinte du visage capturé et écart mesuré entre deux prises. Le serveur
+  // seul compare cette empreinte à la référence : rien ici n'est un verdict.
+  faceDescriptor: null,
+  faceMotion: null,
 };
 
 /**
@@ -2388,6 +2392,20 @@ function openEmployeePunch(type) {
     return;
   }
 
+  // Vérification d'identité exigée et aucun visage de référence : on l'annonce
+  // AVANT d'ouvrir la caméra. Laisser l'employé prendre un selfie pour se voir
+  // refuser ensuite serait une perte de temps et une incompréhension garantie.
+  if (faceStatus && faceStatus.required && !faceStatus.enrolled) {
+    showToast(
+      'Visage non enregistré',
+      "Votre entreprise vérifie l'identité au pointage. Enregistrez votre visage de référence, cela ne prend qu'une minute.",
+      'info',
+      9000
+    );
+    ouvrirEnrolementFacial();
+    return;
+  }
+
   empPunch.type = type === 'CHECK_OUT' ? 'CHECK_OUT' : 'CHECK_IN';
   empPunch.position = null;
   empPunch.gpsState = 'idle';
@@ -2395,6 +2413,8 @@ function openEmployeePunch(type) {
   empPunch.submitting = false;
   empPunch.finished = false;
   empPunch.selfieBlob = null;
+  empPunch.faceDescriptor = null;
+  empPunch.faceMotion = null;
 
   const modal = document.getElementById('modal-emp-punch');
   if (modal) {
@@ -2423,9 +2443,63 @@ function openEmployeePunch(type) {
   }
   if (window.lucide) lucide.createIcons();
 
-  // Les deux opérations partent EN MÊME TEMPS. On n'attend pas l'une pour l'autre.
+  // Les opérations partent EN MÊME TEMPS. On n'attend pas l'une pour l'autre.
   startEmployeePunchCamera();
   startEmployeePunchGps();
+  startEmployeePunchFace();
+}
+
+/**
+ * Précharge le moteur de reconnaissance pendant que l'employé se cadre.
+ *
+ * Sans cela, les 6,8 Mo de modèles seraient téléchargés APRÈS le clic sur
+ * « Pointer », immobilisant l'employé devant un écran figé. Ici, le
+ * téléchargement recouvre le temps de cadrage et d'acquisition GPS.
+ */
+/**
+ * L'entreprise exige-t-elle la vérification d'identité ?
+ *
+ * `faceStatus` est chargé au démarrage du tableau de bord, mais un employé qui
+ * clique aussitôt peut arriver avant. On ne devine pas : on interroge le
+ * serveur. Sans cela, l'empreinte ne serait pas calculée et le pointage
+ * échouerait en FACE_NOT_CAPTURED sans raison compréhensible.
+ */
+async function exigenceVisage() {
+  if (faceStatus === null) await chargerStatutFacial();
+  return !!(faceStatus && faceStatus.required);
+}
+
+async function startEmployeePunchFace() {
+  const pill = document.getElementById('emp-punch-face-pill');
+
+  if (!(await exigenceVisage())) {
+    if (pill) pill.classList.add('hidden');
+    return;
+  }
+
+  const peindre = (icone, classeIcone, texte) => {
+    if (!pill) return;
+    pill.classList.remove('hidden');
+    pill.innerHTML =
+      `<i data-lucide="${icone}" class="w-3.5 h-3.5 shrink-0 ${classeIcone}"></i>` +
+      `<span>${escapeHtml(texte)}</span>`;
+    if (window.lucide) lucide.createIcons();
+  };
+
+  if (faceEngine.statut === 'pret') {
+    peindre('scan-face', 'text-emerald-400', "Vérification d'identité active");
+    return;
+  }
+
+  peindre('loader-2', 'animate-spin text-amber-400', 'Préparation de la reconnaissance…');
+
+  const ok = await chargerMoteurFacial((etape) => {
+    if (etape.index >= etape.total) return;
+    peindre('loader-2', 'animate-spin text-amber-400', etape.label);
+  });
+
+  if (ok) peindre('scan-face', 'text-emerald-400', "Vérification d'identité active");
+  else peindre('alert-triangle', 'text-red-400', 'Reconnaissance indisponible — vérifiez votre connexion');
 }
 
 function setNodeHidden(id, hidden) {
@@ -2624,6 +2698,18 @@ async function captureEmployeePunch() {
     canvas.toBlob(resolve, 'image/jpeg', 0.82)
   );
 
+  // --- Empreinte du visage, tant que la caméra tourne encore ------------------
+  if (await exigenceVisage()) {
+    const capture = await capturerEmpreintePointage(video);
+    if (!capture.ok) {
+      stopEmployeePunchCamera();
+      setNodeHidden('emp-punch-frame', true);
+      return renderEmployeePunchFailure(capture.titre, capture.corps);
+    }
+    empPunch.faceDescriptor = capture.descriptor;
+    empPunch.faceMotion = capture.motion;
+  }
+
   // Aperçu figé : l'employé voit exactement ce qui est transmis.
   const preview = document.getElementById('emp-punch-preview');
   if (preview && empPunch.selfieBlob) {
@@ -2634,6 +2720,65 @@ async function captureEmployeePunch() {
   stopEmployeePunchCamera();
 
   await submitEmployeePunch();
+}
+
+/**
+ * Calcule l'empreinte du visage à partir de DEUX prises espacées.
+ *
+ * La seconde prise ne sert pas à améliorer la mesure : elle sert à mesurer
+ * l'écart entre les deux. Un visage vivant bouge imperceptiblement d'une image
+ * à l'autre ; une photographie tenue devant l'objectif donne deux empreintes
+ * quasi identiques.
+ *
+ * Cet écart n'est PAS un test de vivacité et n'est jamais présenté comme tel :
+ * il est transmis au serveur, qui peut seulement décider de marquer le
+ * pointage pour vérification humaine. Rien n'est bloqué sur cette base.
+ *
+ * @returns {Promise<{ok:boolean, descriptor?:number[], motion?:number, titre?:string, corps?:string}>}
+ */
+async function capturerEmpreintePointage(video) {
+  const etapes = [
+    { label: 'Selfie capturé', state: 'done' },
+    { label: 'Analyse du visage…', state: 'pending' },
+  ];
+  renderEmployeePunchSteps(etapes);
+
+  if (faceEngine.statut !== 'pret') {
+    const ok = await chargerMoteurFacial();
+    if (!ok) {
+      return {
+        ok: false,
+        titre: 'Reconnaissance indisponible',
+        corps:
+          "Le moteur de reconnaissance faciale n'a pas pu être téléchargé (environ 7 Mo). " +
+          'Connectez-vous à un réseau plus stable puis réessayez.',
+      };
+    }
+  }
+
+  const a = await calculerEmpreinteFaciale(video);
+  if (!a.ok) {
+    return { ok: false, titre: 'Visage non détecté', corps: messageEchecCapture(a.code) };
+  }
+
+  // Intervalle court : assez pour capter le micro-mouvement d'un visage réel,
+  // assez bref pour ne pas immobiliser l'employé.
+  await new Promise((r) => setTimeout(r, 450));
+
+  const b = await calculerEmpreinteFaciale(video);
+  const motion = b.ok ? distanceEmpreintes(a.descriptor, b.descriptor) : null;
+
+  // On retient la prise la mieux détectée des deux.
+  const retenue = b.ok && (b.score || 0) > (a.score || 0) ? b : a;
+
+  etapes[1] = { label: 'Visage analysé', state: 'done' };
+  renderEmployeePunchSteps(etapes);
+
+  return {
+    ok: true,
+    descriptor: retenue.descriptor,
+    motion: motion === null ? null : Math.round(motion * 10000) / 10000,
+  };
 }
 
 function renderEmployeePunchSteps(steps) {
@@ -2740,9 +2885,14 @@ async function submitEmployeePunch() {
       p_longitude: coords.longitude,
       p_gps_accuracy: coords.accuracy,
       p_selfie_path: selfiePath,
-      p_face_score: null, // aucun service de vérification faciale branché à ce jour
+      // On n'envoie AUCUN score : le serveur ne lirait pas un verdict calculé
+      // par le client. On lui transmet l'empreinte brute, il compare lui-même.
+      p_face_score: null,
       p_device_ua: navigator.userAgent,
       p_client_time: new Date().toISOString(),
+      p_qr_token: null,
+      p_face_descriptor: empPunch.faceDescriptor,
+      p_face_motion: empPunch.faceMotion,
     });
 
     if (error) throw error;
@@ -2789,6 +2939,13 @@ async function submitEmployeePunch() {
     );
   }
 
+  // Cas particulier : le pointage EST enregistré, mais le serveur l'a marqué
+  // pour vérification humaine. Ce n'est ni un refus ni une validation ; le dire
+  // franchement évite que l'employé reparte en croyant son pointage acquis.
+  if (verdict && verdict.code === 'PENDING_REVIEW') {
+    return renderEmployeePunchEnRevue(verdict, steps);
+  }
+
   if (!verdict || !verdict.accepted) {
     return renderEmployeePunchRejection(verdict, steps);
   }
@@ -2796,7 +2953,10 @@ async function submitEmployeePunch() {
   // --- Accepté ---------------------------------------------------------------
   steps[2] = { label: `Site autorisé (${verdict.distance_m} m du site, rayon ${verdict.radius_m} m)`, state: 'done' };
   if (verdict.face_verified === true) {
-    steps.push({ label: 'Identité vérifiée', state: 'done' });
+    steps.push({
+      label: `Identité vérifiée par reconnaissance faciale (écart ${verdict.face_distance})`,
+      state: 'done',
+    });
   } else {
     // On n'annonce PAS une vérification faciale qui n'a pas eu lieu.
     steps.push({ label: 'Selfie conservé comme preuve horodatée', state: 'info' });
@@ -2837,7 +2997,38 @@ function renderEmployeePunchRejection(verdict, steps) {
     },
     FACE_MISMATCH: {
       title: 'Visage non reconnu',
-      body: 'Placez-vous face à la caméra dans un endroit suffisamment éclairé puis réessayez.',
+      body:
+        "Le visage capturé ne correspond pas à votre visage de référence.\n\n" +
+        'Placez-vous face à la caméra dans un endroit bien éclairé, sans casquette ' +
+        'ni lunettes de soleil, puis réessayez. Si le refus persiste, réenregistrez ' +
+        'votre visage de référence depuis votre tableau de bord.',
+    },
+    FACE_NOT_ENROLLED: {
+      title: 'Visage de référence manquant',
+      body:
+        "Votre entreprise vérifie l'identité au pointage, mais aucun visage de " +
+        "référence n'est enregistré pour votre compte.\n\n" +
+        'Enregistrez-le maintenant : cela ne prend qu’une minute.',
+      action: {
+        libelle: 'ENREGISTRER MON VISAGE',
+        onclick: 'fermerEtEnregistrerVisage()',
+      },
+    },
+    FACE_NOT_CAPTURED: {
+      title: 'Visage non transmis',
+      body:
+        "L'empreinte du visage n'est pas parvenue au serveur. Vérifiez que la caméra " +
+        'est autorisée, puis réessayez.',
+    },
+    FACE_MODEL_MISMATCH: {
+      title: 'Visage à réenregistrer',
+      body:
+        'Le modèle de reconnaissance a été mis à jour. Votre visage de référence doit ' +
+        'être réenregistré avant de pouvoir pointer.',
+      action: {
+        libelle: 'RÉENREGISTRER MON VISAGE',
+        onclick: 'fermerEtEnregistrerVisage()',
+      },
     },
     SELFIE_REQUIRED: {
       title: 'Selfie obligatoire',
@@ -2895,7 +3086,65 @@ function renderEmployeePunchRejection(verdict, steps) {
     renderEmployeePunchSteps(steps);
   }
 
-  renderEmployeePunchFailure(m.title, m.body);
+  renderEmployeePunchFailure(m.title, m.body, false, m.action);
+}
+
+/** Ferme la fenêtre de pointage et enchaîne directement sur l'enrôlement. */
+function fermerEtEnregistrerVisage() {
+  closeEmployeePunch();
+  ouvrirEnrolementFacial();
+}
+
+/**
+ * Pointage enregistré MAIS marqué pour vérification humaine.
+ *
+ * Ni une réussite verte, ni un refus rouge. L'employé doit savoir que sa
+ * présence est bien enregistrée, et que le service RH la contrôlera.
+ */
+function renderEmployeePunchEnRevue(verdict, steps) {
+  empPunch.submitting = false;
+  empPunch.finished = true;
+  empPunch.gpsAbort = true;
+
+  if (Array.isArray(steps) && steps.length >= 3) {
+    steps[2] = { label: 'Pointage enregistré, en attente de vérification', state: 'info' };
+    renderEmployeePunchSteps(steps);
+  }
+
+  const box = document.getElementById('emp-punch-result');
+  if (box) {
+    setNodeHidden('emp-punch-result', false);
+    box.className = 'rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-center space-y-1';
+    box.innerHTML =
+      `<p class="text-sm font-extrabold text-amber-300">Pointage enregistré, en attente de vérification</p>` +
+      `<p class="text-[11px] text-slate-300 leading-relaxed">` +
+      escapeHtml(
+        (verdict && verdict.review_note) ||
+          'Votre service RH doit confirmer ce pointage avant qu’il ne soit définitif.'
+      ) +
+      `</p>` +
+      `<p class="text-[10px] text-slate-400 font-mono">${escapeHtml(verdict.site_name || 'Site')} • ${verdict.server_time || ''}</p>`;
+  }
+
+  setNodeHidden('emp-punch-capture', true);
+  const retry = document.getElementById('emp-punch-retry');
+  if (retry) {
+    retry.classList.remove('hidden');
+    retry.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i> FERMER';
+    retry.setAttribute('onclick', 'closeEmployeePunch()');
+  }
+  if (window.lucide) lucide.createIcons();
+
+  showToast(
+    'Pointage à vérifier',
+    'Votre pointage est enregistré et sera confirmé par votre service RH.',
+    'info',
+    8000
+  );
+
+  loadSupabaseData()
+    .then(() => { renderEmployeeDashboard(); renderDashboard(); })
+    .catch((e) => console.warn('[Pointage] Rafraîchissement partiel :', e));
 }
 
 function renderEmployeePunchSuccess(title, detail) {
@@ -2926,8 +3175,10 @@ function renderEmployeePunchSuccess(title, detail) {
  *   opposition à un refus métier légitime (hors zone, déjà pointé...). Seuls
  *   les cas techniques proposent le diagnostic : inutile de suggérer à un
  *   employé hors zone qu'il y a un problème de serveur.
+ * @param {{libelle:string, onclick:string}} [action] Bouton d'action corrective
+ *   proposé sous le message (par exemple : enregistrer son visage).
  */
-function renderEmployeePunchFailure(title, body, technique) {
+function renderEmployeePunchFailure(title, body, technique, action) {
   empPunch.submitting = false;
   empPunch.finished = true;
   empPunch.gpsAbort = true;
@@ -2939,6 +3190,16 @@ function renderEmployeePunchFailure(title, body, technique) {
     box.innerHTML =
       `<p class="text-sm font-extrabold text-red-300">${escapeHtml(title)}</p>` +
       `<p class="text-[11px] text-slate-300 leading-relaxed whitespace-pre-line">${escapeHtml(body)}</p>`;
+
+    if (action && action.libelle && action.onclick) {
+      box.insertAdjacentHTML(
+        'beforeend',
+        `<button type="button" onclick="${escapeHtml(action.onclick)}"
+           class="mt-3 w-full min-h-tap py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-black font-extrabold text-[11px] tracking-wider transition">
+           ${escapeHtml(action.libelle)}
+         </button>`
+      );
+    }
 
     if (technique) {
       box.insertAdjacentHTML(
@@ -3201,6 +3462,22 @@ async function pointerAvecJetonQr(token) {
 
   // Arrivee ou depart : deduit de la journee en cours. Le serveur revalidera.
   const type = await deduireTypePointage();
+
+  // Le lien direct n'a rien a scanner, mais l'identite reste a prouver quand
+  // l'entreprise l'exige : on ouvre la camera frontale pour cette seule etape.
+  let descripteur = null;
+  let mouvement = null;
+  if (await exigenceVisage()) {
+    scanQr.type = type;
+    const visage = await confirmerIdentiteHorsScan();
+    if (!visage.ok) {
+      showToast('Identité non confirmée', escapeHtml(visage.message), 'danger', 12000);
+      return;
+    }
+    descripteur = visage.descriptor;
+    mouvement = visage.motion;
+  }
+
   const c = empPunch.position.coords;
 
   try {
@@ -3214,14 +3491,33 @@ async function pointerAvecJetonQr(token) {
       p_device_ua: navigator.userAgent,
       p_client_time: new Date().toISOString(),
       p_qr_token: token,
+      p_face_descriptor: descripteur,
+      p_face_motion: mouvement,
     });
     if (error) throw error;
 
+    // Enregistré mais marqué pour contrôle : `accepted` vaut faux, ce test doit
+    // donc précéder celui du refus.
+    if (data && data.code === 'PENDING_REVIEW') {
+      fermerScanQr();
+      showToast(
+        'Pointage à vérifier',
+        'Votre pointage est enregistré et sera confirmé par votre service RH.',
+        'info',
+        9000,
+      );
+      await loadSupabaseData();
+      if (state.currentUserRole === 'EMPLOYEE') switchView('employee');
+      return;
+    }
+
     if (!data || !data.accepted) {
+      fermerScanQr();
       afficherRefusQr(data);
       return;
     }
 
+    fermerScanQr();
     const estArrivee = data.punch_type === 'CHECK_IN';
     showToast(
       estArrivee ? 'Arrivée enregistrée' : 'Départ enregistré',
@@ -3299,6 +3595,28 @@ function afficherRefusQr(data) {
     QR_FORGED: {
       titre: 'QR code non reconnu',
       corps: "Ce code ne provient pas d'une borne de votre entreprise.",
+    },
+    FACE_MISMATCH: {
+      titre: 'Visage non reconnu',
+      corps:
+        "Le visage capturé ne correspond pas à votre visage de référence. Placez-vous " +
+        'dans un endroit bien éclairé, sans casquette ni lunettes de soleil, puis réessayez.',
+    },
+    FACE_NOT_ENROLLED: {
+      titre: 'Visage de référence manquant',
+      corps:
+        "Votre entreprise vérifie l'identité au pointage. Enregistrez votre visage de " +
+        'référence depuis votre tableau de bord, puis scannez à nouveau.',
+    },
+    FACE_NOT_CAPTURED: {
+      titre: 'Visage non transmis',
+      corps: "L'empreinte du visage n'est pas parvenue au serveur. Réessayez face à la caméra.",
+    },
+    FACE_MODEL_MISMATCH: {
+      titre: 'Visage à réenregistrer',
+      corps:
+        'Le modèle de reconnaissance a été mis à jour. Réenregistrez votre visage de ' +
+        'référence depuis votre tableau de bord.',
     },
     OUTSIDE_GEOFENCE: {
       titre: 'Pointage impossible — hors de la zone',
@@ -3616,6 +3934,12 @@ async function ouvrirScanQr(type) {
   // GPS lance en parallele, comme pour le pointage selfie.
   startEmployeePunchGps();
 
+  // Les 6,8 Mo de modeles se telechargent pendant que l'employe cherche le QR,
+  // et non apres le scan : l'attente est absorbee par le geste, pas ajoutee.
+  exigenceVisage().then((exige) => {
+    if (exige && faceEngine.statut !== 'pret') chargerMoteurFacial();
+  });
+
   const video = document.getElementById('qr-scan-video');
   try {
     scanQr.stream = await navigator.mediaDevices.getUserMedia({
@@ -3682,6 +4006,19 @@ async function envoyerPointageQr(token) {
     return;
   }
 
+  // Identité : exigée par l'entreprise, elle s'applique aussi au QR.
+  let descripteur = null;
+  let mouvement = null;
+  if (await exigenceVisage()) {
+    const visage = await confirmerIdentitePourQr();
+    if (!visage.ok) {
+      majStatutScan(visage.message, 'erreur');
+      return;
+    }
+    descripteur = visage.descriptor;
+    mouvement = visage.motion;
+  }
+
   const c = empPunch.position.coords;
 
   try {
@@ -3695,8 +4032,25 @@ async function envoyerPointageQr(token) {
       p_device_ua: navigator.userAgent,
       p_client_time: new Date().toISOString(),
       p_qr_token: token,
+      p_face_descriptor: descripteur,
+      p_face_motion: mouvement,
     });
     if (error) throw error;
+
+    // Enregistré mais marqué pour contrôle : ni un refus, ni une validation.
+    // Ce test passe AVANT celui du refus : `accepted` vaut faux dans ce cas.
+    if (data && data.code === 'PENDING_REVIEW') {
+      majStatutScan('Pointage enregistré — vérification par votre service RH.', 'ok');
+      showToast(
+        'Pointage à vérifier',
+        'Votre pointage est enregistré et sera confirmé par votre service RH.',
+        'info',
+        8000,
+      );
+      setTimeout(fermerScanQr, 2500);
+      await loadSupabaseData();
+      return;
+    }
 
     if (!data || !data.accepted) {
       const messages = {
@@ -3707,7 +4061,8 @@ async function envoyerPointageQr(token) {
         ALREADY_CHECKED_IN: "Votre arrivée a déjà été enregistrée aujourd'hui.",
         NO_OPEN_CHECK_IN: "Aucune arrivée enregistrée aujourd'hui.",
       };
-      majStatutScan((data && (messages[data.code] || data.message)) || 'Pointage refusé.', 'erreur');
+      const brut = (data && (messages[data.code] || data.message)) || 'Pointage refusé.';
+      majStatutScan(messageRefusQrVisage(data && data.code, brut), 'erreur');
       return;
     }
 
@@ -3861,6 +4216,10 @@ async function renderPunchConfig() {
 
   const employes = Array.from(employesMap.values());
 
+  // L'enrôlement facial est chargé AVANT le tableau de préparation : celui-ci
+  // affiche une colonne « Visage » qui en dépend.
+  await renderFaceConfig();
+
   remplirSelecteurBorneQr();
   renderSitesList(migration003Absente);
   renderSchedulesList(migration003Absente);
@@ -3959,7 +4318,7 @@ function renderReadinessTable(employes, migrationAbsente) {
   if (!body) return;
 
   if (employes.length === 0) {
-    body.innerHTML = `<tr><td colspan="5" class="py-4 text-center text-slate-500 text-xs">Aucun employé enregistré pour cette entreprise.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="6" class="py-4 text-center text-slate-500 text-xs">Aucun employé enregistré pour cette entreprise.</td></tr>`;
     return;
   }
 
@@ -3984,6 +4343,13 @@ function renderReadinessTable(employes, migrationAbsente) {
       if (!site) manque.push('aucun site');
       else if (site.latitude == null) manque.push('site sans GPS');
       else if (site.is_active === false) manque.push('site désactivé');
+
+      // Le visage manquant n'est bloquant QUE si l'entreprise exige la
+      // vérification : ailleurs, l'absence d'empreinte est sans conséquence.
+      const faceExigee = !!(faceConfig.entreprise && faceConfig.entreprise.face_verification_enabled);
+      const faceLigne = faceConfig.effectif.find((e) => String(e.user_id) === String(u.id));
+      const faceInscrit = !!(faceLigne && faceLigne.enrolled);
+      if (doitPointer && faceExigee && !faceInscrit) manque.push('visage non enregistré');
 
       const pret = doitPointer && manque.length === 0;
       const badge = !doitPointer
@@ -4016,6 +4382,13 @@ function renderReadinessTable(employes, migrationAbsente) {
             <input type="checkbox" ${dis} ${doitPointer ? 'checked' : ''}
               onchange="assignEmployeeConfig('${id}', 'attendance_required', this.checked)"
               class="rounded bg-slate-950 border-slate-700 text-emerald-500 disabled:opacity-50" />
+          </td>
+          <td class="py-2 pr-2">
+            ${faceInscrit
+              ? '<span class="badge-verified px-2 py-0.5 rounded text-[10px]">ENREGISTRÉ</span>'
+              : faceExigee
+                ? '<span class="badge-danger px-2 py-0.5 rounded text-[10px]">MANQUANT</span>'
+                : '<span class="text-[10px] text-slate-600 font-mono">—</span>'}
           </td>
           <td class="py-2 text-right">${badge}</td>
         </tr>`;
@@ -7459,6 +7832,10 @@ async function loadSupabaseData() {
     // que les boutons du Dashboard Employé reflètent immédiatement l'état réel
     // plutôt que d'échouer au clic.
     chargerConfigPointageEmploye();
+
+    // Idem pour la vérification d'identité : l'employé doit savoir AVANT de
+    // cliquer que son visage de référence manque, pas au moment du refus.
+    chargerStatutFacial();
   } catch (err) {
     console.warn('Erreur lors du chargement des données Supabase:', err);
   }
@@ -7564,3 +7941,982 @@ window.addEventListener('hashchange', () => {
 
 
 
+
+
+// =============================================================================
+//  RECONNAISSANCE FACIALE
+//
+//  REPARTITION DES ROLES, VOLONTAIREMENT DISSYMETRIQUE
+//  ---------------------------------------------------
+//  Le navigateur calcule une EMPREINTE (128 nombres) a partir de l'image.
+//  Le serveur compare cette empreinte a la reference enregistree et DECIDE.
+//
+//  Le client transmet donc une mesure, jamais un verdict. Un client modifie
+//  qui enverrait « score : 99 » n'obtiendrait rien : aucun score n'est lu
+//  cote serveur. Pour forger une empreinte passante, il faudrait connaitre
+//  celle de la victime — elle est stockee dans une table sans aucune
+//  politique RLS, et aucune fonction ne la renvoie jamais.
+//
+//  CE QUE CE DISPOSITIF NE FAIT PAS
+//  --------------------------------
+//  Il ne detecte PAS une photographie presentee devant l'objectif. Il n'y a
+//  aucun test de vivacite : cela demanderait un capteur de profondeur ou un
+//  modele dedie. La « variation » mesuree entre deux prises est un simple
+//  motif de revue humaine, jamais une preuve d'anti-usurpation, et elle n'est
+//  presentee comme telle nulle part dans l'interface.
+// =============================================================================
+
+/** Doit rester identique a la valeur inscrite en base : un changement de
+ *  modele rend les empreintes incomparables et impose un reenrolement. */
+const FACE_MODEL_VERSION = 'face-api-1.7.15/128';
+const FACE_LIB_URL   = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.min.js';
+const FACE_MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model';
+
+/** Trois captures a l'enrolement : la moyenne absorbe le bruit d'une prise
+ *  isolee (clignement, ombre passagere) et reduit les faux refus au pointage. */
+const FACE_PRISES_ENROLEMENT = 3;
+
+/** Ecart maximal tolere ENTRE les trois prises de reference. Au-dela, les
+ *  images sont trop dissemblables pour faire une reference fiable — souvent
+ *  un eclairage qui a change, parfois deux personnes differentes. */
+const FACE_ECART_MAX_ENROLEMENT = 0.45;
+
+const faceEngine = {
+  statut: 'idle',   // idle | chargement | pret | echec
+  promesse: null,
+  erreur: null,
+};
+
+/** Charge un script externe une seule fois. */
+function chargerScriptUnique(url) {
+  return new Promise((resolve, reject) => {
+    const existant = document.querySelector(`script[data-src="${url}"]`);
+    if (existant && existant.dataset.loaded === '1') return resolve();
+
+    const el = existant || document.createElement('script');
+    el.dataset.src = url;
+    el.addEventListener('load', () => { el.dataset.loaded = '1'; resolve(); });
+    el.addEventListener('error', () => reject(new Error('Téléchargement impossible : ' + url)));
+    if (!existant) {
+      el.src = url;
+      el.async = true;
+      document.head.appendChild(el);
+    }
+  });
+}
+
+/**
+ * Charge la bibliotheque puis les trois modeles, un par un.
+ *
+ * Le chargement est sequence pour que la progression affichee soit REELLE :
+ * chaque etape correspond a un telechargement qui vient de se terminer. Le
+ * poids total avoisine 6,8 Mo, dont 6,3 pour le seul modele de reconnaissance.
+ * Sur un reseau mobile ouest-africain, cela se compte en dizaines de secondes
+ * la premiere fois — le navigateur les met ensuite en cache.
+ *
+ * @param {(etape: {index:number, total:number, label:string}) => void} [onEtape]
+ */
+async function chargerMoteurFacial(onEtape) {
+  if (faceEngine.statut === 'pret') return true;
+  if (faceEngine.promesse) return faceEngine.promesse;
+
+  faceEngine.statut = 'chargement';
+  faceEngine.erreur = null;
+
+  const etapes = [
+    { label: 'Téléchargement du moteur…', action: () => chargerScriptUnique(FACE_LIB_URL) },
+    { label: 'Détecteur de visage (0,2 Mo)…', action: () => faceapi.nets.tinyFaceDetector.loadFromUri(FACE_MODEL_URL) },
+    { label: 'Points du visage (0,3 Mo)…',    action: () => faceapi.nets.faceLandmark68Net.loadFromUri(FACE_MODEL_URL) },
+    { label: 'Modèle de reconnaissance (6,3 Mo)…', action: () => faceapi.nets.faceRecognitionNet.loadFromUri(FACE_MODEL_URL) },
+  ];
+
+  faceEngine.promesse = (async () => {
+    try {
+      for (let i = 0; i < etapes.length; i++) {
+        if (typeof onEtape === 'function') {
+          onEtape({ index: i, total: etapes.length, label: etapes[i].label });
+        }
+        await etapes[i].action();
+      }
+      if (typeof onEtape === 'function') {
+        onEtape({ index: etapes.length, total: etapes.length, label: 'Moteur prêt.' });
+      }
+      faceEngine.statut = 'pret';
+      return true;
+    } catch (err) {
+      faceEngine.statut = 'echec';
+      faceEngine.erreur = err;
+      faceEngine.promesse = null;
+      console.error('[Visage] Chargement du moteur impossible :', err);
+      return false;
+    }
+  })();
+
+  return faceEngine.promesse;
+}
+
+/**
+ * Calcule l'empreinte du visage present dans une source video ou image.
+ *
+ * @param {HTMLVideoElement|HTMLCanvasElement|HTMLImageElement} source
+ * @returns {Promise<{ok:boolean, code?:string, descriptor?:number[], score?:number}>}
+ */
+async function calculerEmpreinteFaciale(source) {
+  if (faceEngine.statut !== 'pret') {
+    return { ok: false, code: 'ENGINE_NOT_READY' };
+  }
+
+  const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.45 });
+
+  let resultats;
+  try {
+    resultats = await faceapi
+      .detectAllFaces(source, options)
+      .withFaceLandmarks()
+      .withFaceDescriptors();
+  } catch (err) {
+    console.error('[Visage] Échec de la détection :', err);
+    return { ok: false, code: 'DETECTION_FAILED' };
+  }
+
+  if (!resultats || resultats.length === 0) return { ok: false, code: 'NO_FACE' };
+
+  // Deux visages dans le cadre : on refuse plutot que de choisir. A
+  // l'enrolement ce serait une reference fausse ; au pointage, la porte
+  // ouverte a un collegue qui se place a cote.
+  if (resultats.length > 1) return { ok: false, code: 'MULTIPLE_FACES' };
+
+  const r = resultats[0];
+  if (!r.descriptor || r.descriptor.length !== 128) return { ok: false, code: 'NO_DESCRIPTOR' };
+
+  return {
+    ok: true,
+    descriptor: Array.from(r.descriptor),
+    score: r.detection ? r.detection.score : null,
+  };
+}
+
+/** Distance euclidienne — la meme formule que `face_distance()` cote serveur. */
+function distanceEmpreintes(a, b) {
+  if (!a || !b || a.length !== b.length) return null;
+  let s = 0;
+  for (let i = 0; i < a.length; i++) s += (a[i] - b[i]) ** 2;
+  return Math.sqrt(s);
+}
+
+/** Message affichable pour chaque code d'echec de capture. */
+function messageEchecCapture(code) {
+  const messages = {
+    NO_FACE: "Aucun visage n'a été détecté. Placez-vous face à la caméra, dans un endroit éclairé, et retirez casquette ou lunettes de soleil.",
+    MULTIPLE_FACES: "Plusieurs visages sont visibles. Assurez-vous d'être seul dans le cadre.",
+    NO_DESCRIPTOR: "Le visage détecté n'est pas assez net pour être analysé. Rapprochez-vous de la caméra.",
+    DETECTION_FAILED: "L'analyse du visage a échoué sur cet appareil. Réessayez.",
+    ENGINE_NOT_READY: "Le moteur de reconnaissance n'est pas encore chargé.",
+  };
+  return messages[code] || "La capture n'a pas abouti. Réessayez.";
+}
+
+
+// =============================================================================
+//  ENROLEMENT — l'employe enregistre son visage de reference
+// =============================================================================
+
+const faceEnrol = {
+  stream: null,
+  prises: [],        // { descriptor, score }
+  occupe: false,
+  termine: false,
+};
+
+/** Etat renvoye par `my_face_status()`, rafraichi a l'ouverture du dashboard. */
+let faceStatus = null;
+
+async function chargerStatutFacial() {
+  if (!supabaseClient || !state.isAuthenticated) { faceStatus = null; return null; }
+  try {
+    const { data, error } = await supabaseClient.rpc('my_face_status');
+    if (error) throw error;
+    faceStatus = data;
+  } catch (err) {
+    console.warn('[Visage] Statut indisponible :', err);
+    faceStatus = null;
+  }
+  renderCarteVisageEmploye();
+  return faceStatus;
+}
+
+/** Carte d'etat affichee dans le Dashboard Employe. */
+function renderCarteVisageEmploye() {
+  const box = document.getElementById('emp-face-card');
+  if (!box) return;
+
+  // Fonction desactivee par l'entreprise et aucune empreinte : on n'encombre pas
+  // l'ecran de l'employe avec un reglage qui ne le concerne pas.
+  if (!faceStatus || (!faceStatus.required && !faceStatus.enrolled)) {
+    box.classList.add('hidden');
+    box.innerHTML = '';
+    return;
+  }
+  box.classList.remove('hidden');
+
+  if (faceStatus.enrolled) {
+    const date = faceStatus.enrolled_at
+      ? new Date(faceStatus.enrolled_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
+      : '';
+    const perime = faceStatus.model_version && faceStatus.model_version !== FACE_MODEL_VERSION;
+
+    box.className = 'rounded-xl border p-4 flex flex-wrap items-center justify-between gap-3 ' +
+      (perime ? 'border-amber-500/40 bg-amber-500/5' : 'border-emerald-500/30 bg-emerald-500/5');
+    box.innerHTML = `
+      <div class="flex items-start gap-3 min-w-0">
+        <i data-lucide="${perime ? 'refresh-cw' : 'scan-face'}" class="w-5 h-5 shrink-0 mt-0.5 ${perime ? 'text-amber-400' : 'text-emerald-400'}"></i>
+        <div class="min-w-0">
+          <p class="text-xs font-extrabold ${perime ? 'text-amber-300' : 'text-emerald-300'}">
+            ${perime ? 'Visage à réenregistrer' : 'Visage de référence enregistré'}
+          </p>
+          <p class="text-[11px] text-slate-400 leading-relaxed">
+            ${perime
+              ? "Le modèle de reconnaissance a changé. Réenregistrez votre visage pour continuer à pointer."
+              : `Enregistré le ${escapeHtml(date)}. Votre identité est vérifiée à chaque pointage.`}
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="ouvrirEnrolementFacial()" class="min-h-tap px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 font-bold text-[11px] transition">
+          ${perime ? 'RÉENREGISTRER' : 'METTRE À JOUR'}
+        </button>
+        <button onclick="revoquerVisage()" class="min-h-tap px-3 py-2 rounded-xl bg-slate-900 hover:bg-red-500/10 text-red-300 border border-red-500/30 font-bold text-[11px] transition">
+          SUPPRIMER
+        </button>
+      </div>`;
+  } else {
+    box.className = 'rounded-xl border border-amber-500/40 bg-amber-500/5 p-4 flex flex-wrap items-center justify-between gap-3';
+    box.innerHTML = `
+      <div class="flex items-start gap-3 min-w-0">
+        <i data-lucide="scan-face" class="w-5 h-5 text-amber-400 shrink-0 mt-0.5"></i>
+        <div class="min-w-0">
+          <p class="text-xs font-extrabold text-amber-300">Enregistrez votre visage pour pouvoir pointer</p>
+          <p class="text-[11px] text-slate-400 leading-relaxed">
+            Votre entreprise vérifie l'identité au pointage. Trois prises de vue,
+            à faire une seule fois, suffisent.
+          </p>
+        </div>
+      </div>
+      <button onclick="ouvrirEnrolementFacial()" class="min-h-tap px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-black font-extrabold text-[11px] tracking-wider transition shrink-0">
+        ENREGISTRER MON VISAGE
+      </button>`;
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+async function ouvrirEnrolementFacial() {
+  if (!state.isAuthenticated) {
+    showToast('Connexion requise', 'Reconnectez-vous pour enregistrer votre visage.', 'info');
+    return;
+  }
+
+  faceEnrol.prises = [];
+  faceEnrol.occupe = false;
+  faceEnrol.termine = false;
+
+  const modal = document.getElementById('modal-face-enroll');
+  if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+
+  setNodeHidden('face-enroll-result', true);
+  setNodeHidden('face-enroll-preview', true);
+  const consent = document.getElementById('face-enroll-consent');
+  if (consent) consent.checked = false;
+  majProgressionEnrolement();
+
+  const btn = document.getElementById('face-enroll-capture');
+  if (btn) {
+    btn.disabled = true;
+    btn.setAttribute('onclick', 'capturerPriseEnrolement()');
+    btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>PRÉPARATION…</span>';
+  }
+  if (window.lucide) lucide.createIcons();
+
+  // Camera et moteur demarrent en parallele : le telechargement des modeles
+  // se fait pendant que l'employe se cadre.
+  demarrerCameraEnrolement();
+  const ok = await chargerMoteurFacial(majEtapeMoteurEnrolement);
+  if (!ok) {
+    majEtapeMoteurEnrolement({
+      index: 0, total: 4,
+      label: "Le moteur n'a pas pu être téléchargé. Vérifiez votre connexion puis réessayez.",
+    });
+  }
+  majBoutonCaptureEnrolement();
+}
+
+function majEtapeMoteurEnrolement(etape) {
+  const bar = document.getElementById('face-enroll-engine');
+  if (!bar) return;
+  const pct = Math.round((etape.index / etape.total) * 100);
+  const fini = etape.index >= etape.total;
+  bar.classList.remove('hidden');
+  bar.innerHTML = `
+    <div class="flex items-center gap-2 text-[11px] ${fini ? 'text-emerald-300' : 'text-slate-300'}">
+      <i data-lucide="${fini ? 'check-circle-2' : 'loader-2'}" class="w-3.5 h-3.5 shrink-0 ${fini ? '' : 'animate-spin text-amber-400'}"></i>
+      <span>${escapeHtml(etape.label)}</span>
+    </div>
+    <div class="h-1 rounded-full bg-slate-800 overflow-hidden mt-2">
+      <div class="h-full bg-emerald-500 transition-all duration-500" style="width:${fini ? 100 : pct}%"></div>
+    </div>`;
+  if (window.lucide) lucide.createIcons();
+}
+
+async function demarrerCameraEnrolement() {
+  const video = document.getElementById('face-enroll-video');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    return afficherResultatEnrolement('echec',
+      'Caméra indisponible',
+      "Votre navigateur ne permet pas d'accéder à la caméra. Utilisez Chrome ou Safari à jour.");
+  }
+  try {
+    faceEnrol.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 720 } },
+      audio: false,
+    });
+    if (video) video.srcObject = faceEnrol.stream;
+    majBoutonCaptureEnrolement();
+  } catch (err) {
+    const refus = err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError');
+    afficherResultatEnrolement('echec',
+      'Caméra refusée',
+      refus
+        ? "L'accès à la caméra a été refusé. Autorisez-le dans les réglages de votre navigateur, puis rouvrez cette fenêtre."
+        : "Aucune caméra n'a pu être ouverte sur cet appareil.");
+  }
+}
+
+function majBoutonCaptureEnrolement() {
+  const btn = document.getElementById('face-enroll-capture');
+  if (!btn || faceEnrol.termine) return;
+
+  const pret = faceEngine.statut === 'pret' && !!faceEnrol.stream;
+  btn.disabled = !pret || faceEnrol.occupe;
+
+  if (faceEnrol.occupe) {
+    btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>ANALYSE…</span>';
+  } else if (!pret) {
+    btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>PRÉPARATION…</span>';
+  } else {
+    const n = faceEnrol.prises.length + 1;
+    btn.innerHTML = `<i data-lucide="camera" class="w-4 h-4"></i><span>PRISE ${n} SUR ${FACE_PRISES_ENROLEMENT}</span>`;
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+function majProgressionEnrolement() {
+  const box = document.getElementById('face-enroll-steps');
+  if (!box) return;
+  const consignes = [
+    'Regardez droit vers la caméra',
+    'Tournez légèrement la tête vers la droite',
+    'Tournez légèrement la tête vers la gauche',
+  ];
+  box.innerHTML = consignes
+    .map((c, i) => {
+      const fait = i < faceEnrol.prises.length;
+      const courant = i === faceEnrol.prises.length;
+      return `<div class="flex items-center gap-2 text-[11px]">
+        <i data-lucide="${fait ? 'check-circle-2' : courant ? 'chevron-right' : 'circle'}"
+           class="w-3.5 h-3.5 shrink-0 ${fait ? 'text-emerald-400' : courant ? 'text-amber-400' : 'text-slate-600'}"></i>
+        <span class="${fait ? 'text-slate-400 line-through' : courant ? 'text-white font-semibold' : 'text-slate-500'}">${escapeHtml(c)}</span>
+      </div>`;
+    })
+    .join('');
+  if (window.lucide) lucide.createIcons();
+}
+
+async function capturerPriseEnrolement() {
+  if (faceEnrol.occupe || faceEnrol.termine) return;
+
+  const consent = document.getElementById('face-enroll-consent');
+  if (consent && !consent.checked) {
+    showToast('Consentement requis',
+      'Cochez la case de consentement avant d’enregistrer votre visage.', 'info');
+    return;
+  }
+
+  const video = document.getElementById('face-enroll-video');
+  if (!video || !video.videoWidth) {
+    return afficherResultatEnrolement('echec', 'Caméra non prête',
+      "L'image de la caméra n'est pas encore disponible. Patientez une seconde puis réessayez.");
+  }
+
+  faceEnrol.occupe = true;
+  majBoutonCaptureEnrolement();
+
+  const res = await calculerEmpreinteFaciale(video);
+
+  if (!res.ok) {
+    faceEnrol.occupe = false;
+    majBoutonCaptureEnrolement();
+    return afficherResultatEnrolement('avertissement', 'Reprenez cette prise', messageEchecCapture(res.code));
+  }
+
+  faceEnrol.prises.push(res);
+  setNodeHidden('face-enroll-result', true);
+  majProgressionEnrolement();
+
+  if (faceEnrol.prises.length < FACE_PRISES_ENROLEMENT) {
+    faceEnrol.occupe = false;
+    majBoutonCaptureEnrolement();
+    return;
+  }
+
+  await finaliserEnrolement();
+}
+
+/**
+ * Verifie la coherence des trois prises, en fait la moyenne, et transmet.
+ *
+ * La verification de coherence n'est pas cosmetique : trois prises trop
+ * dissemblables produiraient une reference « floue » qui accepterait ensuite
+ * des visages voisins. Mieux vaut redemander trois prises.
+ */
+async function finaliserEnrolement() {
+  const d = faceEnrol.prises.map((p) => p.descriptor);
+
+  let ecartMax = 0;
+  for (let i = 0; i < d.length; i++) {
+    for (let j = i + 1; j < d.length; j++) {
+      ecartMax = Math.max(ecartMax, distanceEmpreintes(d[i], d[j]) || 0);
+    }
+  }
+
+  if (ecartMax > FACE_ECART_MAX_ENROLEMENT) {
+    faceEnrol.prises = [];
+    faceEnrol.occupe = false;
+    majProgressionEnrolement();
+    majBoutonCaptureEnrolement();
+    return afficherResultatEnrolement('avertissement',
+      'Les trois prises sont trop différentes',
+      `Écart mesuré : ${ecartMax.toFixed(2)} (maximum ${FACE_ECART_MAX_ENROLEMENT}). ` +
+      "Restez à la même distance de la caméra, dans un éclairage stable, puis recommencez les trois prises.");
+  }
+
+  // Moyenne des trois empreintes : absorbe le bruit d'une prise isolee.
+  const moyenne = new Array(128).fill(0);
+  d.forEach((v) => { for (let i = 0; i < 128; i++) moyenne[i] += v[i] / d.length; });
+
+  const qualite = Math.round(
+    (faceEnrol.prises.reduce((s, p) => s + (p.score || 0), 0) / faceEnrol.prises.length) * 10000
+  ) / 100;
+
+  // Apercu fige : l'employe voit la derniere image retenue.
+  const video = document.getElementById('face-enroll-video');
+  const canvas = document.getElementById('face-enroll-canvas');
+  if (video && canvas && video.videoWidth) {
+    const size = Math.min(video.videoWidth, video.videoHeight);
+    canvas.width = 320; canvas.height = 320;
+    canvas.getContext('2d').drawImage(
+      video, (video.videoWidth - size) / 2, (video.videoHeight - size) / 2, size, size, 0, 0, 320, 320);
+    const preview = document.getElementById('face-enroll-preview');
+    if (preview) { preview.src = canvas.toDataURL('image/jpeg', 0.8); preview.classList.remove('hidden'); }
+  }
+
+  afficherResultatEnrolement('attente', 'Enregistrement en cours…', 'Transmission sécurisée de votre empreinte.');
+
+  const session = await assurerSessionSupabase();
+  if (!session.ok) {
+    faceEnrol.prises = [];
+    faceEnrol.occupe = false;
+    majProgressionEnrolement();
+    majBoutonCaptureEnrolement();
+    return afficherResultatEnrolement('echec', 'Session expirée',
+      'Reconnectez-vous puis recommencez l’enregistrement.');
+  }
+
+  try {
+    const { data, error } = await supabaseClient.rpc('enroll_face', {
+      p_descriptor: moyenne,
+      p_quality: qualite,
+      p_model_version: FACE_MODEL_VERSION,
+    });
+    if (error) throw error;
+
+    if (!data || data.ok !== true) {
+      throw new Error((data && data.message) || 'Enregistrement refusé par le serveur.');
+    }
+
+    faceEnrol.termine = true;
+    arreterCameraEnrolement();
+    afficherResultatEnrolement('succes', 'Votre visage est enregistré',
+      `Qualité de la capture : ${qualite.toFixed(0)} %. Vous pouvez désormais pointer avec vérification d'identité.`);
+
+    const btn = document.getElementById('face-enroll-capture');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i><span>FERMER</span>';
+      btn.setAttribute('onclick', 'fermerEnrolementFacial()');
+    }
+    if (window.lucide) lucide.createIcons();
+
+    await chargerStatutFacial();
+    showToast('Visage enregistré', 'Votre identité sera vérifiée à chaque pointage.', 'success');
+  } catch (err) {
+    console.error('[Visage] Enrôlement refusé :', err);
+    faceEnrol.prises = [];
+    faceEnrol.occupe = false;
+    majProgressionEnrolement();
+    majBoutonCaptureEnrolement();
+
+    const msg = String((err && err.message) || '');
+    const absente = /could not find the function|does not exist|schema cache/i.test(msg);
+    afficherResultatEnrolement('echec',
+      absente ? 'Fonction non installée' : 'Enregistrement impossible',
+      absente
+        ? "À transmettre au service technique : exécuter services/supabase_migration_009_face_recognition.sql dans l'éditeur SQL Supabase."
+        : `Le serveur a refusé l'enregistrement.\n\nDétail technique : ${msg || 'erreur inconnue'}`);
+  }
+}
+
+function afficherResultatEnrolement(type, titre, corps) {
+  const box = document.getElementById('face-enroll-result');
+  if (!box) return;
+  setNodeHidden('face-enroll-result', false);
+
+  const styles = {
+    succes:        ['border-emerald-500/40 bg-emerald-500/10', 'text-emerald-300'],
+    echec:         ['border-red-500/40 bg-red-500/10', 'text-red-300'],
+    avertissement: ['border-amber-500/40 bg-amber-500/10', 'text-amber-300'],
+    attente:       ['border-slate-700 bg-slate-900/80', 'text-slate-200'],
+  };
+  const [cadre, couleur] = styles[type] || styles.attente;
+
+  box.className = `rounded-xl border p-3.5 space-y-1 ${cadre}`;
+  box.innerHTML =
+    `<p class="text-xs font-extrabold ${couleur}">${escapeHtml(titre)}</p>` +
+    `<p class="text-[11px] text-slate-300 leading-relaxed whitespace-pre-line">${escapeHtml(corps)}</p>`;
+}
+
+function arreterCameraEnrolement() {
+  if (faceEnrol.stream) {
+    faceEnrol.stream.getTracks().forEach((t) => t.stop());
+    faceEnrol.stream = null;
+  }
+  const v = document.getElementById('face-enroll-video');
+  if (v) v.srcObject = null;
+}
+
+function fermerEnrolementFacial() {
+  arreterCameraEnrolement();
+  faceEnrol.prises = [];
+  faceEnrol.occupe = false;
+  const modal = document.getElementById('modal-face-enroll');
+  if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+}
+
+/**
+ * Revocation du consentement biometrique.
+ *
+ * Doit rester possible a tout moment et ne jamais empecher de travailler :
+ * l'employe repasse en GPS + selfie conserve comme preuve. Un consentement
+ * qu'on ne peut pas retirer n'est pas un consentement.
+ */
+async function revoquerVisage() {
+  if (!confirm(
+    'Supprimer votre empreinte faciale ?\n\n' +
+    'Elle sera définitivement effacée. Si votre entreprise exige la vérification ' +
+    "d'identité, vous devrez enregistrer un nouveau visage avant de pouvoir pointer."
+  )) return;
+
+  const session = await assurerSessionSupabase();
+  if (!session.ok) return signalerSessionPerdue(session.raison);
+
+  try {
+    const { data, error } = await supabaseClient.rpc('revoke_my_face');
+    if (error) throw error;
+    showToast('Empreinte supprimée',
+      (data && data.message) || 'Votre empreinte faciale a été supprimée.', 'success');
+    await chargerStatutFacial();
+  } catch (err) {
+    console.error('[Visage] Révocation impossible :', err);
+    showToast('Suppression impossible',
+      traduireErreurEcriture(err, 'la suppression de votre empreinte'), 'danger', 8000);
+  }
+}
+
+
+// =============================================================================
+//  CONFIRMATION D'IDENTITE SUR LE CHEMIN QR
+//
+//  Le jeton QR prouve la presence devant la borne. Il ne prouve pas qui tient
+//  le telephone : un salarie peut confier son appareil deverrouille a un
+//  collegue. Quand l'entreprise exige la verification d'identite, elle est
+//  donc appliquee sur CE chemin aussi, cote serveur comme cote interface.
+//
+//  Le serveur verifie l'identite AVANT de consommer le jeton : un visage
+//  refuse ne brule pas le QR affiche, l'employe peut reessayer immediatement.
+// =============================================================================
+
+/**
+ * Bascule la camera du modal de scan vers la face avant et capture l'empreinte.
+ *
+ * @returns {Promise<{ok:boolean, descriptor?:number[], motion?:number, message?:string}>}
+ */
+async function confirmerIdentitePourQr() {
+  const video = document.getElementById('qr-scan-video');
+  if (!video) return { ok: false, message: "L'écran de confirmation est indisponible." };
+
+  majStatutScan('Préparation de la reconnaissance…');
+
+  if (faceEngine.statut !== 'pret') {
+    const charge = await chargerMoteurFacial((etape) => {
+      if (etape.index < etape.total) majStatutScan(etape.label);
+    });
+    if (!charge) {
+      return {
+        ok: false,
+        message: "Le moteur de reconnaissance (environ 7 Mo) n'a pas pu être téléchargé. Connectez-vous à un réseau plus stable puis réessayez.",
+      };
+    }
+  }
+
+  // Le scan utilisait la camera arriere ; l'identite se verifie de face.
+  arreterScanQr();
+  try {
+    scanQr.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 720 } },
+      audio: false,
+    });
+    video.srcObject = scanQr.stream;
+    await video.play();
+  } catch (e) {
+    return {
+      ok: false,
+      message: "La caméra frontale n'a pas pu être ouverte. Autorisez-la puis scannez à nouveau.",
+    };
+  }
+
+  majStatutScan('Regardez la caméra pour confirmer votre identité…');
+
+  // Laisse le capteur s'exposer : une premiere image trop sombre fait echouer
+  // la detection alors que le visage est bien la.
+  await new Promise((r) => setTimeout(r, 700));
+
+  const a = await calculerEmpreinteFaciale(video);
+  if (!a.ok) {
+    arreterScanQr();
+    return { ok: false, message: messageEchecCapture(a.code) };
+  }
+
+  await new Promise((r) => setTimeout(r, 450));
+  const b = await calculerEmpreinteFaciale(video);
+  const motion = b.ok ? distanceEmpreintes(a.descriptor, b.descriptor) : null;
+  const retenue = b.ok && (b.score || 0) > (a.score || 0) ? b : a;
+
+  arreterScanQr();
+  majStatutScan('Identité capturée — envoi au serveur…', 'ok');
+
+  return {
+    ok: true,
+    descriptor: retenue.descriptor,
+    motion: motion === null ? null : Math.round(motion * 10000) / 10000,
+  };
+}
+
+/**
+ * Ouvre le modal de scan en mode « confirmation d'identite seule ».
+ *
+ * Utilise par le lien direct (QR ouvert dans le navigateur) : il n'y a rien a
+ * scanner, le jeton est deja dans l'URL, mais l'identite reste a prouver.
+ */
+async function confirmerIdentiteHorsScan() {
+  const modal = document.getElementById('modal-qr-scan');
+  if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+
+  const titre = document.querySelector('#modal-qr-scan h3 span');
+  if (titre) titre.innerText = 'Confirmer mon identité';
+
+  const res = await confirmerIdentitePourQr();
+  if (!res.ok && modal) setTimeout(fermerScanQr, 6000);
+  return res;
+}
+
+/** Traduit les refus lies au visage sur le chemin QR. */
+function messageRefusQrVisage(code, defaut) {
+  const messages = {
+    FACE_MISMATCH:
+      "Le visage capturé ne correspond pas à votre visage de référence. Placez-vous dans un endroit bien éclairé puis scannez à nouveau.",
+    FACE_NOT_ENROLLED:
+      "Aucun visage de référence n'est enregistré pour votre compte. Enregistrez-le depuis votre tableau de bord, puis scannez à nouveau.",
+    FACE_NOT_CAPTURED:
+      "L'empreinte du visage n'est pas parvenue au serveur. Réessayez face à la caméra.",
+    FACE_MODEL_MISMATCH:
+      'Le modèle de reconnaissance a changé. Réenregistrez votre visage de référence depuis votre tableau de bord.',
+  };
+  return messages[code] || defaut;
+}
+
+
+// =============================================================================
+//  COCKPIT RH — reglage de la verification d'identite
+//
+//  Le seuil est exprime en DISTANCE, l'unite reelle du modele, et non en
+//  pourcentage invente. Deux captures d'une meme personne tombent typiquement
+//  entre 0,30 et 0,50 ; deux personnes differentes au-dela de 0,70.
+// =============================================================================
+
+const faceConfig = { entreprise: null, effectif: [] };
+
+/** Les trois reglages proposes, en langage RH plutot qu'en jargon. */
+const FACE_NIVEAUX = [
+  {
+    valeur: 0.45,
+    titre: 'Strict',
+    detail: 'Refuse au moindre doute. Attendez-vous à quelques refus sur un employé mal éclairé.',
+  },
+  {
+    valeur: 0.55,
+    titre: 'Équilibré',
+    detail: 'Réglage conseillé. Tolère un changement de lumière ou de coiffure.',
+  },
+  {
+    valeur: 0.65,
+    titre: 'Tolérant',
+    detail: "Refuse rarement. À réserver aux sites où l'éclairage est mauvais.",
+  },
+];
+
+async function renderFaceConfig() {
+  const corps = document.getElementById('face-config-body');
+  const etat = document.getElementById('face-config-state');
+  if (!corps) return;
+
+  if (!supabaseClient || !state.currentCompanyId) {
+    corps.innerHTML =
+      '<p class="text-xs text-slate-400">Connectez-vous à votre espace entreprise pour configurer la vérification d&#39;identité.</p>';
+    return;
+  }
+
+  const [entRes, effRes] = await Promise.all([
+    supabaseClient
+      .from('companies')
+      .select('id, face_verification_enabled, face_max_distance, face_min_motion')
+      .eq('id', state.currentCompanyId)
+      .maybeSingle(),
+    // On passe explicitement l'entreprise consultée : le rattachement fait foi
+    // via company_memberships, pas via users.company_id.
+    supabaseClient.rpc('company_face_enrollment', { p_company_id: state.currentCompanyId }),
+  ]);
+
+  // Migration non executee : on le dit, plutot que d afficher un panneau mort.
+  const colonnesAbsentes =
+    entRes.error && /face_verification_enabled|face_max_distance|column|schema cache/i.test(String(entRes.error.message || ''));
+  if (colonnesAbsentes) {
+    if (etat) { etat.className = 'badge-danger px-2 py-1 rounded text-[10px] font-mono'; etat.innerText = 'NON INSTALLÉ'; }
+    corps.innerHTML =
+      '<p class="text-xs text-slate-300 leading-relaxed">La reconnaissance faciale n&#39;est pas encore installée sur ce serveur.</p>' +
+      '<p class="text-[11px] text-slate-500 mt-2 font-mono">À transmettre au service technique : exécuter ' +
+      'services/supabase_migration_009_face_recognition.sql puis services/supabase_migration_010_punch_face.sql.</p>';
+    return;
+  }
+
+  faceConfig.entreprise = entRes.data || null;
+  faceConfig.effectif = Array.isArray(effRes.data) ? effRes.data : [];
+
+  const active = !!(faceConfig.entreprise && faceConfig.entreprise.face_verification_enabled);
+  const seuil = Number((faceConfig.entreprise && faceConfig.entreprise.face_max_distance) || 0.55);
+  const revue = Number((faceConfig.entreprise && faceConfig.entreprise.face_min_motion) || 0);
+  const peut = peutConfigurerPointage();
+
+  if (etat) {
+    etat.className = (active ? 'badge-verified' : 'badge-info') + ' px-2 py-1 rounded text-[10px] font-mono';
+    etat.innerText = active ? 'ACTIVÉE' : 'DÉSACTIVÉE';
+  }
+
+  const inscrits = faceConfig.effectif.filter((e) => e.enrolled).length;
+  const total = faceConfig.effectif.length;
+  const manquants = faceConfig.effectif.filter((e) => !e.enrolled);
+
+  corps.innerHTML = `
+    <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-900/70 border border-slate-700 p-3.5">
+      <div class="min-w-0">
+        <p class="text-xs font-bold text-slate-100">Exiger la reconnaissance faciale au pointage</p>
+        <p class="text-[11px] text-slate-400 leading-relaxed mt-0.5">
+          ${active
+            ? 'Chaque pointage compare le visage capturé au visage de référence. Les employés sans visage enregistré ne peuvent pas pointer.'
+            : "Le pointage reste validé par GPS et selfie. Le selfie est conservé comme preuve, mais aucune identité n'est vérifiée."}
+        </p>
+      </div>
+      <button ${peut ? '' : 'disabled'} onclick="basculerVerificationFaciale(${!active})"
+        class="min-h-tap px-4 py-2.5 rounded-xl font-extrabold text-[11px] tracking-wider transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed ${
+          active
+            ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700'
+            : 'bg-gradient-to-r from-cyan-500 to-blue-600 text-black'
+        }">
+        ${active ? 'DÉSACTIVER' : 'ACTIVER'}
+      </button>
+    </div>
+
+    ${active ? `
+    <div class="space-y-2">
+      <p class="text-[11px] font-bold text-slate-300">Niveau d'exigence</p>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        ${FACE_NIVEAUX.map((n) => {
+          const choisi = Math.abs(seuil - n.valeur) < 0.001;
+          return `<button ${peut ? '' : 'disabled'} onclick="definirSeuilFacial(${n.valeur})"
+            class="text-left p-3 rounded-xl border transition disabled:opacity-40 disabled:cursor-not-allowed ${
+              choisi ? 'border-cyan-500/60 bg-cyan-500/10' : 'border-slate-700 bg-slate-900/60 hover:border-slate-600'
+            }">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs font-extrabold ${choisi ? 'text-cyan-300' : 'text-slate-200'}">${escapeHtml(n.titre)}</span>
+              <span class="text-[10px] font-mono ${choisi ? 'text-cyan-400' : 'text-slate-500'}">${n.valeur.toFixed(2)}</span>
+            </div>
+            <p class="text-[10px] text-slate-400 leading-relaxed mt-1">${escapeHtml(n.detail)}</p>
+          </button>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-900/70 border border-slate-700 p-3.5">
+      <div class="min-w-0">
+        <p class="text-xs font-bold text-slate-100">Marquer pour contrôle les captures sans variation</p>
+        <p class="text-[11px] text-slate-400 leading-relaxed mt-0.5">
+          Le pointage reste ENREGISTRÉ ; il apparaît en attente de votre validation.
+          Ce n'est pas une détection de photographie, seulement un signal faible.
+        </p>
+      </div>
+      <button ${peut ? '' : 'disabled'} onclick="definirRevueMouvement(${revue > 0 ? 0 : 0.01})"
+        class="min-h-tap px-4 py-2.5 rounded-xl font-extrabold text-[11px] tracking-wider transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed ${
+          revue > 0
+            ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700'
+            : 'bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/40'
+        }">
+        ${revue > 0 ? 'DÉSACTIVER' : 'ACTIVER'}
+      </button>
+    </div>` : ''}
+
+    <div class="space-y-2">
+      <div class="flex items-center justify-between gap-2">
+        <p class="text-[11px] font-bold text-slate-300">Visages de référence enregistrés</p>
+        <span class="text-[11px] font-mono ${inscrits === total && total > 0 ? 'text-emerald-400' : 'text-amber-400'}">
+          ${inscrits} / ${total}
+        </span>
+      </div>
+      ${total === 0
+        ? '<p class="text-[11px] text-slate-500">Aucun employé enregistré pour cette entreprise.</p>'
+        : manquants.length === 0
+          ? '<p class="text-[11px] text-emerald-400">Tout l&#39;effectif a enregistré son visage.</p>'
+          : `<div class="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-1.5">
+              <p class="text-[11px] text-amber-300 font-semibold">
+                ${manquants.length} employé${manquants.length > 1 ? 's' : ''} sans visage de référence${
+                  active ? ' — ils ne peuvent pas pointer' : ''}
+              </p>
+              <div class="flex flex-wrap gap-1.5">
+                ${manquants.slice(0, 24).map((e) =>
+                  `<span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-900/80 border border-slate-700 text-slate-300">${
+                    escapeHtml(e.full_name || e.matricule || '—')}</span>`).join('')}
+                ${manquants.length > 24 ? `<span class="text-[10px] text-slate-500">+ ${manquants.length - 24}</span>` : ''}
+              </div>
+              <p class="text-[10px] text-slate-500 leading-relaxed">
+                Chaque employé enregistre son visage lui-même depuis son tableau de bord :
+                le consentement biométrique ne peut pas être donné à sa place.
+              </p>
+            </div>`}
+    </div>`;
+
+  if (window.lucide) lucide.createIcons();
+}
+
+/**
+ * Active ou desactive la verification d'identite pour toute l'entreprise.
+ *
+ * L'activation est annoncee franchement : elle bloque le pointage de tous les
+ * employes sans visage de reference. Un RH qui l'active a 8 h sans le savoir
+ * paralyse son effectif.
+ */
+async function basculerVerificationFaciale(activer) {
+  if (!peutConfigurerPointage()) {
+    return showToast('Action non autorisée',
+      'Seuls le CEO et le service RH peuvent modifier ce réglage.', 'info');
+  }
+
+  const sans = faceConfig.effectif.filter((e) => !e.enrolled).length;
+  if (activer && sans > 0) {
+    const ok = confirm(
+      "Activer la vérification d'identité ?\n\n" +
+      sans + " employé(s) n'ont pas encore enregistré leur visage. " +
+      "Ils ne pourront plus pointer tant qu'ils ne l'auront pas fait.\n\n" +
+      "Prévenez-les avant d'activer."
+    );
+    if (!ok) return;
+  }
+
+  const session = await assurerSessionSupabase();
+  if (!session.ok) return signalerSessionPerdue(session.raison);
+
+  try {
+    const { error } = await supabaseClient
+      .from('companies')
+      .update({ face_verification_enabled: activer })
+      .eq('id', state.currentCompanyId);
+    if (error) throw error;
+
+    showToast(
+      activer ? "Vérification activée" : "Vérification désactivée",
+      activer
+        ? "Chaque pointage vérifiera désormais l'identité de l'employé."
+        : 'Le pointage reste validé par GPS et selfie.',
+      'success'
+    );
+    await renderFaceConfig();
+  } catch (err) {
+    console.error('[Visage] Bascule impossible :', err);
+    showToast('Modification impossible',
+      traduireErreurEcriture(err, 'la modification de ce réglage'), 'danger', 8000);
+  }
+}
+
+async function definirSeuilFacial(valeur) {
+  if (!peutConfigurerPointage()) return;
+
+  const session = await assurerSessionSupabase();
+  if (!session.ok) return signalerSessionPerdue(session.raison);
+
+  try {
+    const { error } = await supabaseClient
+      .from('companies')
+      .update({ face_max_distance: valeur })
+      .eq('id', state.currentCompanyId);
+    if (error) throw error;
+    showToast('Niveau enregistré',
+      "Le nouveau niveau s'applique dès le prochain pointage.", 'success');
+    await renderFaceConfig();
+  } catch (err) {
+    console.error('[Visage] Seuil refusé :', err);
+    showToast('Modification impossible',
+      traduireErreurEcriture(err, 'la modification du niveau'), 'danger', 8000);
+  }
+}
+
+async function definirRevueMouvement(valeur) {
+  if (!peutConfigurerPointage()) return;
+
+  const session = await assurerSessionSupabase();
+  if (!session.ok) return signalerSessionPerdue(session.raison);
+
+  try {
+    const { error } = await supabaseClient
+      .from('companies')
+      .update({ face_min_motion: valeur })
+      .eq('id', state.currentCompanyId);
+    if (error) throw error;
+    showToast(
+      valeur > 0 ? 'Contrôle activé' : 'Contrôle désactivé',
+      valeur > 0
+        ? 'Les captures sans variation seront marquées pour votre validation.'
+        : 'Plus aucun pointage ne sera marque sur ce critere.',
+      'success'
+    );
+    await renderFaceConfig();
+  } catch (err) {
+    console.error('[Visage] Réglage de revue refusé :', err);
+    showToast('Modification impossible',
+      traduireErreurEcriture(err, 'la modification de ce réglage'), 'danger', 8000);
+  }
+}

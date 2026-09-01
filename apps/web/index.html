@@ -1383,6 +1383,44 @@
           <div id="schedules-list" class="space-y-2"></div>
         </div>
 
+        <!-- Vérification d'identité par reconnaissance faciale -->
+        <div class="glass-panel p-5 border-slate-800 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <h3 class="font-bold text-white text-sm flex items-center gap-2">
+              <i data-lucide="scan-face" class="w-4 h-4 text-cyan-400"></i>
+              Vérification d'identité au pointage
+            </h3>
+            <span id="face-config-state" class="badge-info px-2 py-1 rounded text-[10px] font-mono">—</span>
+          </div>
+
+          <div id="face-config-body" class="space-y-4">
+            <p class="text-xs text-slate-400 leading-relaxed">
+              Chargement de la configuration…
+            </p>
+          </div>
+
+          <!--
+            Cet encadré n'est pas décoratif. Vendre de la « détection de fraude »
+            là où il n'y a qu'une comparaison de visages exposerait l'entreprise
+            à fonder une sanction sur une preuve qu'elle croit plus forte
+            qu'elle ne l'est.
+          -->
+          <div class="rounded-xl border border-slate-700 bg-slate-900/60 p-3.5 space-y-1.5">
+            <p class="text-[11px] font-bold text-slate-200 flex items-center gap-1.5">
+              <i data-lucide="info" class="w-3.5 h-3.5 text-cyan-400"></i>
+              Ce que ce contrôle fait, et ce qu'il ne fait pas
+            </p>
+            <p class="text-[11px] text-slate-400 leading-relaxed">
+              Il compare le visage capturé au visage de référence de l'employé, et la
+              comparaison est faite par le serveur — jamais par le téléphone.
+              <strong class="text-slate-300">Il ne détecte pas une photographie présentée
+              devant la caméra</strong> : cela exigerait un test de vivacité, qui n'est pas
+              installé. Les pointages dont le visage varie très peu entre deux prises
+              peuvent être marqués pour contrôle humain, sans être bloqués.
+            </p>
+          </div>
+        </div>
+
         <!-- État de préparation des employés -->
         <div class="glass-panel p-5 border-slate-800 space-y-4">
           <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
@@ -1402,6 +1440,7 @@
                   <th class="pb-2 font-semibold">Site de travail</th>
                   <th class="pb-2 font-semibold">Horaire</th>
                   <th class="pb-2 font-semibold">Doit pointer</th>
+                  <th class="pb-2 font-semibold">Visage</th>
                   <th class="pb-2 font-semibold text-right">État</th>
                 </tr>
               </thead>
@@ -2046,6 +2085,9 @@
         <span id="emp-punch-gps-text">Recherche de votre position…</span>
       </div>
 
+      <!-- Chargement du moteur de reconnaissance, si l'entreprise l'exige -->
+      <div id="emp-punch-face-pill" class="hidden flex items-center gap-2 text-[11px] font-mono px-3 py-2 rounded-xl bg-slate-900/80 border border-slate-700 text-slate-300"></div>
+
       <!-- Étapes de vérification (affichées pendant le traitement) -->
       <div id="emp-punch-steps" class="hidden space-y-2 rounded-xl bg-slate-900/80 border border-slate-700 p-3"></div>
 
@@ -2068,6 +2110,74 @@
       <p class="text-[10px] text-slate-500 leading-relaxed text-center">
         Votre position et votre selfie ne sont utilisés que pour ce pointage. L'heure
         officielle est celle du serveur, jamais celle de votre téléphone.
+      </p>
+    </div>
+  </div>
+
+  <!--
+    ENRÔLEMENT DU VISAGE DE RÉFÉRENCE
+
+    Trois prises, moyennées côté navigateur, transmises sous forme de 128
+    nombres. Ce n'est pas une photographie : on ne peut pas reconstituer un
+    visage à partir de ces nombres, et le serveur ne les renvoie jamais.
+  -->
+  <div id="modal-face-enroll" class="fixed inset-0 z-[70] bg-black/85 backdrop-blur-md hidden items-center justify-center p-3 sm:p-4">
+    <div class="glass-panel-elevated w-full max-w-md p-5 sm:p-6 space-y-4 border border-amber-500/40 relative max-h-[95vh] overflow-y-auto">
+      <button onclick="fermerEnrolementFacial()" class="absolute top-3 right-3 text-slate-400 hover:text-white p-2 min-h-tap" aria-label="Fermer">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <div class="pr-8">
+        <h3 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+          <i data-lucide="scan-face" class="w-5 h-5 text-amber-400"></i>
+          <span>Enregistrer mon visage</span>
+        </h3>
+        <p class="text-[11px] text-slate-400 mt-1">
+          Trois prises suffisent. Elles serviront de référence pour vérifier votre
+          identité à chaque pointage.
+        </p>
+      </div>
+
+      <!-- Progression réelle du téléchargement des modèles (~7 Mo) -->
+      <div id="face-enroll-engine" class="hidden rounded-xl bg-slate-900/80 border border-slate-700 p-3"></div>
+
+      <div class="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-slate-950 border border-slate-700">
+        <video id="face-enroll-video" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover"></video>
+        <img id="face-enroll-preview" alt="Visage de référence" class="hidden absolute inset-0 w-full h-full object-cover" />
+        <canvas id="face-enroll-canvas" class="hidden"></canvas>
+        <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div class="w-40 h-52 rounded-[40%] border-2 border-dashed border-amber-400/70"></div>
+        </div>
+      </div>
+
+      <div id="face-enroll-steps" class="space-y-2 rounded-xl bg-slate-900/80 border border-slate-700 p-3"></div>
+
+      <div id="face-enroll-result" class="hidden"></div>
+
+      <label class="flex items-start gap-2.5 text-[11px] text-slate-300 leading-relaxed cursor-pointer">
+        <input id="face-enroll-consent" type="checkbox" class="mt-0.5 w-4 h-4 shrink-0 accent-amber-500" />
+        <span>
+          J'accepte que mon visage serve à vérifier mon identité lors de mes pointages.
+          Je peux retirer ce consentement à tout moment depuis mon tableau de bord.
+        </span>
+      </label>
+
+      <button id="face-enroll-capture" onclick="capturerPriseEnrolement()" disabled
+        class="w-full min-h-tap py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-extrabold text-xs tracking-wider transition shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+        <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+        <span>PRÉPARATION…</span>
+      </button>
+
+      <!--
+        Ce texte est délibérément factuel. Le dispositif compare des visages ;
+        il ne détecte pas une photographie présentée devant l'objectif. Le
+        présenter autrement serait mentir sur ce qu'il protège.
+      -->
+      <p class="text-[10px] text-slate-500 leading-relaxed text-center">
+        Aucune photo n'est conservée pour la reconnaissance : seuls 128 nombres
+        calculés à partir de votre visage sont enregistrés, et ils ne permettent pas
+        de reconstituer une image. Ce contrôle compare des visages ; il ne détecte pas
+        une photographie présentée devant la caméra.
       </p>
     </div>
   </div>
@@ -2866,6 +2976,13 @@
         <!-- Message affiché quand la configuration RH est incomplète -->
         <div id="emp-punch-config-banner" class="hidden">
         </div>
+
+        <!--
+          Vérification d'identité : visible uniquement si l'entreprise l'exige,
+          ou si l'employé a déjà enregistré un visage. Rempli par
+          renderCarteVisageEmploye().
+        -->
+        <div id="emp-face-card" class="hidden"></div>
 
         <!-- 4 CARDS REQUISES : STATUT DU JOUR, ARRIVÉE, DÉPART, TEMPS TRAVAILLÉ -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
