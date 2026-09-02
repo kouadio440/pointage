@@ -2237,6 +2237,10 @@ const empPunch = {
   faceMotion: null,
   challengeId: null,
   liveness: null,
+  reutiliserEmpreinte: null,
+  // Une seule escalade par pointage : sans ce verrou, un refus répété
+  // relancerait la demande de geste en boucle.
+  escalade: false,
 };
 
 /**
@@ -2387,6 +2391,8 @@ function openEmployeePunch(type) {
   empPunch.faceMotion = null;
   empPunch.challengeId = null;
   empPunch.liveness = null;
+  empPunch.reutiliserEmpreinte = null;
+  empPunch.escalade = false;
 
   const modal = document.getElementById('modal-emp-punch');
   if (modal) {
@@ -2497,7 +2503,12 @@ async function startEmployeePunchCamera() {
 
   try {
     empPunch.stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 720 } },
+      video: {
+        facingMode: 'user',
+        width: { ideal: 1280 },
+        height: { ideal: 960 },
+        aspectRatio: { ideal: 4 / 3 },
+      },
       audio: false,
     });
     if (video) {
@@ -2689,20 +2700,29 @@ async function captureEmployeePunch() {
       }
       empPunch.challengeId = vif.challengeId;
       empPunch.liveness = vif.evidence;
+      empPunch.reutiliserEmpreinte = vif.descripteurFinal || null;
     }
     setNodeHidden('emp-punch-liveness', true);
 
-    const capture = await capturerEmpreintePointage(video);
-    if (!capture.ok) {
-      stopEmployeePunchCamera();
-      setNodeHidden('emp-punch-frame', true);
-      return renderEmployeePunchFailure(capture.titre, capture.corps);
+    // La mesure passive vient de calculer une empreinte nette : la réutiliser
+    // évite une seconde passe complète du modèle de reconnaissance, la plus
+    // coûteuse de toutes, pour un gain de fiabilité nul.
+    if (empPunch.reutiliserEmpreinte) {
+      empPunch.faceDescriptor = empPunch.reutiliserEmpreinte;
+      empPunch.faceMotion = null;
+    } else {
+      const capture = await capturerEmpreintePointage(video);
+      if (!capture.ok) {
+        stopEmployeePunchCamera();
+        setNodeHidden('emp-punch-frame', true);
+        return renderEmployeePunchFailure(capture.titre, capture.corps);
+      }
+      empPunch.faceDescriptor = capture.descriptor;
+      empPunch.faceMotion = capture.motion;
     }
-    empPunch.faceDescriptor = capture.descriptor;
-    empPunch.faceMotion = capture.motion;
 
-    // Le selfie conservé comme preuve est repris APRÈS les gestes : celui pris
-    // avant montrerait l'employé en train de lire la consigne, pas de pointer.
+    // Le selfie conservé comme preuve est repris APRÈS la vérification : celui
+    // pris avant montrerait l'employé en train de lire la consigne.
     ctx.drawImage(
       video,
       (video.videoWidth - size) / 2, (video.videoHeight - size) / 2, size, size,
@@ -2720,8 +2740,10 @@ async function captureEmployeePunch() {
     preview.classList.remove('hidden');
   }
   setNodeHidden('emp-punch-frame', true);
-  stopEmployeePunchCamera();
 
+  // La caméra n'est PAS coupée ici : si le serveur juge la mesure passive
+  // indécise, il faut pouvoir demander un geste sans tout recommencer. Elle
+  // est arrêtée par les fonctions de verdict.
   await submitEmployeePunch();
 }
 
@@ -2944,6 +2966,39 @@ async function submitEmployeePunch() {
     );
   }
 
+  // La mesure passive n'a rien pu conclure : on ne refuse PAS, on demande un
+  // geste. Un employé très immobile, une caméra médiocre ou un éclairage
+  // difficile ne doivent jamais empêcher quelqu'un de pointer — seul un visage
+  // qui ne correspond pas mérite un refus sec.
+  if (verdict && verdict.code === 'LIVENESS_TOO_STATIC' && !empPunch.escalade) {
+    empPunch.escalade = true;
+
+    const video = document.getElementById('emp-punch-video');
+    const preview = document.getElementById('emp-punch-preview');
+    if (preview) preview.classList.add('hidden');
+
+    steps[2] = { label: 'Vérification supplémentaire demandée', state: 'info' };
+    renderEmployeePunchSteps(steps);
+
+    const geste = await escaladerVersGeste(video);
+    setNodeHidden('emp-punch-liveness', true);
+
+    if (!geste.ok) {
+      return renderEmployeePunchFailure(geste.titre, geste.corps);
+    }
+
+    empPunch.challengeId = geste.challengeId;
+    empPunch.liveness = geste.evidence;
+    // L'empreinte est recalculée : celle de la mesure passive appartient à un
+    // défi déjà consommé, et le visage a pu changer de pose depuis.
+    empPunch.reutiliserEmpreinte = null;
+
+    const reprise = await calculerEmpreinteFaciale(video);
+    if (reprise.ok) empPunch.faceDescriptor = reprise.descriptor;
+
+    return submitEmployeePunch();
+  }
+
   // Cas particulier : le pointage EST enregistré, mais le serveur l'a marqué
   // pour vérification humaine. Ce n'est ni un refus ni une validation ; le dire
   // franchement évite que l'employé reparte en croyant son pointage acquis.
@@ -3050,6 +3105,13 @@ function renderEmployeePunchRejection(verdict, steps) {
       title: 'Contrôle anti-photo introuvable',
       body: 'Le contrôle a expiré ou a été interrompu. Relancez le pointage.',
     },
+    LIVENESS_TOO_STATIC: {
+      title: 'Vérification impossible',
+      body:
+        "Le système n'a pas pu distinguer un visage vivant d'une photographie.\n\n" +
+        'Placez-vous bien face à la caméra, dans un endroit éclairé, sans fenêtre ' +
+        'derrière vous, puis relancez le pointage.',
+    },
     FACE_MODEL_MISMATCH: {
       title: 'Visage à réenregistrer',
       body:
@@ -3132,6 +3194,7 @@ function fermerEtEnregistrerVisage() {
  * présence est bien enregistrée, et que le service RH la contrôlera.
  */
 function renderEmployeePunchEnRevue(verdict, steps) {
+  stopEmployeePunchCamera();
   empPunch.submitting = false;
   empPunch.finished = true;
   empPunch.gpsAbort = true;
@@ -3178,6 +3241,7 @@ function renderEmployeePunchEnRevue(verdict, steps) {
 }
 
 function renderEmployeePunchSuccess(title, detail) {
+  stopEmployeePunchCamera();
   const box = document.getElementById('emp-punch-result');
   if (box) {
     setNodeHidden('emp-punch-result', false);
@@ -3209,6 +3273,7 @@ function renderEmployeePunchSuccess(title, detail) {
  *   proposé sous le message (par exemple : enregistrer son visage).
  */
 function renderEmployeePunchFailure(title, body, technique, action) {
+  stopEmployeePunchCamera();
   empPunch.submitting = false;
   empPunch.finished = true;
   empPunch.gpsAbort = true;
@@ -3671,6 +3736,12 @@ function afficherRefusQr(data) {
     LIVENESS_NO_CHALLENGE: {
       titre: 'Contrôle introuvable',
       corps: 'Le contrôle a expiré ou a été interrompu. Scannez à nouveau.',
+    },
+    LIVENESS_TOO_STATIC: {
+      titre: 'Vérification impossible',
+      corps:
+        "Le système n'a pas pu distinguer un visage vivant d'une photographie. " +
+        'Placez-vous face à la caméra, dans un endroit éclairé, puis scannez à nouveau.',
     },
     OUTSIDE_GEOFENCE: {
       titre: 'Pointage impossible — hors de la zone',
@@ -8348,7 +8419,12 @@ async function demarrerCameraEnrolement() {
   }
   try {
     faceEnrol.stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 720 } },
+      video: {
+        facingMode: 'user',
+        width: { ideal: 1280 },
+        height: { ideal: 960 },
+        aspectRatio: { ideal: 4 / 3 },
+      },
       audio: false,
     });
     if (video) video.srcObject = faceEnrol.stream;
@@ -8663,7 +8739,12 @@ async function confirmerIdentitePourQr() {
   arreterScanQr();
   try {
     scanQr.stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 720 } },
+      video: {
+        facingMode: 'user',
+        width: { ideal: 1280 },
+        height: { ideal: 960 },
+        aspectRatio: { ideal: 4 / 3 },
+      },
       audio: false,
     });
     video.srcObject = scanQr.stream;
@@ -8756,6 +8837,8 @@ function messageRefusQrVisage(code, defaut) {
       'Ce contrôle a déjà servi. Scannez à nouveau.',
     LIVENESS_NO_CHALLENGE:
       'Le contrôle a été interrompu. Scannez à nouveau.',
+    LIVENESS_TOO_STATIC:
+      "Impossible de distinguer un visage vivant d'une photographie. Placez-vous face à la caméra, dans un endroit éclairé, puis scannez à nouveau.",
   };
   return messages[code] || defaut;
 }
@@ -8875,10 +8958,18 @@ async function renderFaceConfig() {
         </p>
         <p class="text-[11px] leading-relaxed mt-0.5 ${vivacite ? 'text-slate-400' : 'text-red-300'}">
           ${vivacite
-            ? "Le serveur impose deux gestes tirés au sort (cligner des yeux, tourner la tête, ouvrir la bouche). Une photographie brandie devant la caméra est refusée."
+            ? (modeGeste
+                ? "Deux gestes tirés au sort sont imposés à chaque pointage. Le plus sûr, le moins confortable — à réserver aux sites très exposés."
+                : "L'employé regarde simplement la caméra trois secondes, sans rien faire. Le serveur mesure la déformation du visage : une photographie est rigide, un visage vivant ne l'est pas. Un geste n'est demandé que si la mesure reste indécise.")
             : "DÉSACTIVÉ : une simple photographie du visage suffit à pointer. Ne laissez ce réglage éteint que le temps de régler un problème d'appareil."}
         </p>
       </div>
+      <div class="flex items-center gap-2 shrink-0">
+        ${vivacite ? `<button ${peut ? '' : 'disabled'} onclick="definirModeVivacite('${modeGeste ? 'PASSIVE' : 'GESTURE'}')"
+          title="${modeGeste ? 'Revenir au contrôle sans geste' : 'Imposer les gestes à chaque pointage'}"
+          class="min-h-tap px-3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-bold text-[11px] transition disabled:opacity-40 disabled:cursor-not-allowed">
+          ${modeGeste ? 'SANS GESTE' : 'AVEC GESTES'}
+        </button>` : ''}
       <button ${peut ? '' : 'disabled'} onclick="basculerVivacite(${!vivacite})"
         class="min-h-tap px-4 py-2.5 rounded-xl font-extrabold text-[11px] tracking-wider transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed ${
           vivacite
@@ -8887,6 +8978,7 @@ async function renderFaceConfig() {
         }">
         ${vivacite ? 'DÉSACTIVER' : 'ACTIVER'}
       </button>
+      </div>
     </div>
 
     <div class="space-y-2">
@@ -9674,14 +9766,18 @@ async function executerDefiVivacite(video, actions, onProgres) {
 }
 
 /** Demande un défi au serveur. Le client ne choisit jamais ses propres gestes. */
-async function demanderDefiVivacite() {
+async function demanderDefiVivacite(mode) {
   try {
-    const { data, error } = await supabaseClient.rpc('issue_face_challenge');
+    // `mode` ne peut que DURCIR le contrôle : une entreprise qui exige les
+    // gestes les obtient quoi que demande le client. La règle est appliquée
+    // côté serveur, jamais ici.
+    const { data, error } = await supabaseClient.rpc('issue_face_challenge',
+      mode ? { p_mode: mode } : {});
     if (error) throw error;
     if (!data || data.ok !== true) {
       return { ok: false, message: (data && data.message) || 'Contrôle anti-photo indisponible.' };
     }
-    return { ok: true, id: data.challenge_id, actions: data.actions };
+    return { ok: true, id: data.challenge_id, actions: data.actions || [], mode: data.mode || 'GESTURE' };
   } catch (err) {
     console.error('[Vivacité] Défi refusé :', err);
     const msg = String((err && err.message) || '');
@@ -9706,27 +9802,109 @@ async function demanderDefiVivacite() {
  *
  * @returns {Promise<{ok:boolean, challengeId?:string, evidence?:object, titre?:string, corps?:string}>}
  */
+/**
+ * Controle anti-photo, en deux temps.
+ *
+ * 1. PASSIF — l'employe regarde simplement la camera trois secondes. C'est le
+ *    cas de tous les jours : aucun geste n'est demande.
+ * 2. GESTE — uniquement si la mesure passive n'a rien pu conclure. On demande
+ *    alors UN seul geste.
+ *
+ * Cette escalade permet de rester exigeant sans bloquer personne : un employe
+ * tres immobile, une camera mediocre ou un eclairage difficile aboutissent a
+ * une question de plus, jamais a un refus.
+ */
 async function executerControleVivacite(video) {
+  arreterApercuVisage();
+  setNodeHidden('emp-punch-liveness', false);
+  setNodeHidden('emp-punch-steps', true);
+
   const defi = await demanderDefiVivacite();
   if (!defi.ok) {
     return { ok: false, titre: 'Contrôle anti-photo indisponible', corps: defi.message };
   }
 
-  arreterApercuVisage();
-  setNodeHidden('emp-punch-liveness', false);
-  setNodeHidden('emp-punch-steps', true);
+  if (defi.mode === 'PASSIVE') {
+    afficherMesurePassive({ avance: 0, vu: true });
+    const passif = await mesurerVivacitePassive(video, afficherMesurePassive);
 
-  const resultat = await executerDefiVivacite(video, defi.actions, afficherConsigneVivacite);
-
-  if (!resultat.ok) {
+    if (!passif.ok) {
+      return { ok: false, titre: 'Visage non détecté', corps: passif.message };
+    }
     return {
-      ok: false,
-      titre: resultat.code === 'TIMEOUT' ? 'Geste non détecté' : 'Contrôle interrompu',
-      corps: resultat.message,
+      ok: true,
+      challengeId: defi.id,
+      evidence: passif.evidence,
+      descripteurFinal: passif.descripteurFinal,
+      mode: 'PASSIVE',
     };
   }
 
-  return { ok: true, challengeId: defi.id, evidence: resultat.evidence };
+  const resultat = await executerDefiVivacite(video, defi.actions, afficherConsigneVivacite);
+  if (!resultat.ok) {
+    return {
+      ok: false,
+      titre: resultat.code === 'TIMEOUT' ? 'Geste non reconnu' : 'Contrôle interrompu',
+      corps: resultat.message,
+    };
+  }
+  return { ok: true, challengeId: defi.id, evidence: resultat.evidence, mode: 'GESTURE' };
+}
+
+/**
+ * Seconde tentative, en mode geste, apres une mesure passive indecise.
+ *
+ * UN seul geste : la mesure passive a deja tourne, l'escalade doit rester une
+ * formalite et non une epreuve.
+ */
+async function escaladerVersGeste(video) {
+  const defi = await demanderDefiVivacite('GESTURE');
+  if (!defi.ok) {
+    return { ok: false, titre: 'Contrôle anti-photo indisponible', corps: defi.message };
+  }
+
+  const actions = (defi.actions || []).slice(0, 1);
+  if (actions.length === 0) {
+    return { ok: false, titre: 'Contrôle indisponible', corps: 'Aucun geste à vérifier.' };
+  }
+
+  setNodeHidden('emp-punch-liveness', false);
+  const resultat = await executerDefiVivacite(video, actions, afficherConsigneVivacite);
+  if (!resultat.ok) {
+    return {
+      ok: false,
+      titre: resultat.code === 'TIMEOUT' ? 'Geste non reconnu' : 'Contrôle interrompu',
+      corps: resultat.message,
+    };
+  }
+  return { ok: true, challengeId: defi.id, evidence: resultat.evidence, mode: 'GESTURE' };
+}
+
+/** Avancement de la mesure passive : une barre, aucune consigne a suivre. */
+function afficherMesurePassive(e) {
+  const set = (id, txt) => { const el = document.getElementById(id); if (el) el.innerText = txt; };
+
+  set('live-etape', "Vérification d'identité");
+  set('live-consigne', 'Regardez la caméra');
+  set('live-aide', e.vu
+    ? 'Restez naturel. Cela prend trois secondes.'
+    : "Aucun visage détecté — cadrez votre visage dans l'écran.");
+  set('live-restant', e.vu ? Math.round(Math.min(1, e.avance) * 100) + ' %' : 'Visage hors cadre');
+
+  const jauge = document.getElementById('live-jauge');
+  if (jauge) {
+    jauge.style.width = Math.round(Math.min(1, Math.max(0, e.avance)) * 100) + '%';
+    jauge.className = 'h-full transition-all duration-150 ' + (e.vu ? 'bg-cyan-500' : 'bg-amber-500');
+  }
+
+  majDetectionVisage('emp-punch', e.vu ? 'vu' : 'absent');
+
+  const icone = document.getElementById('live-icone');
+  if (icone) {
+    icone.setAttribute('data-lucide', 'scan-face');
+    icone.className = 'w-7 h-7 shrink-0 ' + (e.vu ? 'text-cyan-400' : 'text-amber-400');
+    if (window.lucide) lucide.createIcons();
+  }
 }
 
 /** Peint la consigne courante et la jauge d'avancement. */
@@ -9775,6 +9953,22 @@ function afficherConsigneVivacite(e) {
 async function executerControleVivaciteQr(video) {
   const defi = await demanderDefiVivacite();
   if (!defi.ok) return { ok: false, message: defi.message };
+
+  // Mode passif : rien à faire, l'employé regarde simplement la caméra.
+  if (defi.mode === 'PASSIVE') {
+    const passif = await mesurerVivacitePassive(video, (e) => {
+      majStatutScan(e.vu
+        ? `Vérification d'identité… ${Math.round(Math.min(1, e.avance) * 100)} %`
+        : 'Aucun visage détecté — cadrez votre visage.');
+    });
+    if (!passif.ok) return { ok: false, message: passif.message };
+    return {
+      ok: true,
+      challengeId: defi.id,
+      evidence: passif.evidence,
+      descripteurFinal: passif.descripteurFinal,
+    };
+  }
 
   const resultat = await executerDefiVivacite(video, defi.actions, (e) => {
     majStatutScan(
@@ -9868,7 +10062,33 @@ function toggleFaq(n) {
 //  rassurer, pas a mesurer.
 // =============================================================================
 
-const apercuVisage = { actif: false, minuteur: null };
+const apercuVisage = { actif: false, minuteur: null, etat: null, candidat: null, tenue: 0 };
+
+/**
+ * N'annonce un changement d'etat qu'apres DEUX lectures concordantes.
+ *
+ * Le detecteur rate une image de temps en temps, sans que rien n'ait bouge.
+ * Repercuter chaque lecture faisait clignoter le cadre et la pastille en
+ * permanence : l'employe voyait « detecte / absent / detecte » plusieurs fois
+ * par seconde et ne pouvait plus s'y fier.
+ */
+function etatStabilise(lecture) {
+  if (lecture === apercuVisage.etat) { apercuVisage.candidat = null; return null; }
+
+  if (lecture === apercuVisage.candidat) {
+    apercuVisage.tenue++;
+  } else {
+    apercuVisage.candidat = lecture;
+    apercuVisage.tenue = 1;
+  }
+
+  if (apercuVisage.tenue >= 2) {
+    apercuVisage.etat = lecture;
+    apercuVisage.candidat = null;
+    return lecture;
+  }
+  return null;
+}
 
 /**
  * Peint l'etat de detection : pastille et couleur du cadre.
@@ -9911,6 +10131,9 @@ function majDetectionVisage(cible, etat) {
 function demarrerApercuVisage(videoId, cible) {
   arreterApercuVisage();
   apercuVisage.actif = true;
+  apercuVisage.etat = null;
+  apercuVisage.candidat = null;
+  apercuVisage.tenue = 0;
 
   const boucle = async () => {
     if (!apercuVisage.actif) return;
@@ -9921,7 +10144,9 @@ function demarrerApercuVisage(videoId, cible) {
         const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 });
         const vus = await faceapi.detectAllFaces(video, opts);
         if (apercuVisage.actif) {
-          majDetectionVisage(cible, vus.length === 0 ? 'absent' : vus.length > 1 ? 'plusieurs' : 'vu');
+          const lecture = vus.length === 0 ? 'absent' : vus.length > 1 ? 'plusieurs' : 'vu';
+          const confirme = etatStabilise(lecture);
+          if (confirme) majDetectionVisage(cible, confirme);
         }
       } catch (e) {
         /* une image ratee n'est pas une erreur : on retentera au tour suivant */
@@ -9939,5 +10164,247 @@ function arreterApercuVisage() {
   if (apercuVisage.minuteur) {
     clearTimeout(apercuVisage.minuteur);
     apercuVisage.minuteur = null;
+  }
+}
+
+
+// =============================================================================
+//  VIVACITE PASSIVE — l'employe regarde la camera, rien de plus
+//
+//  CE QUE L'ON MESURE, ET POURQUOI
+//  -------------------------------
+//  Ce qui separe un visage d'une photographie n'est pas le mouvement : une
+//  photo tenue a la main bouge aussi. C'est la RIGIDITE.
+//
+//  On recale donc chaque image sur la ligne des yeux — ce qui annule
+//  translation, rotation et echelle, donc tout tremblement de main — puis on
+//  compare deux dispersions :
+//
+//    - points DEFORMABLES : paupieres, levres. Ils bougent sans arret sur un
+//      visage vivant (clignements, micro-expressions).
+//    - points RIGIDES : arete du nez, coins externes des yeux. Ils ne bougent
+//      pas par rapport au crane.
+//
+//  Sur une photographie, les deux ne portent que le bruit du detecteur : leur
+//  rapport vaut environ 1. Sur un visage vivant, il grimpe nettement au-dessus.
+//
+//  Comparer deux bruits issus de la MEME image est ce qui rend la mesure
+//  robuste : la qualite de la camera, la lumiere et la distance affectent les
+//  deux termes de la meme facon et s'annulent dans le rapport.
+//
+//  Le serveur seul decide. Le navigateur ne transmet que des mesures.
+// =============================================================================
+
+/** Duree de la fenetre d'observation. Assez longue pour capter un clignement
+ *  naturel (un toutes les 3 a 5 secondes), assez courte pour rester supportable. */
+const PASSIF_DUREE_MS = 3200;
+
+/** Points rigides par rapport au crane. Les coins INTERNES des yeux (39, 42)
+ *  sont exclus : ils servent au recalage, leur dispersion serait nulle par
+ *  construction et fausserait le rapport. */
+const POINTS_RIGIDES = [27, 28, 29, 30, 33, 36, 45];
+
+/** Paupieres et levres internes : ce qui bouge sur un visage vivant. */
+const POINTS_DEFORMABLES = [37, 38, 40, 41, 43, 44, 46, 47, 51, 57, 61, 62, 63, 65, 66, 67];
+
+/**
+ * Recale un jeu de 68 points sur la ligne des yeux.
+ *
+ * Origine au milieu des coins internes des yeux, axe des x aligne sur cette
+ * ligne, echelle ramenee a la distance inter-oculaire. Apres cette
+ * transformation, deux images d'une meme PHOTOGRAPHIE se superposent
+ * exactement, quelle que soit la maniere dont on l'a bougee.
+ */
+function recalerVisage(points) {
+  const a = points[39];
+  const b = points[42];
+  const ox = (a.x + b.x) / 2;
+  const oy = (a.y + b.y) / 2;
+
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const echelle = Math.hypot(dx, dy);
+  if (!echelle || !isFinite(echelle)) return null;
+
+  const cos = dx / echelle;
+  const sin = dy / echelle;
+
+  return points.map((p) => {
+    const px = p.x - ox;
+    const py = p.y - oy;
+    return {
+      x: (px * cos + py * sin) / echelle,
+      y: (-px * sin + py * cos) / echelle,
+    };
+  });
+}
+
+/** Dispersion moyenne d'un sous-ensemble de points sur une serie d'images. */
+function dispersion(series, indices) {
+  if (series.length < 2) return 0;
+
+  let total = 0;
+  for (const i of indices) {
+    let mx = 0, my = 0;
+    for (const f of series) { mx += f[i].x; my += f[i].y; }
+    mx /= series.length;
+    my /= series.length;
+
+    let v = 0;
+    for (const f of series) v += (f[i].x - mx) ** 2 + (f[i].y - my) ** 2;
+    total += v / series.length;
+  }
+  return total / indices.length;
+}
+
+/**
+ * Observe le visage pendant quelques secondes, sans rien demander.
+ *
+ * @param {HTMLVideoElement} video
+ * @param {(e:{avance:number, vu:boolean}) => void} onProgres
+ * @returns {Promise<{ok:boolean, evidence?:object, code?:string, message?:string}>}
+ */
+async function mesurerVivacitePassive(video, onProgres) {
+  if (faceEngine.statut !== 'pret') {
+    return { ok: false, code: 'ENGINE', message: messageEchecCapture('ENGINE_NOT_READY') };
+  }
+
+  const depart = Date.now();
+  const fin = depart + PASSIF_DUREE_MS;
+
+  const series = [];
+  const ears = [];
+  const yaws = [];
+  const descripteurs = [];
+  let frames = 0;
+  let sansVisage = 0;
+
+  // Trois empreintes reparties sur la fenetre : elles prouvent au serveur que
+  // c'est le meme visage du debut a la fin, et non une substitution en cours
+  // de route.
+  const jalons = [0.15, 0.55, 0.92].map((f) => depart + PASSIF_DUREE_MS * f);
+  let jalon = 0;
+
+  while (Date.now() < fin) {
+    const pts = await pointsVisage(video);
+    frames++;
+
+    if (!pts) {
+      sansVisage++;
+      if (onProgres) onProgres({ avance: (Date.now() - depart) / PASSIF_DUREE_MS, vu: false });
+      continue;
+    }
+    sansVisage = 0;
+
+    const recale = recalerVisage(pts);
+    const m = mesuresVisage(pts);
+    if (recale && m) {
+      series.push(recale);
+      ears.push(m.ear);
+      yaws.push(m.yaw);
+    }
+
+    if (jalon < jalons.length && Date.now() >= jalons[jalon]) {
+      jalon++;
+      const emp = await calculerEmpreinteFaciale(video);
+      if (emp.ok) descripteurs.push(emp.descriptor);
+    }
+
+    if (onProgres) onProgres({ avance: (Date.now() - depart) / PASSIF_DUREE_MS, vu: true });
+  }
+
+  if (series.length < 10) {
+    return {
+      ok: false,
+      code: 'NO_FACE',
+      message: "Votre visage n'a pas pu être suivi pendant la mesure.\n\n" +
+        "Rapprochez-vous de la caméra, cadrez bien votre visage, et évitez d'avoir une fenêtre derrière vous.",
+    };
+  }
+
+  if (descripteurs.length < 2) {
+    // Dernière chance : une empreinte de plus, maintenant que la personne est
+    // encore devant l'objectif.
+    const emp = await calculerEmpreinteFaciale(video);
+    if (emp.ok) descripteurs.push(emp.descriptor);
+  }
+  if (descripteurs.length < 2) {
+    return {
+      ok: false,
+      code: 'NO_FACE',
+      message: "Le visage n'a pas pu être analysé assez nettement. Réessayez face à la caméra.",
+    };
+  }
+
+  const rigide = dispersion(series, POINTS_RIGIDES);
+  const souple = dispersion(series, POINTS_DEFORMABLES);
+  // Le epsilon evite une division par zero quand le detecteur est très stable.
+  const rapport = souple / (rigide + 1e-9);
+
+  return {
+    ok: true,
+    evidence: {
+      mode: 'PASSIVE',
+      duration_ms: Date.now() - depart,
+      frames: series.length,
+      deform_ratio: Math.round(rapport * 1000) / 1000,
+      ear_range: Math.round((Math.max(...ears) - Math.min(...ears)) * 10000) / 10000,
+      yaw_range: Math.round((Math.max(...yaws) - Math.min(...yaws)) * 10000) / 10000,
+      descriptors: descripteurs,
+    },
+    // La dernière empreinte sert aussi de comparaison principale au pointage :
+    // inutile de refaire un calcul complet juste après.
+    descripteurFinal: descripteurs[descripteurs.length - 1],
+  };
+}
+
+
+/**
+ * Bascule entre le controle sans geste et les gestes imposes.
+ *
+ * Le mode passif est le reglage normal : l'employe regarde la camera, rien de
+ * plus. Le mode geste est plus sur mais demande deux gestes A CHAQUE pointage,
+ * ce qui use rapidement la patience des equipes. On le propose sans le
+ * conseiller.
+ */
+async function definirModeVivacite(mode) {
+  if (!peutConfigurerPointage()) {
+    return showToast('Action non autorisée',
+      'Seuls le CEO et le service RH peuvent modifier ce réglage.', 'info');
+  }
+
+  if (mode === 'GESTURE') {
+    const ok = confirm(
+      'Imposer les gestes à chaque pointage ?\n\n' +
+      "Vos équipes devront cligner des yeux, tourner la tête ou ouvrir la bouche " +
+      "à chaque badgeage, matin et soir.\n\n" +
+      "En mode normal, ces gestes ne sont demandés que lorsque le contrôle " +
+      "automatique reste indécis."
+    );
+    if (!ok) return;
+  }
+
+  const session = await assurerSessionSupabase();
+  if (!session.ok) return signalerSessionPerdue(session.raison);
+
+  try {
+    const { error } = await supabaseClient
+      .from('companies')
+      .update({ face_liveness_mode: mode })
+      .eq('id', state.currentCompanyId);
+    if (error) throw error;
+
+    showToast(
+      mode === 'GESTURE' ? 'Gestes imposés' : 'Contrôle sans geste',
+      mode === 'GESTURE'
+        ? 'Deux gestes seront demandés à chaque pointage.'
+        : "L'employé n'aura plus qu'à regarder la caméra trois secondes.",
+      'success'
+    );
+    await renderFaceConfig();
+  } catch (err) {
+    console.error('[Vivacité] Changement de mode impossible :', err);
+    showToast('Modification impossible',
+      traduireErreurEcriture(err, 'le changement de mode'), 'danger', 8000);
   }
 }
