@@ -211,6 +211,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     checkUrlJoinCode();
     checkUrlPunchToken();
     checkUrlInvitation();
+
+    // Retour depuis le lien reçu par courriel : la demande d'inscription
+    // reprend toute seule, sans que l'employé ait à ressaisir quoi que ce soit.
+    reprendreInscriptionApresLien();
   }
 
   // Fermer le menu mobile lors d'un clic en dehors
@@ -6861,36 +6865,34 @@ async function handleSelfRegistrationSubmit(e) {
     const rateLimitNoticeEl = document.getElementById('join-otp-rate-limit-notice');
     const fallbackCodeEl = document.getElementById('join-otp-fallback-code');
 
-    const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
-
+    // AUCUN code n'est fabriqué ici.
+    //
+    // La version précédente tirait un nombre à 6 chiffres DANS LE NAVIGATEUR,
+    // le gardait en mémoire, puis acceptait l'utilisateur qui le saisissait.
+    // Ce code n'était jamais parti nulle part : il ne prouvait rien. Seul le
+    // serveur peut émettre un code et le vérifier.
     state.pendingUserRegistration = {
       userId: userId,
       fullName: fullName,
       email: email,
       matricule: matricule,
       companyName: state.recognizedCompany ? state.recognizedCompany.name : 'Winner Design SARL',
-      otpCode: generatedOtp
     };
 
-    let isRateLimited = false;
+    // La demande survit à une navigation : l'employé qui clique le lien reçu
+    // par courriel quitte la page, et doit retrouver sa demande au retour.
+    try {
+      localStorage.setItem('winner_inscription_en_cours',
+        JSON.stringify({ ...state.pendingUserRegistration, at: Date.now() }));
+    } catch (e) { /* stockage indisponible : on continue sans */ }
 
-    // Déclenchement de l'envoi de l'e-mail OTP via Supabase si actif
-    if (supabaseClient) {
-      try {
-        const { error: otpErr } = await supabaseClient.auth.signInWithOtp({
-          email: email,
-          options: { shouldCreateUser: true }
-        });
-        if (otpErr) {
-          console.warn('Envoi OTP Supabase :', otpErr);
-          if (otpErr.status === 429 || (otpErr.message && otpErr.message.toLowerCase().includes('rate limit'))) {
-            isRateLimited = true;
-          }
-        }
-      } catch (e) {
-        console.warn('Envoi OTP Supabase exception :', e);
-      }
-    }
+    // UN SEUL courriel est envoyé, celui de signUp() juste au-dessus.
+    //
+    // La version précédente enchaînait signUp() PUIS signInWithOtp() : deux
+    // courriels pour une inscription. Le quota de l'envoi Supabase étant de
+    // deux par heure, le second partait rarement — d'où des employés qui
+    // n'ont jamais rien reçu.
+    const isRateLimited = false;
 
     if (formStep) formStep.classList.add('hidden');
     if (otpStep) otpStep.classList.remove('hidden');
@@ -6963,13 +6965,27 @@ async function confirmEmailOtp() {
       }
     }
 
-    // 2. Vérification par rapport au code OTP de la session active
-    if (!isValid && (enteredOtp === reg.otpCode || enteredOtp === '123456')) {
-      isValid = true;
-    }
+    // 2. Une session ouverte par le LIEN du courriel vaut vérification.
+    //
+    // Sur l'offre gratuite de Supabase, les gabarits d'e-mail ne sont pas
+    // modifiables : le message contient un lien, pas un code. Cliquer ce lien
+    // ouvre une session pour cette adresse — ce qui prouve exactement la même
+    // chose qu'un code, et souvent mieux.
+    if (!isValid) isValid = await adresseDejaConfirmee(reg.email);
 
+    // Il n'y a PLUS de code de secours.
+    //
+    // La version précédente acceptait « 123456 », ainsi qu'un code tiré par le
+    // navigateur lui-même. N'importe qui pouvait donc rejoindre n'importe
+    // quelle entreprise en tapant six chiffres connus de tous. Un contrôle qui
+    // laisse tout passer est pire qu'une absence de contrôle : il fait croire
+    // à une vérification qui n'existe pas.
     if (!isValid) {
-      showToast('Code OTP Invalide ❌', 'Le code à 6 chiffres ne correspond pas à celui envoyé sur votre boîte mail.', 'error');
+      showToast(
+        'Adresse non confirmée',
+        "Le code saisi n'est pas valide.\n\nSi vous avez reçu un LIEN plutôt qu'un code, " +
+        'cliquez simplement sur ce lien : il confirmera votre adresse.',
+        'danger', 12000);
       return;
     }
 
@@ -6995,8 +7011,7 @@ async function confirmEmailOtp() {
 async function resendOtpCode() {
   if (!state.pendingUserRegistration) return;
   const reg = state.pendingUserRegistration;
-  const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
-  reg.otpCode = newOtp;
+  // Aucun code n'est fabriqué ici non plus : c'est le serveur qui en émet un.
   let isRateLimited = false;
 
   if (supabaseClient) {
@@ -7015,8 +7030,12 @@ async function resendOtpCode() {
 
   if (isRateLimited) {
     if (rateLimitNoticeEl) rateLimitNoticeEl.classList.remove('hidden');
-    if (fallbackCodeEl) fallbackCodeEl.innerText = newOtp;
-    showToast('Quota E-mail Supabase (429) ⚠️', `Quota Supabase atteint. Votre nouveau code OTP à 6 chiffres est : <strong>${newOtp}</strong>.`, 'warning', 15000);
+    if (fallbackCodeEl) fallbackCodeEl.innerText = '—';
+    showToast(
+      "Quota d'e-mails atteint",
+      "Le serveur d'envoi a atteint sa limite horaire. Patientez une heure puis réessayez, " +
+      'ou signalez-le à votre service RH : votre demande lui est déjà parvenue.',
+      'warning', 15000);
   } else {
     if (rateLimitNoticeEl) rateLimitNoticeEl.classList.add('hidden');
     showToast('Nouveau Code OTP Envoyé 📩', `Un nouveau code à 6 chiffres a été transmis à ${escapeHtml(reg.email)}. Veuillez consulter votre boîte de réception.`, 'success', 10000);
@@ -7046,8 +7065,10 @@ async function requestLoginOtp() {
     return;
   }
 
-  const generatedCode = Math.floor(100000 + Math.random() * 900000).toString();
-  currentLoginOtpState = { email, otpCode: generatedCode };
+  // Aucun code n'est fabriqué ici : seul le serveur peut en émettre un, et
+  // lui seul peut le vérifier. Un code tiré par le navigateur, gardé par le
+  // navigateur puis validé par le navigateur ne prouve rien.
+  currentLoginOtpState = { email };
   let isRateLimited = false;
 
   if (supabaseClient) {
@@ -7071,8 +7092,12 @@ async function requestLoginOtp() {
 
   if (isRateLimited) {
     if (rateLimitNoticeEl) rateLimitNoticeEl.classList.remove('hidden');
-    if (fallbackCodeEl) fallbackCodeEl.innerText = generatedCode;
-    showToast('Quota E-mail Supabase (429) ⚠️', `Quota d'envoi d'e-mails Supabase atteint. Code de connexion : <strong>${generatedCode}</strong>.`, 'warning', 15000);
+    if (fallbackCodeEl) fallbackCodeEl.innerText = '—';
+    showToast(
+      'Quota d\'e-mails atteint',
+      "Le serveur d'envoi a atteint sa limite horaire. Patientez puis redemandez un code, " +
+      'ou connectez-vous avec votre mot de passe.',
+      'warning', 15000);
   } else {
     if (rateLimitNoticeEl) rateLimitNoticeEl.classList.add('hidden');
     showToast('Code OTP Envoyé 📩', `Un code OTP à 6 chiffres a été transmis à ${escapeHtml(email)}. Ouvrez votre boîte mail pour le recopier.`, 'success', 12000);
@@ -7093,38 +7118,87 @@ async function verifyLoginOtp() {
     return;
   }
 
-  let isValid = (code === currentLoginOtpState.otpCode || code === '123456');
-
-  if (!isValid && supabaseClient) {
-    try {
-      const { data, error } = await supabaseClient.auth.verifyOtp({
-        email: currentLoginOtpState.email,
-        token: code,
-        type: 'email'
-      });
-      if (!error && data) isValid = true;
-    } catch (e) {
-      console.warn('Vérification Supabase Login OTP:', e);
-    }
-  }
-
-  if (!isValid) {
-    showToast('Code OTP Invalide ❌', 'Le code à 6 chiffres saisi est incorrect.', 'error');
+  // LE SERVEUR SEUL DÉCIDE.
+  //
+  // La version précédente testait d'abord `code === '123456'` : n'importe qui
+  // pouvait se connecter avec n'importe quelle adresse en tapant six chiffres
+  // connus de tous. Elle fabriquait ensuite une identité de toutes pièces
+  // (« user-otp-<horodatage> »), sans session Supabase — l'interface donnait
+  // donc accès à un tableau de bord au nom de quelqu'un d'autre.
+  if (!supabaseClient) {
+    showToast('Service indisponible',
+      "La connexion au serveur n'est pas disponible. Réessayez dans un instant.", 'danger');
     return;
   }
 
-  // Connexion valide via OTP
+  let utilisateur = null;
+  try {
+    const { data, error } = await supabaseClient.auth.verifyOtp({
+      email: currentLoginOtpState.email,
+      token: code,
+      type: 'email',
+    });
+    if (!error && data && data.user) utilisateur = data.user;
+  } catch (e) {
+    console.warn('Vérification du code de connexion :', e);
+  }
+
+  if (!utilisateur) {
+    showToast('Code invalide',
+      "Ce code ne correspond pas.\n\nSi vous avez reçu un LIEN plutôt qu'un code, " +
+      'cliquez simplement sur ce lien pour vous connecter.',
+      'danger', 12000);
+    return;
+  }
+
+  // L'identité vient de la session RÉELLE, jamais de ce qui a été saisi.
+  await appliquerSessionSupabase(utilisateur);
+  showToast('Connexion réussie',
+    `Bienvenue ${escapeHtml(state.currentUser.fullName || utilisateur.email)}.`, 'success');
+  closeAuthModal();
+  switchView(state.currentUserRole === 'EMPLOYEE' ? 'employee' : 'dashboard');
+}
+
+/**
+ * Installe dans l'application l'identité issue d'une session Supabase réelle.
+ *
+ * On relit la fiche employé en base : le rôle et le nom ne se déduisent pas
+ * d'une adresse e-mail. Sans cette lecture, un employé se retrouvait avec un
+ * nom fabriqué à partir de son adresse et le rôle EMPLOYEE par défaut, même
+ * s'il était RH.
+ */
+async function appliquerSessionSupabase(utilisateur) {
+  let fiche = null;
+  try {
+    const { data } = await supabaseClient
+      .from('users')
+      .select('id, full_name, email, role, job_title, registration_number, company_id, is_active')
+      .eq('id', utilisateur.id)
+      .maybeSingle();
+    fiche = data || null;
+  } catch (e) {
+    console.warn('[Session] Fiche employé illisible :', e);
+  }
+
   state.isAuthenticated = true;
   state.currentUser = {
-    id: 'user-otp-' + Date.now(),
-    email: currentLoginOtpState.email,
-    fullName: currentLoginOtpState.email.split('@')[0].toUpperCase(),
-    role: 'EMPLOYEE'
+    id: utilisateur.id,
+    email: (fiche && fiche.email) || utilisateur.email,
+    fullName: (fiche && fiche.full_name) || utilisateur.email,
+    role: (fiche && fiche.role) || 'EMPLOYEE',
+    jobTitle: (fiche && fiche.job_title) || 'Collaborateur',
+    registrationNumber: fiche ? fiche.registration_number : null,
   };
+  state.currentUserRole = state.currentUser.role;
+  if (fiche && fiche.company_id) state.currentCompanyId = fiche.company_id;
 
-  showToast('Connexion Réussie ! 🎉', `Bienvenue ${state.currentUser.fullName}. Vos identifiants OTP ont été validés avec succès.`, 'success');
-  closeAuthModal();
-  switchView('dashboard');
+  try {
+    await loadSupabaseData();
+    renderEmployeeDashboard();
+    renderDashboard();
+  } catch (e) {
+    console.warn('[Session] Chargement partiel :', e);
+  }
 }
 
 function openPendingApprovalModal(matricule = 'EMP-0001') {
@@ -11190,4 +11264,78 @@ async function deciderRetard(id, accepter) {
     showToast('Décision impossible',
       traduireErreurEcriture(err, 'la validation de ce retard'), 'danger', 9000);
   }
+}
+
+
+// =============================================================================
+//  CONFIRMATION D'ADRESSE
+//
+//  Sur l'offre gratuite de Supabase, les gabarits de courriel ne sont pas
+//  modifiables : le message contient un LIEN, jamais un code. Cliquer ce lien
+//  ouvre une session pour cette adresse — ce qui prouve exactement la meme
+//  chose qu'un code saisi, et sans recopie manuelle.
+//
+//  On accepte donc les deux chemins : le code quand un SMTP personnel est
+//  configure, le lien sinon. Dans les deux cas, c'est le SERVEUR qui atteste.
+// =============================================================================
+
+/**
+ * L'adresse a-t-elle ete confirmee par le lien recu ?
+ *
+ * @param {string} email l'adresse annoncee lors de l'inscription
+ * @returns {Promise<boolean>}
+ */
+async function adresseDejaConfirmee(email) {
+  if (!supabaseClient || !email) return false;
+
+  try {
+    const { data, error } = await supabaseClient.auth.getUser();
+    if (error || !data || !data.user) return false;
+
+    // La session doit porter EXACTEMENT l'adresse annoncee : sans cette
+    // comparaison, une session ouverte pour quelqu'un d'autre validerait
+    // l'inscription en cours.
+    const meme = String(data.user.email || '').toLowerCase() === String(email).toLowerCase();
+    if (!meme) return false;
+
+    // Supabase n'horodate `email_confirmed_at` qu'une fois le lien suivi.
+    return !!(data.user.email_confirmed_at || data.user.confirmed_at);
+  } catch (e) {
+    console.warn('[Inscription] Vérification de l’adresse impossible :', e);
+    return false;
+  }
+}
+
+/**
+ * Reprend une inscription interrompue par le clic sur le lien du courriel.
+ *
+ * L'employe quitte la page pour ouvrir sa boite mail : au retour, la demande
+ * doit se retrouver seule, sans qu'il ait a tout ressaisir.
+ */
+async function reprendreInscriptionApresLien() {
+  if (!supabaseClient) return;
+
+  let enCours = null;
+  try {
+    const brut = localStorage.getItem('winner_inscription_en_cours');
+    if (brut) enCours = JSON.parse(brut);
+  } catch (e) { return; }
+
+  // Une demande vieille de plus de 24 h n'a plus lieu d'etre reprise.
+  if (!enCours || !enCours.email || Date.now() - (enCours.at || 0) > 86400000) {
+    try { localStorage.removeItem('winner_inscription_en_cours'); } catch (e) {}
+    return;
+  }
+
+  if (!(await adresseDejaConfirmee(enCours.email))) return;
+
+  try { localStorage.removeItem('winner_inscription_en_cours'); } catch (e) {}
+
+  showToast(
+    'Adresse confirmée',
+    `Votre demande d'inscription a été transmise à ${escapeHtml(enCours.companyName || 'votre entreprise')}. ` +
+    'Elle attend la validation du service RH.',
+    'success', 12000);
+
+  openPendingApprovalModal(enCours.matricule || 'EMP-0001');
 }
