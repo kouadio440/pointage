@@ -3062,7 +3062,7 @@
               <i data-lucide="log-out" class="w-4 h-4"></i>
               Pointer mon départ
             </button>
-            <button id="btn-emp-qr" onclick="ouvrirScanQr('CHECK_IN')"
+            <button id="btn-emp-qr" onclick="ouvrirScanQr()"
               class="min-h-tap px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2 transition">
               <i data-lucide="qr-code" class="w-4 h-4"></i>
               Pointer par QR
@@ -3073,6 +3073,9 @@
         <!-- Message affiché quand la configuration RH est incomplète -->
         <div id="emp-punch-config-banner" class="hidden">
         </div>
+
+        <!-- Où en est la journée : rempli par appliquerEtatJournee() -->
+        <div id="emp-journee-banner" class="hidden"></div>
 
         <!--
           Vérification d'identité : visible uniquement si l'entreprise l'exige,

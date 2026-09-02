@@ -2316,6 +2316,8 @@ function appliquerEtatBoutonsPointage() {
 
   if (pret) {
     banner.classList.add('hidden');
+    // Configuration complète : c'est alors l'état de la journée qui décide.
+    appliquerEtatJournee();
     return;
   }
 
@@ -2377,6 +2379,40 @@ function openEmployeePunch(type) {
       9000
     );
     ouvrirEnrolementFacial();
+    return;
+  }
+
+  // On pointe une arrivée et un départ par jour, pas davantage. Le serveur
+  // le fait déjà respecter, mais le dire ICI évite à l'employé d'ouvrir la
+  // caméra, d'attendre le GPS et de faire la vérification d'identité pour
+  // apprendre ensuite qu'il avait déjà pointé.
+  const journee = etatJourneeEmploye();
+  const veutArrivee = type !== 'CHECK_OUT';
+
+  if (veutArrivee && journee.aPointeArrivee) {
+    showToast(
+      'Arrivée déjà enregistrée',
+      `Votre arrivée a été pointée à ${escapeHtml(journee.arrivee || '--:--')}. ` +
+        (journee.aPointeDepart
+          ? 'Votre journée est terminée.'
+          : "Il ne vous reste qu'à pointer votre départ en fin de journée."),
+      'info', 8000);
+    return;
+  }
+
+  if (!veutArrivee && journee.aPointeDepart) {
+    showToast(
+      'Départ déjà enregistré',
+      `Votre départ a été pointé à ${escapeHtml(journee.depart || '--:--')}. Votre journée est terminée.`,
+      'info', 8000);
+    return;
+  }
+
+  if (!veutArrivee && !journee.aPointeArrivee) {
+    showToast(
+      'Arrivée non pointée',
+      "Vous n'avez pas encore pointé votre arrivée aujourd'hui. Pointez-la d'abord, ou signalez-le à votre service RH.",
+      'info', 9000);
     return;
   }
 
@@ -4034,7 +4070,7 @@ const scanQr = {
   raf: null,
 };
 
-async function ouvrirScanQr(type) {
+async function ouvrirScanQr() {
   if (scanQr.actif) return;
 
   if (!state.isAuthenticated) {
@@ -4042,7 +4078,21 @@ async function ouvrirScanQr(type) {
     return;
   }
 
-  scanQr.type = type === 'CHECK_OUT' ? 'CHECK_OUT' : 'CHECK_IN';
+  // Le QR mène au même enregistrement que le selfie : une arrivée et un départ
+  // par jour, pas davantage. On le dit avant d'ouvrir la caméra.
+  const journee = etatJourneeEmploye();
+  if (journee.aPointeArrivee && journee.aPointeDepart) {
+    showToast(
+      'Journée déjà terminée',
+      `Arrivée ${escapeHtml(journee.arrivee || '--:--')} • Départ ${escapeHtml(journee.depart || '--:--')}. ` +
+        "Aucun autre pointage n'est nécessaire aujourd'hui.",
+      'info', 8000);
+    return;
+  }
+
+  // Le type réel est déduit du serveur au moment de l'envoi ; ici on affiche
+  // simplement l'intitulé qui correspond à ce qu'il reste à faire.
+  scanQr.type = journee.aPointeArrivee ? 'CHECK_OUT' : 'CHECK_IN';
   scanQr.actif = true;
 
   const modal = document.getElementById('modal-qr-scan');
@@ -6152,6 +6202,9 @@ function renderEmployeeDashboard() {
     if (arriveSubEl) arriveSubEl.innerText = 'Pointage d\'arrivée non effectué';
   }
 
+  // Verrouillage des boutons selon ce qui a déjà été pointé aujourd'hui.
+  appliquerEtatJournee();
+
   // 5. Démarrer le chronomètre du temps travaillé en direct GMT
   startLiveWorkedTimeTimer();
 
@@ -8120,6 +8173,21 @@ const FACE_MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15
  *  isolee (clignement, ombre passagere) et reduit les faux refus au pointage. */
 const FACE_PRISES_ENROLEMENT = 3;
 
+/**
+ * Reglage UNIQUE du detecteur de visage.
+ *
+ * Il y en avait trois : 224 pour l'apercu, 320 pour la mesure, 416 pour
+ * l'empreinte. L'apercu, le plus faible des trois, annoncait « aucun visage »
+ * alors que la mesure, elle, voyait parfaitement la personne. Un indicateur
+ * qui contredit la mesure est pire qu'absent : il fait douter de tout l'ecran.
+ *
+ * 320 tient sur un telephone d'entree de gamme, et le seuil de 0,4 encaisse
+ * un contre-jour — la situation la plus frequente devant une fenetre.
+ */
+function optionsDetecteur() {
+  return new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.4 });
+}
+
 /** Ecart maximal tolere ENTRE les trois prises de reference. Au-dela, les
  *  images sont trop dissemblables pour faire une reference fiable — souvent
  *  un eclairage qui a change, parfois deux personnes differentes. */
@@ -8210,7 +8278,7 @@ async function calculerEmpreinteFaciale(source) {
     return { ok: false, code: 'ENGINE_NOT_READY' };
   }
 
-  const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.45 });
+  const options = optionsDetecteur();
 
   let resultats;
   try {
@@ -8228,7 +8296,13 @@ async function calculerEmpreinteFaciale(source) {
   // Deux visages dans le cadre : on refuse plutot que de choisir. A
   // l'enrolement ce serait une reference fausse ; au pointage, la porte
   // ouverte a un collegue qui se place a cote.
-  if (resultats.length > 1) return { ok: false, code: 'MULTIPLE_FACES' };
+  //
+  // Mais on ne compte que les visages CREDIBLES : un motif du mur ou un reflet
+  // detecte a faible score, minuscule a cote du visage principal, bloquait le
+  // pointage d'une personne pourtant seule.
+  if (compterVisagesReels(resultats.map((r) => r.detection)) > 1) {
+    return { ok: false, code: 'MULTIPLE_FACES' };
+  }
 
   const r = resultats[0];
   if (!r.descriptor || r.descriptor.length !== 128) return { ok: false, code: 'NO_DESCRIPTOR' };
@@ -9597,9 +9671,8 @@ function mesuresVisage(points) {
 
 /** Détection légère : points du visage seulement, sans le modèle de reconnaissance. */
 async function pointsVisage(source) {
-  const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.4 });
   try {
-    const r = await faceapi.detectSingleFace(source, opts).withFaceLandmarks();
+    const r = await faceapi.detectSingleFace(source, optionsDetecteur()).withFaceLandmarks();
     return r && r.landmarks ? r.landmarks.positions : null;
   } catch (e) {
     return null;
@@ -10065,15 +10138,22 @@ function toggleFaq(n) {
 const apercuVisage = { actif: false, minuteur: null, etat: null, candidat: null, tenue: 0 };
 
 /**
- * N'annonce un changement d'etat qu'apres DEUX lectures concordantes.
+ * Stabilise l'indicateur, de maniere DISSYMETRIQUE.
  *
- * Le detecteur rate une image de temps en temps, sans que rien n'ait bouge.
- * Repercuter chaque lecture faisait clignoter le cadre et la pastille en
- * permanence : l'employe voyait « detecte / absent / detecte » plusieurs fois
- * par seconde et ne pouvait plus s'y fier.
+ * Le detecteur rate une image de temps en temps sans que rien n'ait bouge.
+ * Repercuter chaque lecture faisait clignoter la pastille plusieurs fois par
+ * seconde ; exiger deux lectures dans les deux sens rendait l'annonce du
+ * visage trop lente.
+ *
+ * On confirme donc « visage détecté » DES LA PREMIERE lecture — c'est la
+ * bonne nouvelle, et l'employe attend une reponse immediate — mais il faut
+ * TROIS lectures manquees d'affilee, soit une seconde entiere, avant
+ * d'annoncer une absence. Une seule image ratee ne fait plus mentir l'ecran.
  */
 function etatStabilise(lecture) {
   if (lecture === apercuVisage.etat) { apercuVisage.candidat = null; return null; }
+
+  const requis = lecture === 'vu' ? 1 : 3;
 
   if (lecture === apercuVisage.candidat) {
     apercuVisage.tenue++;
@@ -10082,7 +10162,7 @@ function etatStabilise(lecture) {
     apercuVisage.tenue = 1;
   }
 
-  if (apercuVisage.tenue >= 2) {
+  if (apercuVisage.tenue >= requis) {
     apercuVisage.etat = lecture;
     apercuVisage.candidat = null;
     return lecture;
@@ -10141,10 +10221,10 @@ function demarrerApercuVisage(videoId, cible) {
     const video = document.getElementById(videoId);
     if (video && video.videoWidth && faceEngine.statut === 'pret') {
       try {
-        const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 });
-        const vus = await faceapi.detectAllFaces(video, opts);
+        const vus = await faceapi.detectAllFaces(video, optionsDetecteur());
         if (apercuVisage.actif) {
-          const lecture = vus.length === 0 ? 'absent' : vus.length > 1 ? 'plusieurs' : 'vu';
+          const lecture = vus.length === 0 ? 'absent'
+                        : compterVisagesReels(vus) > 1 ? 'plusieurs' : 'vu';
           const confirme = etatStabilise(lecture);
           if (confirme) majDetectionVisage(cible, confirme);
         }
@@ -10407,4 +10487,168 @@ async function definirModeVivacite(mode) {
     showToast('Modification impossible',
       traduireErreurEcriture(err, 'le changement de mode'), 'danger', 8000);
   }
+}
+
+
+/**
+ * Compte les visages CREDIBLES parmi ceux que le detecteur remonte.
+ *
+ * Le detecteur signale parfois une seconde « tete » sur un motif du mur, un
+ * reflet ou un dossier de chaise. Ces detections sont faibles et minuscules a
+ * cote du visage principal. Les compter revenait a refuser le pointage d'une
+ * personne pourtant seule devant sa camera.
+ *
+ * On ne retient donc qu'un visage supplementaire s'il est a la fois SUR
+ * (score eleve) et GROS (surface comparable au visage principal) — ce qui est
+ * le cas d'un vrai collegue qui se place a cote.
+ *
+ * @param {Array<{score:number, box:{width:number,height:number}}>} detections
+ */
+function compterVisagesReels(detections) {
+  if (!detections || detections.length <= 1) return detections ? detections.length : 0;
+
+  const aire = (d) => (d && d.box ? d.box.width * d.box.height : 0);
+  const tries = detections.slice().sort((a, b) => aire(b) - aire(a));
+  const principal = aire(tries[0]);
+
+  let n = 1;
+  for (let i = 1; i < tries.length; i++) {
+    const sur = (tries[i].score || 0) >= 0.55;
+    const gros = principal > 0 && aire(tries[i]) >= principal * 0.25;
+    if (sur && gros) n++;
+  }
+  return n;
+}
+
+
+// =============================================================================
+//  ETAT DE LA JOURNEE DE L'EMPLOYE
+//
+//  On pointe UNE arrivee et UN depart par jour. Le serveur le fait deja
+//  respecter (ALREADY_CHECKED_IN, NO_OPEN_CHECK_IN), mais il ne le disait qu'a
+//  la fin : l'employe ouvrait la camera, se cadrait, attendait le GPS, faisait
+//  la verification d'identite... pour apprendre qu'il avait deja pointe.
+//
+//  L'interdit doit se voir AVANT le geste, pas apres. Le serveur reste
+//  l'autorite ; ceci n'est que la meme regle, dite plus tot.
+// =============================================================================
+
+/**
+ * Ce que l'employe connecte a deja pointe aujourd'hui.
+ *
+ * La journee est celle d'ABIDJAN, pas celle du telephone : un employe dont
+ * l'appareil est regle sur un autre fuseau verrait sinon sa journee basculer
+ * au mauvais moment.
+ *
+ * @returns {{arrivee:string|null, depart:string|null,
+ *            aPointeArrivee:boolean, aPointeDepart:boolean}}
+ */
+function etatJourneeEmploye() {
+  const vide = { arrivee: null, depart: null, aPointeArrivee: false, aPointeDepart: false };
+
+  const utilisateur = state.currentUser;
+  if (!utilisateur) return vide;
+
+  const auj = aujourdhuiAbidjan();
+
+  const duJour = (state.attendances || []).filter((a) => {
+    const mien = a.userId === utilisateur.id ||
+      (utilisateur.email && a.userEmail === utilisateur.email);
+    if (!mien || a.decision === 'REJECTED') return false;
+    const t = partsAbidjan(a.serverTime);
+    return t && t.ymd === auj;
+  });
+
+  const arrivee = duJour.find((a) => a.punchType === 'CHECK_IN');
+  const depart = duJour.find((a) => a.punchType === 'CHECK_OUT');
+
+  // Sur un départ, le serveur inscrit l'heure de sortie SUR la ligne d'arrivée
+  // plutôt que d'en créer une nouvelle. Les deux formes doivent être lues.
+  const sortieSurArrivee = arrivee && arrivee.clockOut && arrivee.clockOut !== '--:--'
+    ? arrivee.clockOut : null;
+
+  const heure = (a) => {
+    const t = partsAbidjan(a.serverTime);
+    return t ? t.hm : null;
+  };
+
+  return {
+    arrivee: arrivee ? heure(arrivee) : null,
+    depart: depart ? heure(depart) : sortieSurArrivee,
+    aPointeArrivee: !!arrivee,
+    aPointeDepart: !!depart || !!sortieSurArrivee,
+  };
+}
+
+/**
+ * Verrouille les boutons selon ce qui a deja ete pointe.
+ *
+ * Un bouton grise qui dit POURQUOI vaut mieux qu'un bouton actif qui echoue :
+ * l'employe comprend son etat sans avoir a essayer.
+ */
+function appliquerEtatJournee() {
+  const btnIn = document.getElementById('btn-emp-check-in');
+  const btnOut = document.getElementById('btn-emp-check-out');
+  const btnQr = document.getElementById('btn-emp-qr');
+  const banniere = document.getElementById('emp-journee-banner');
+  if (!btnIn || !btnOut) return;
+
+  const j = etatJourneeEmploye();
+
+  if (j.aPointeArrivee) {
+    btnIn.disabled = true;
+    btnIn.innerHTML =
+      '<i data-lucide="check-circle-2" class="w-4 h-4"></i>' +
+      `Arrivée pointée à ${escapeHtml(j.arrivee || '--:--')}`;
+  } else {
+    btnIn.innerHTML = '<i data-lucide="log-in" class="w-4 h-4"></i>Pointer mon arrivée';
+  }
+
+  if (j.aPointeDepart) {
+    btnOut.disabled = true;
+    btnOut.innerHTML =
+      '<i data-lucide="check-circle-2" class="w-4 h-4"></i>' +
+      `Départ pointé à ${escapeHtml(j.depart || '--:--')}`;
+  } else if (!j.aPointeArrivee) {
+    // Pointer un départ sans arrivée n'a pas de sens : le serveur le refuse
+    // par NO_OPEN_CHECK_IN. Autant le dire tout de suite.
+    btnOut.disabled = true;
+    btnOut.innerHTML = '<i data-lucide="log-out" class="w-4 h-4"></i>Pointez d\'abord votre arrivée';
+  } else {
+    btnOut.innerHTML = '<i data-lucide="log-out" class="w-4 h-4"></i>Pointer mon départ';
+  }
+
+  // Le QR mène au même enregistrement : il suit la même règle.
+  if (btnQr) btnQr.disabled = j.aPointeArrivee && j.aPointeDepart;
+
+  if (banniere) {
+    if (j.aPointeArrivee && j.aPointeDepart) {
+      banniere.classList.remove('hidden');
+      banniere.className =
+        'rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3.5 flex items-center gap-3';
+      banniere.innerHTML =
+        '<i data-lucide="check-circle-2" class="w-5 h-5 text-emerald-400 shrink-0"></i>' +
+        '<div class="min-w-0">' +
+        '<p class="text-xs font-extrabold text-emerald-300">Journée terminée</p>' +
+        `<p class="text-[11px] text-slate-400">Arrivée ${escapeHtml(j.arrivee || '--:--')} • ` +
+        `Départ ${escapeHtml(j.depart || '--:--')}. Aucun autre pointage n'est nécessaire aujourd'hui.</p>` +
+        '</div>';
+    } else if (j.aPointeArrivee) {
+      banniere.classList.remove('hidden');
+      banniere.className =
+        'rounded-xl border border-cyan-500/30 bg-cyan-500/5 p-3.5 flex items-center gap-3';
+      banniere.innerHTML =
+        '<i data-lucide="clock" class="w-5 h-5 text-cyan-400 shrink-0"></i>' +
+        '<div class="min-w-0">' +
+        '<p class="text-xs font-extrabold text-cyan-300">Journée en cours</p>' +
+        `<p class="text-[11px] text-slate-400">Arrivée pointée à ${escapeHtml(j.arrivee || '--:--')}. ` +
+        'Pensez à pointer votre départ en fin de journée.</p>' +
+        '</div>';
+    } else {
+      banniere.classList.add('hidden');
+      banniere.innerHTML = '';
+    }
+  }
+
+  if (window.lucide) lucide.createIcons();
 }
