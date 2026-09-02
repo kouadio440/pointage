@@ -51,7 +51,6 @@ const state = {
   companies: [],
   leaves: [],
   overtimes: [],
-  latenesses: [],
   pendingRegistrations: [],
   selectedPendingIds: [],
   currentCompanyCode: '',
@@ -1386,7 +1385,9 @@ function renderLatenessTable() {
   const tbody = document.getElementById('lateness-table');
   if (!tbody) return;
 
-  const latenesses = (state.attendances || []).filter(a => a.status === 'Retard' || a.status === 'late');
+  const latenesses = (state.attendances || [])
+    .filter(estEnRetard)
+    .sort((x, y) => new Date(y.serverTime) - new Date(x.serverTime));
 
   if (latenesses.length === 0) {
     tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-500 text-xs font-mono">Aucun retard enregistré pour cette entreprise.</td></tr>`;
@@ -1396,12 +1397,12 @@ function renderLatenessTable() {
   tbody.innerHTML = latenesses.map(lat => `
     <tr class="hover:bg-slate-800/40 transition">
       <td class="p-3 font-bold text-white">${escapeHtml(lat.employee || 'Employé')}</td>
-      <td class="p-3 text-slate-400">${escapeHtml(lat.date || '')}</td>
-      <td class="p-3 text-slate-400 font-mono">08:00</td>
-      <td class="p-3 text-orange-400 font-bold font-mono">${escapeHtml(lat.clockIn || '--:--')}</td>
-      <td class="p-3 text-orange-400 font-bold">Retard</td>
-      <td class="p-3 text-slate-300">Pointage hors horaire prévu</td>
-      <td class="p-3"><span class="badge-alert px-2 py-0.5 rounded text-[10px]">Signalé</span></td>
+      <td class="p-3 text-slate-400">${escapeHtml(partsAbidjan(lat.serverTime) ? partsAbidjan(lat.serverTime).dateFr : (lat.date || ''))}</td>
+      <td class="p-3 text-slate-400 font-mono">${escapeHtml(heurePrevueDepuisRetard(lat) || '—')}</td>
+      <td class="p-3 text-orange-400 font-bold font-mono">${escapeHtml(partsAbidjan(lat.serverTime) ? partsAbidjan(lat.serverTime).hm : '--:--')}</td>
+      <td class="p-3 text-orange-400 font-bold">+${escapeHtml(String(lat.lateMinutes || 0))} min</td>
+      <td class="p-3 text-slate-300">${lat.reviewNote ? escapeHtml(lat.reviewNote) : '<span class="text-slate-600">— non justifié</span>'}</td>
+      <td class="p-3"><span class="${statutValidationRetard(lat).classe} text-[10px] font-mono">${escapeHtml(statutValidationRetard(lat).texte)}</span></td>
       <td class="p-3 text-right">
         <button onclick="openAttendanceDetail('${escapeHtml(String(lat.id))}')" class="px-2 py-1 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/30 text-[10px] font-mono transition">
           🔍 Caractéristiques
@@ -2446,7 +2447,6 @@ function openEmployeePunch(type) {
   setNodeHidden('emp-punch-retry', true);
   setNodeHidden('emp-punch-preview', true);
   setNodeHidden('emp-punch-camera-error', true);
-  setNodeHidden('emp-punch-frame', false);
   setNodeHidden('emp-punch-gps-pill', false);
 
   const captureBtn = document.getElementById('emp-punch-capture');
@@ -2514,8 +2514,6 @@ async function startEmployeePunchFace() {
 
   if (ok) {
     peindre('scan-face', 'text-emerald-400', "Vérification d'identité active");
-    // Dès que le moteur est prêt, l'employé doit voir que le système le voit.
-    demarrerApercuVisage('emp-punch-video', 'emp-punch');
   } else {
     peindre('alert-triangle', 'text-red-400', 'Reconnaissance indisponible — vérifiez votre connexion');
   }
@@ -2568,7 +2566,6 @@ async function startEmployeePunchCamera() {
 
 function showEmployeePunchCameraError(message) {
   setNodeHidden('emp-punch-camera-error', false);
-  setNodeHidden('emp-punch-frame', true);
   const msgEl = document.getElementById('emp-punch-camera-error-msg');
   if (msgEl) msgEl.innerText = message;
 
@@ -2730,7 +2727,6 @@ async function captureEmployeePunch() {
       const vif = await executerControleVivacite(video);
       if (!vif.ok) {
         stopEmployeePunchCamera();
-        setNodeHidden('emp-punch-frame', true);
         setNodeHidden('emp-punch-liveness', true);
         return renderEmployeePunchFailure(vif.titre, vif.corps);
       }
@@ -2750,7 +2746,6 @@ async function captureEmployeePunch() {
       const capture = await capturerEmpreintePointage(video);
       if (!capture.ok) {
         stopEmployeePunchCamera();
-        setNodeHidden('emp-punch-frame', true);
         return renderEmployeePunchFailure(capture.titre, capture.corps);
       }
       empPunch.faceDescriptor = capture.descriptor;
@@ -2775,7 +2770,6 @@ async function captureEmployeePunch() {
     preview.src = canvas.toDataURL('image/jpeg', 0.82);
     preview.classList.remove('hidden');
   }
-  setNodeHidden('emp-punch-frame', true);
 
   // La caméra n'est PAS coupée ici : si le serveur juge la mesure passive
   // indécise, il faut pouvoir demander un geste sans tout recommencer. Elle
@@ -5177,15 +5171,6 @@ function renderPunchDiagnostic(checks) {
 
 
 
-function acceptJustification(id) {
-  const item = state.latenesses.find(l => l.id === id);
-  if (item) {
-    item.status = 'Retard Justifié';
-    showToast('Retard Justifié', `La justification de ${item.employee} a été acceptée.`, 'success');
-  }
-  renderDashboard();
-}
-
 function triggerRefreshSimulatedData() {
   renderDashboard();
   showToast('Flux Actualisé', 'Le registre et la carte des pointages en direct ont été mis à jour.', 'info');
@@ -6240,30 +6225,8 @@ function renderEmployeeDashboard() {
     }
   }
 
-  // 2. Rendu des Retards Employé
-  const latenessBody = document.getElementById('emp-lateness-table-body');
-  if (latenessBody) {
-    const currentUserLatenesses = (state.latenesses || []).filter(l => l.userId === userId || (currentUser.email && l.userEmail === currentUser.email));
-    if (currentUserLatenesses.length > 0) {
-      latenessBody.innerHTML = currentUserLatenesses.map(l => `
-        <tr class="hover:bg-slate-800/30 transition">
-          <td class="py-2.5 font-bold text-white">${escapeHtml(l.date)}</td>
-          <td class="py-2.5 text-amber-400 font-bold">${escapeHtml(l.time)}</td>
-          <td class="py-2.5 text-rose-400 font-bold">+${escapeHtml(l.minutes)} min</td>
-          <td class="py-2.5 text-slate-300">${escapeHtml(l.reason)}</td>
-          <td class="py-2.5 text-right font-bold text-emerald-400">${escapeHtml(l.status || 'Transmis au RH')}</td>
-        </tr>
-      `).join('');
-    } else {
-      latenessBody.innerHTML = `
-        <tr>
-          <td colspan="5" class="py-6 text-center text-emerald-400/80 italic font-mono text-xs">
-            🎉 Aucun retard enregistré ce mois-ci ! Félicitations pour votre ponctualité.
-          </td>
-        </tr>
-      `;
-    }
-  }
+  // 2. Rendu des Retards Employé — dérivé des pointages, comme côté RH.
+  renderEmployeeLateness();
 
   // 3. Rendu des Congés Employé
   const leavesBody = document.getElementById('emp-leaves-table-body');
@@ -7954,7 +7917,12 @@ async function loadSupabaseData() {
             distanceFromSiteM: a.distance_from_site_m,
             allowedRadiusM: a.allowed_radius_m,
             // Retard calcule par le serveur depuis l horaire affecte (migration 003).
+            // La tolerance permet de RETROUVER l'heure prevue sans interroger
+            // l'horaire : prevu = pointage - retard - tolerance.
             lateMinutes: a.late_minutes,
+            toleranceAtPunch: a.tolerance_at_punch,
+            reviewNote: a.review_note || null,
+            reviewedAt: a.reviewed_at || null,
             maxAccuracyAtPunch: a.max_accuracy_m_at_punch,
             selfiePath: a.selfie_path || null,
             faceVerified: a.face_verified,
@@ -8127,6 +8095,10 @@ function renderSaasDashboard() {
 // Initialisation globale au chargement
 window.addEventListener('DOMContentLoaded', () => {
   checkUrlInvitation();
+
+  // Veille de version : un onglet resté ouvert continuerait sinon d'utiliser
+  // l'ancienne application pendant des jours, sans que personne ne le sache.
+  demarrerVeilleMiseAJour();
 });
 window.addEventListener('hashchange', () => {
   checkUrlInvitation();
@@ -10651,4 +10623,250 @@ function appliquerEtatJournee() {
   }
 
   if (window.lucide) lucide.createIcons();
+}
+
+
+// =============================================================================
+//  RETARDS
+//
+//  Un retard n'est pas une donnee separee : c'est un POINTAGE dont le serveur
+//  a calcule que l'heure depassait l'horaire affecte. Il se lit donc dans
+//  `state.attendances`, comme tout le reste.
+//
+//  Le tableau du Dashboard Employe lisait `state.latenesses`, un tableau
+//  initialise vide et que RIEN n'alimentait. Il affichait donc « Aucun retard »
+//  meme quand le pointage du jour etait en retard — et le cockpit RH, qui
+//  derive bien des pointages, affichait l'inverse au meme moment.
+// =============================================================================
+
+/**
+ * Retrouve l'heure prevue a partir des chiffres inscrits par le serveur.
+ *
+ * Le serveur calcule : retard = heure_pointee - debut_horaire - tolerance.
+ * On peut donc remonter a l'heure prevue sans interroger l'horaire, et sans
+ * inventer un « 08:00 » qui ne vaudrait que pour certains employes.
+ *
+ * @returns {string|null} « HH:MM », ou null si les chiffres manquent.
+ */
+function heurePrevueDepuisRetard(att) {
+  const t = partsAbidjan(att.serverTime);
+  if (!t || att.lateMinutes == null) return null;
+
+  const [h, m] = t.hm.split(':').map(Number);
+  const minutes = h * 60 + m - Number(att.lateMinutes) - Number(att.toleranceAtPunch || 0);
+  if (!isFinite(minutes) || minutes < 0) return null;
+
+  return String(Math.floor(minutes / 60)).padStart(2, '0') + ':' +
+         String(minutes % 60).padStart(2, '0');
+}
+
+/** Un pointage est-il en retard ? Le serveur seul en decide. */
+function estEnRetard(a) {
+  return a && a.decision !== 'REJECTED' &&
+    (Number(a.lateMinutes) > 0 || a.status === 'Retard');
+}
+
+/**
+ * Les retards de l'employe connecte, du plus recent au plus ancien.
+ */
+function retardsEmploye() {
+  const u = state.currentUser;
+  if (!u) return [];
+
+  return (state.attendances || [])
+    .filter((a) => (a.userId === u.id || (u.email && a.userEmail === u.email)) && estEnRetard(a))
+    .sort((x, y) => new Date(y.serverTime) - new Date(x.serverTime));
+}
+
+/** Ce que le service RH a fait — ou pas encore — de ce retard. */
+function statutValidationRetard(a) {
+  if (a.decision === 'PENDING_REVIEW') {
+    return { texte: 'En attente de vérification', classe: 'text-amber-400' };
+  }
+  if (a.reviewedAt) {
+    return { texte: 'Vérifié par le RH', classe: 'text-emerald-400' };
+  }
+  return { texte: 'Transmis au RH', classe: 'text-cyan-400' };
+}
+
+/** Tableau « Mes Retards Enregistrés » du Dashboard Employé. */
+function renderEmployeeLateness() {
+  const corps = document.getElementById('emp-lateness-table-body');
+  if (!corps) return;
+
+  const retards = retardsEmploye();
+
+  if (retards.length === 0) {
+    corps.innerHTML = `
+      <tr>
+        <td colspan="5" class="py-6 text-center text-emerald-400/80 italic font-mono text-xs">
+          🎉 Aucun retard enregistré ! Félicitations pour votre ponctualité.
+        </td>
+      </tr>`;
+    return;
+  }
+
+  corps.innerHTML = retards.map((a) => {
+    const t = partsAbidjan(a.serverTime);
+    const prevue = heurePrevueDepuisRetard(a);
+    const statut = statutValidationRetard(a);
+
+    // Aucun motif n'est inventé : la saisie d'une justification par l'employé
+    // n'existe pas encore. On montre la note du RH quand il en a écrit une,
+    // et un tiret sinon — plutôt qu'un prétexte plausible et faux.
+    const motif = a.reviewNote
+      ? escapeHtml(a.reviewNote)
+      : '<span class="text-slate-600">— non justifié</span>';
+
+    return `
+      <tr class="hover:bg-slate-800/30 transition">
+        <td class="py-2.5 font-bold text-white">${escapeHtml(t ? t.dateFr : '')}</td>
+        <td class="py-2.5 text-amber-400 font-bold">
+          ${escapeHtml(t ? t.hm : '--:--')}
+          ${prevue ? `<span class="text-slate-500 font-normal"> (prévu ${escapeHtml(prevue)})</span>` : ''}
+        </td>
+        <td class="py-2.5 text-rose-400 font-bold">+${escapeHtml(String(a.lateMinutes || 0))} min</td>
+        <td class="py-2.5 text-slate-300">${motif}</td>
+        <td class="py-2.5 text-right font-bold ${statut.classe}">${escapeHtml(statut.texte)}</td>
+      </tr>`;
+  }).join('');
+}
+
+
+// =============================================================================
+//  VEILLE DE MISE A JOUR
+//
+//  Une application servie en fichiers statiques reste chargee dans le
+//  navigateur tant que l'onglet n'est pas recharge. Un employe qui garde son
+//  telephone ouvert continue donc d'utiliser l'ancienne version pendant des
+//  jours, sans le savoir — et signale des bugs deja corriges.
+//
+//  COMMENT ON DETECTE
+//  ------------------
+//  On demande periodiquement les EN-TETES de app.js (requete HEAD, sans
+//  cache) et on compare son empreinte : ETag, sinon Last-Modified, sinon
+//  Content-Length. Vercel renvoie les trois ; le serveur local seulement la
+//  taille, ce qui suffit.
+//
+//  Aucun fichier de version a maintenir a la main : un fichier `version.json`
+//  qu'on oublie de mettre a jour au deploiement ne previendrait de rien.
+//
+//  CE QU'ON NE FAIT PAS
+//  --------------------
+//  On ne recharge JAMAIS tout seul. Un rechargement automatique pendant un
+//  pointage ferait perdre le selfie, la position et la verification
+//  d'identite. On propose, l'employe decide.
+// =============================================================================
+
+const VEILLE_MAJ_INTERVALLE_MS = 5 * 60 * 1000;
+
+const veilleMaj = {
+  empreinte: null,
+  annonce: false,
+  minuteur: null,
+};
+
+/** Empreinte de la version servie, ou null si le serveur n'en donne aucune. */
+async function empreinteVersion() {
+  try {
+    const r = await fetch('app.js', { method: 'HEAD', cache: 'no-store' });
+    if (!r.ok) return null;
+    return r.headers.get('etag')
+        || r.headers.get('last-modified')
+        || r.headers.get('content-length')
+        || null;
+  } catch (e) {
+    // Hors ligne, ou requete bloquee : ce n'est pas une erreur a signaler.
+    return null;
+  }
+}
+
+async function verifierMiseAJour() {
+  if (veilleMaj.annonce) return;
+
+  const actuelle = await empreinteVersion();
+  if (!actuelle) return;
+
+  if (veilleMaj.empreinte === null) {
+    veilleMaj.empreinte = actuelle;
+    return;
+  }
+
+  if (actuelle !== veilleMaj.empreinte) {
+    veilleMaj.annonce = true;
+    afficherBandeauMiseAJour();
+  }
+}
+
+function afficherBandeauMiseAJour() {
+  if (document.getElementById('maj-bandeau')) return;
+
+  const el = document.createElement('div');
+  el.id = 'maj-bandeau';
+  // Ancre en bas : un bandeau en haut masquerait l'en-tete du tableau de bord,
+  // et une fenetre modale bloquerait un pointage en cours.
+  el.className =
+    'fixed bottom-3 left-1/2 -translate-x-1/2 z-[90] w-[min(94vw,30rem)] ' +
+    'rounded-2xl border border-cyan-500/50 bg-slate-900/95 backdrop-blur-md ' +
+    'shadow-2xl shadow-cyan-500/10 p-4 flex items-start gap-3';
+  el.setAttribute('role', 'status');
+  el.setAttribute('aria-live', 'polite');
+
+  el.innerHTML =
+    '<i data-lucide="sparkles" class="w-5 h-5 text-cyan-400 shrink-0 mt-0.5"></i>' +
+    '<div class="min-w-0 flex-1">' +
+      '<p class="text-xs font-extrabold text-cyan-300">Une nouvelle version est disponible</p>' +
+      '<p class="text-[11px] text-slate-400 leading-relaxed mt-0.5">' +
+        'Rechargez la page pour en profiter. Si vous êtes en train de pointer, ' +
+        'terminez d\'abord : le rechargement effacerait votre selfie et votre position.' +
+      '</p>' +
+      '<div class="flex items-center gap-2 mt-2.5">' +
+        '<button onclick="rechargerPourMiseAJour()" ' +
+          'class="min-h-tap px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 ' +
+          'text-black font-extrabold text-[11px] tracking-wider transition">RECHARGER</button>' +
+        '<button onclick="reporterMiseAJour()" ' +
+          'class="min-h-tap px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 ' +
+          'border border-slate-700 font-bold text-[11px] transition">Plus tard</button>' +
+      '</div>' +
+    '</div>';
+
+  document.body.appendChild(el);
+  if (window.lucide) lucide.createIcons();
+}
+
+function rechargerPourMiseAJour() {
+  // `reload(true)` n'est plus honore par les navigateurs. On ajoute donc un
+  // parametre jetable : il change l'URL, ce qui force une requete reseau
+  // plutot qu'une relecture du cache.
+  const u = new URL(window.location.href);
+  u.searchParams.set('maj', Date.now().toString(36));
+  window.location.replace(u.toString());
+}
+
+function reporterMiseAJour() {
+  const el = document.getElementById('maj-bandeau');
+  if (el) el.remove();
+
+  // On repart de la version SERVIE, pas de celle qui tourne : sinon le bandeau
+  // reviendrait a la verification suivante, ce qui reviendrait a harceler
+  // quelqu'un qui a justement dit « plus tard ».
+  veilleMaj.annonce = false;
+  empreinteVersion().then((e) => { if (e) veilleMaj.empreinte = e; });
+}
+
+/**
+ * Demarre la veille.
+ *
+ * On verifie aussi au retour sur l'onglet : c'est le moment ou quelqu'un
+ * reprend son telephone, et celui ou un rechargement derange le moins.
+ */
+function demarrerVeilleMiseAJour() {
+  if (veilleMaj.minuteur) return;
+
+  verifierMiseAJour();
+  veilleMaj.minuteur = setInterval(verifierMiseAJour, VEILLE_MAJ_INTERVALLE_MS);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') verifierMiseAJour();
+  });
 }

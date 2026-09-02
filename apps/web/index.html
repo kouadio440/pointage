@@ -2138,12 +2138,12 @@
         <img id="emp-punch-preview" alt="Selfie capturé" class="hidden absolute inset-0 w-full h-full object-cover" style="transform: scaleX(-1)" />
         <canvas id="emp-punch-canvas" class="hidden"></canvas>
 
-        <div id="emp-punch-frame" class="absolute bottom-2 left-1/2 -translate-x-1/2 pointer-events-none">
-          <span id="emp-punch-detect" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/85 border border-slate-700 text-[10px] font-mono text-slate-400">
-            <span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
-            Recherche du visage…
-          </span>
-        </div>
+        <!--
+          Aucune pastille de détection ici, volontairement. L'employé vient
+          pointer, pas surveiller un indicateur : le cadre lui suffit pour se
+          cadrer. La couleur de la bordure réagit pendant la vérification,
+          et c'est le seul moment où l'information sert à quelque chose.
+        -->
 
         <div id="emp-punch-camera-error" class="hidden absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center text-center p-5 gap-2">
           <i data-lucide="camera-off" class="w-8 h-8 text-amber-400"></i>
