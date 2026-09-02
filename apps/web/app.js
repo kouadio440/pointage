@@ -2470,8 +2470,13 @@ async function startEmployeePunchFace() {
     peindre('loader-2', 'animate-spin text-amber-400', etape.label);
   });
 
-  if (ok) peindre('scan-face', 'text-emerald-400', "Vérification d'identité active");
-  else peindre('alert-triangle', 'text-red-400', 'Reconnaissance indisponible — vérifiez votre connexion');
+  if (ok) {
+    peindre('scan-face', 'text-emerald-400', "Vérification d'identité active");
+    // Dès que le moteur est prêt, l'employé doit voir que le système le voit.
+    demarrerApercuVisage('emp-punch-video', 'emp-punch');
+  } else {
+    peindre('alert-triangle', 'text-red-400', 'Reconnaissance indisponible — vérifiez votre connexion');
+  }
 }
 
 function setNodeHidden(id, hidden) {
@@ -3254,6 +3259,7 @@ function retryEmployeePunch() {
 }
 
 function stopEmployeePunchCamera() {
+  arreterApercuVisage();
   if (empPunch.stream) {
     empPunch.stream.getTracks().forEach((t) => t.stop());
     empPunch.stream = null;
@@ -8346,6 +8352,7 @@ async function demarrerCameraEnrolement() {
       audio: false,
     });
     if (video) video.srcObject = faceEnrol.stream;
+    demarrerApercuVisage('face-enroll-video', 'face-enroll');
     majBoutonCaptureEnrolement();
   } catch (err) {
     const refus = err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError');
@@ -8378,10 +8385,18 @@ function majBoutonCaptureEnrolement() {
 function majProgressionEnrolement() {
   const box = document.getElementById('face-enroll-steps');
   if (!box) return;
+  // AUCUNE rotation demandee ici, volontairement.
+  //
+  // Les consignes precedentes faisaient tourner la tete entre les trois
+  // prises. Or l enrolement verifie ensuite que les trois empreintes se
+  // ressemblent : faire varier la pose produisait justement l ecart qui
+  // declenchait « les trois prises sont trop differentes ». La consigne
+  // combattait le controle. Les trois prises servent a moyenner le bruit,
+  // pas a couvrir des angles.
   const consignes = [
-    'Regardez droit vers la caméra',
-    'Tournez légèrement la tête vers la droite',
-    'Tournez légèrement la tête vers la gauche',
+    'Regardez la caméra, visage bien éclairé',
+    'Ne bougez pas — deuxième prise',
+    'Dernière prise, gardez la même position',
   ];
   box.innerHTML = consignes
     .map((c, i) => {
@@ -8561,6 +8576,7 @@ function afficherResultatEnrolement(type, titre, corps) {
 }
 
 function arreterCameraEnrolement() {
+  arreterApercuVisage();
   if (faceEnrol.stream) {
     faceEnrol.stream.getTracks().forEach((t) => t.stop());
     faceEnrol.stream = null;
@@ -9421,15 +9437,17 @@ const VIVACITE = {
     aide: 'Fermez puis rouvrez les yeux, franchement.',
     icone: 'eye',
   },
-  TURN_LEFT: {
-    libelle: 'Tournez la tête vers la gauche',
-    aide: 'Votre gauche. Gardez les yeux vers la caméra.',
-    icone: 'arrow-left',
-  },
-  TURN_RIGHT: {
-    libelle: 'Tournez la tête vers la droite',
-    aide: 'Votre droite. Gardez les yeux vers la caméra.',
-    icone: 'arrow-right',
+  // Un seul geste de rotation, sans cote impose.
+  //
+  // Distinguer la gauche de la droite supposait de connaitre la convention de
+  // reperes du modele ET de savoir si l apercu est en miroir. Ces deux choses
+  // varient selon l appareil : sur le terrain, la consigne disait « gauche »
+  // pendant que la mesure attendait l autre sens, et le pointage devenait
+  // impossible. On ne mesure plus que l AMPLITUDE de la rotation.
+  TURN_SIDE: {
+    libelle: 'Tournez la tête sur le côté',
+    aide: 'À droite ou à gauche, comme vous préférez, puis revenez.',
+    icone: 'refresh-cw',
   },
   MOUTH_OPEN: {
     libelle: 'Ouvrez la bouche',
@@ -9439,13 +9457,15 @@ const VIVACITE = {
 };
 
 // Marges volontaires par rapport au serveur (0.62 / 0.16 / 0.14 / 0.35).
-const SEUIL_CLIGNEMENT   = 0.58;
-const SEUIL_BASE_OUVERTE = 0.19;
-const SEUIL_ROTATION     = 0.19;
-const SEUIL_BOUCHE       = 0.42;
+const SEUIL_CLIGNEMENT   = 0.62;
+const SEUIL_BASE_OUVERTE = 0.17;
+// Marge etroite avec le serveur (0,11) : un geste valide a l ecran doit passer
+// cote serveur, mais un seuil client trop haut rend le pointage impossible.
+const SEUIL_ROTATION     = 0.13;
+const SEUIL_BOUCHE       = 0.34;
 
 /** Durée maximale accordée à un geste avant abandon. */
-const VIVACITE_DELAI_GESTE_MS = 15000;
+const VIVACITE_DELAI_GESTE_MS = 20000;
 /** Un geste n'est jamais validé avant ce délai : le serveur refuse l'instantané. */
 const VIVACITE_DUREE_MIN_MS = 400;
 
@@ -9505,11 +9525,9 @@ function evaluerGeste(action, m, base) {
     const avance = Math.min(1, Math.max(0, (base - m.ear) / (base - cible || 1)));
     return { fait: m.ear <= cible, avance, valeur: m.ear };
   }
-  if (action === 'TURN_LEFT') {
-    return { fait: m.yaw <= -SEUIL_ROTATION, avance: Math.min(1, Math.max(0, -m.yaw / SEUIL_ROTATION)), valeur: m.yaw };
-  }
-  if (action === 'TURN_RIGHT') {
-    return { fait: m.yaw >= SEUIL_ROTATION, avance: Math.min(1, Math.max(0, m.yaw / SEUIL_ROTATION)), valeur: m.yaw };
+  if (action === 'TURN_SIDE' || action === 'TURN_LEFT' || action === 'TURN_RIGHT') {
+    const ampleur = Math.abs(m.yaw);
+    return { fait: ampleur >= SEUIL_ROTATION, avance: Math.min(1, ampleur / SEUIL_ROTATION), valeur: m.yaw };
   }
   if (action === 'MOUTH_OPEN') {
     return { fait: m.mar >= SEUIL_BOUCHE, avance: Math.min(1, Math.max(0, m.mar / SEUIL_BOUCHE)), valeur: m.mar };
@@ -9547,18 +9565,24 @@ async function executerDefiVivacite(video, actions, onProgres) {
     let earBase = null;
     let fait = false;
     let sansVisage = 0;
+    let framesGeste = 0;
+    let meilleureAvance = 0;
 
     onProgres({ index: i, total: actions.length, libelle: info.libelle, aide: info.aide, avance: 0, etat: 'encours' });
 
     while (Date.now() < limite && !fait) {
       const pts = await pointsVisage(video);
       frames++;
+      framesGeste++;
 
       if (!pts) {
         sansVisage++;
-        if (sansVisage % 6 === 0) {
+        // Dès la deuxième image sans visage : l'employé doit le savoir tout de
+        // suite, pas après quinze secondes d'efforts dans le vide.
+        if (sansVisage >= 2) {
           onProgres({ index: i, total: actions.length, libelle: info.libelle,
-            aide: 'Aucun visage détecté — placez-vous face à la caméra.', avance: 0, etat: 'encours' });
+            aide: "Aucun visage détecté — cadrez votre visage dans l'écran.",
+            avance: 0, etat: 'perdu' });
         }
         continue;
       }
@@ -9581,12 +9605,19 @@ async function executerDefiVivacite(video, actions, onProgres) {
       }
 
       if (action === 'BLINK') extreme = Math.min(extreme, m.ear);
-      else if (action === 'TURN_LEFT') extreme = Math.min(extreme, m.yaw);
-      else if (action === 'TURN_RIGHT') extreme = Math.max(extreme, m.yaw);
-      else extreme = Math.max(extreme, m.mar);
+      else if (action === 'MOUTH_OPEN') extreme = Math.max(extreme, m.mar);
+      // On retient la rotation la plus ample, dans un sens ou dans l autre.
+      else if (Math.abs(m.yaw) > Math.abs(extreme)) extreme = m.yaw;
 
       const ev = evaluerGeste(action, m, earBase);
-      onProgres({ index: i, total: actions.length, libelle: info.libelle, aide: info.aide,
+      meilleureAvance = Math.max(meilleureAvance, ev.avance);
+
+      // La consigne s'adapte : tant qu'on est loin du compte, on le dit.
+      const aide = ev.avance >= 0.75 ? 'Presque — continuez un peu.'
+                 : ev.avance >= 0.25 ? 'Continuez, allez plus loin.'
+                 : info.aide;
+
+      onProgres({ index: i, total: actions.length, libelle: info.libelle, aide,
         avance: ev.avance, etat: 'encours' });
 
       // Le serveur refuse un geste signalé trop brièvement : on ne valide pas
@@ -9595,11 +9626,17 @@ async function executerDefiVivacite(video, actions, onProgres) {
     }
 
     if (!fait) {
+      // Un message chiffré : « il vous manquait un tiers » indique quoi
+      // corriger, là où « non détecté » laisse l'employé sans recours.
+      const jamaisVu = meilleureAvance === 0;
       return {
         ok: false,
         code: 'TIMEOUT',
-        message: `Le geste « ${info.libelle.toLowerCase()} » n'a pas été détecté.\n\n` +
-          "Placez-vous face à la caméra dans un endroit bien éclairé, le visage bien dans le cadre, puis réessayez.",
+        message: `Le geste « ${info.libelle.toLowerCase()} » n'a pas été reconnu.\n\n` +
+          (jamaisVu
+            ? "Votre visage n'a pas été vu pendant ce geste. Rapprochez-vous de la caméra, cadrez bien votre visage, et évitez d'avoir une fenêtre derrière vous."
+            : `Vous en étiez à environ ${Math.round(meilleureAvance * 100)} % du geste attendu — il fallait aller un peu plus loin.`) +
+          '\n\nRéessayez : le pointage repart du début.',
       };
     }
 
@@ -9624,6 +9661,7 @@ async function executerDefiVivacite(video, actions, onProgres) {
     } else {
       preuve.yaw_peak = Math.round(extreme * 10000) / 10000;
     }
+    preuve.frames_vues = framesGeste;
     steps.push(preuve);
 
     onProgres({ index: i, total: actions.length, libelle: info.libelle, aide: info.aide, avance: 1, etat: 'fait' });
@@ -9674,6 +9712,7 @@ async function executerControleVivacite(video) {
     return { ok: false, titre: 'Contrôle anti-photo indisponible', corps: defi.message };
   }
 
+  arreterApercuVisage();
   setNodeHidden('emp-punch-liveness', false);
   setNodeHidden('emp-punch-steps', true);
 
@@ -9697,7 +9736,11 @@ function afficherConsigneVivacite(e) {
   set('live-etape', `Étape ${e.index + 1} / ${e.total}`);
   set('live-consigne', e.libelle);
   set('live-aide', e.aide);
-  set('live-restant', e.etat === 'fait' ? 'Geste validé' : '');
+  set('live-restant',
+    e.etat === 'fait' ? 'Geste validé'
+    : e.etat === 'perdu' ? 'Visage hors cadre'
+    : e.avance > 0 ? Math.round(e.avance * 100) + ' %'
+    : '');
 
   const jauge = document.getElementById('live-jauge');
   if (jauge) {
@@ -9706,11 +9749,18 @@ function afficherConsigneVivacite(e) {
       (e.etat === 'fait' ? 'bg-emerald-500' : e.avance > 0.75 ? 'bg-emerald-400' : 'bg-cyan-500');
   }
 
+  // Le cadre de la caméra suit l'état : rouge dès que le visage sort du champ.
+  majDetectionVisage('emp-punch', e.etat === 'perdu' ? 'absent' : 'vu');
+
   const icone = document.getElementById('live-icone');
   if (icone) {
     const info = VIVACITE[Object.keys(VIVACITE).find((k) => VIVACITE[k].libelle === e.libelle)];
-    icone.setAttribute('data-lucide', e.etat === 'fait' ? 'check-circle-2' : (info ? info.icone : 'eye'));
-    icone.className = 'w-7 h-7 shrink-0 ' + (e.etat === 'fait' ? 'text-emerald-400' : 'text-cyan-400');
+    const nom = e.etat === 'fait' ? 'check-circle-2'
+              : e.etat === 'perdu' ? 'scan-face'
+              : (info ? info.icone : 'eye');
+    icone.setAttribute('data-lucide', nom);
+    icone.className = 'w-7 h-7 shrink-0 ' +
+      (e.etat === 'fait' ? 'text-emerald-400' : e.etat === 'perdu' ? 'text-amber-400' : 'text-cyan-400');
     if (window.lucide) lucide.createIcons();
   }
 }
@@ -9803,4 +9853,91 @@ function toggleFaq(n) {
   const ouvert = !reponse.classList.contains('hidden');
   reponse.classList.toggle('hidden', ouvert);
   if (chevron) chevron.style.transform = ouvert ? '' : 'rotate(180deg)';
+}
+
+
+// =============================================================================
+//  APERCU EN DIRECT — « est-ce que le systeme me voit ? »
+//
+//  C'etait la question sans reponse. L'employe fixait un ovale en pointilles
+//  sans jamais savoir si son visage etait detecte, et decouvrait l'echec au
+//  bout de quinze secondes de gestes.
+//
+//  Cette boucle tourne pendant que la personne se cadre, AVANT tout geste.
+//  Elle est volontairement lente (trois mesures par seconde) : elle sert a
+//  rassurer, pas a mesurer.
+// =============================================================================
+
+const apercuVisage = { actif: false, minuteur: null };
+
+/**
+ * Peint l'etat de detection : pastille et couleur du cadre.
+ *
+ * @param {string} cible  prefixe des identifiants ('emp-punch' ou 'face-enroll')
+ * @param {'cherche'|'vu'|'absent'|'plusieurs'} etat
+ */
+function majDetectionVisage(cible, etat) {
+  const pastille = document.getElementById(cible + '-detect');
+  const cadre = document.getElementById(
+    cible === 'emp-punch' ? 'emp-punch-camera-wrap' : 'face-enroll-wrap'
+  );
+
+  const styles = {
+    cherche:   ['bg-slate-500', 'text-slate-400', 'Recherche du visage…', 'border-slate-700'],
+    vu:        ['bg-emerald-400', 'text-emerald-300', 'Visage détecté', 'border-emerald-500/70'],
+    absent:    ['bg-amber-400', 'text-amber-300', 'Aucun visage — approchez-vous', 'border-amber-500/60'],
+    plusieurs: ['bg-red-400', 'text-red-300', 'Plusieurs visages dans le cadre', 'border-red-500/60'],
+  };
+  const [point, texte, libelle, bordure] = styles[etat] || styles.cherche;
+
+  if (pastille) {
+    pastille.className =
+      'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-950/85 border border-slate-700 text-[10px] font-mono ' + texte;
+    pastille.innerHTML =
+      `<span class="w-1.5 h-1.5 rounded-full ${point}"></span>${escapeHtml(libelle)}`;
+  }
+
+  if (cadre) {
+    cadre.className = cadre.className.replace(/border-(slate|emerald|amber|red)-\S+/g, '').trim() + ' ' + bordure;
+  }
+}
+
+/**
+ * Demarre l'apercu sur un element video jusqu'a `arreterApercuVisage()`.
+ *
+ * On ne calcule QUE la position du visage, sans l'empreinte : le modele de
+ * reconnaissance coute dix fois plus cher et n'apporte rien a ce stade.
+ */
+function demarrerApercuVisage(videoId, cible) {
+  arreterApercuVisage();
+  apercuVisage.actif = true;
+
+  const boucle = async () => {
+    if (!apercuVisage.actif) return;
+
+    const video = document.getElementById(videoId);
+    if (video && video.videoWidth && faceEngine.statut === 'pret') {
+      try {
+        const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 });
+        const vus = await faceapi.detectAllFaces(video, opts);
+        if (apercuVisage.actif) {
+          majDetectionVisage(cible, vus.length === 0 ? 'absent' : vus.length > 1 ? 'plusieurs' : 'vu');
+        }
+      } catch (e) {
+        /* une image ratee n'est pas une erreur : on retentera au tour suivant */
+      }
+    }
+
+    if (apercuVisage.actif) apercuVisage.minuteur = setTimeout(boucle, 330);
+  };
+
+  boucle();
+}
+
+function arreterApercuVisage() {
+  apercuVisage.actif = false;
+  if (apercuVisage.minuteur) {
+    clearTimeout(apercuVisage.minuteur);
+    apercuVisage.minuteur = null;
+  }
 }

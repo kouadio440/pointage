@@ -100,7 +100,19 @@ DECLARE
     v_uid     UUID := auth.uid();
     v_user    public.users%ROWTYPE;
     v_company public.companies%ROWTYPE;
-    v_pool    TEXT[] := ARRAY['BLINK', 'TURN_LEFT', 'TURN_RIGHT', 'MOUTH_OPEN'];
+    -- Pas de gauche ni de droite dans les consignes.
+    --
+    -- La version precedente imposait TURN_LEFT / TURN_RIGHT. Determiner de quel
+    -- cote tourne une tete depend de la convention des reperes du modele ET du
+    -- fait que l apercu soit ou non en miroir — deux choses qui varient selon
+    -- l appareil. Resultat sur le terrain : la consigne disait « gauche »
+    -- pendant que la mesure attendait l autre sens, et personne ne pouvait
+    -- pointer.
+    --
+    -- TURN_SIDE ne regarde que l AMPLITUDE de la rotation, quel qu en soit le
+    -- sens. L indice de relief qui demasque une photographie est conserve
+    -- intact : c est sa valeur absolue qui compte, pas son signe.
+    v_pool    TEXT[] := ARRAY['BLINK', 'MOUTH_OPEN', 'TURN_SIDE'];
     v_actions TEXT[];
     v_n       INT;
     v_i       INT;
@@ -232,12 +244,15 @@ DECLARE
     c_blink_ratio  CONSTANT NUMERIC := 0.62;   -- ear_min < 62 % de ear_base
     c_blink_base   CONSTANT NUMERIC := 0.16;   -- yeux vraiment ouverts au depart
 
-    -- Rapport de distances nez/machoire. Une image plate inclinee le laisse
-    -- inchange ; une vraie tete qui tourne le fait basculer.
-    c_yaw_min      CONSTANT NUMERIC := 0.14;
+    -- Rapport de distances nez/machoire, en VALEUR ABSOLUE. Une image plate
+    -- inclinee reste sous 0,05 ; une vraie tete tournee d une vingtaine de
+    -- degres depasse 0,15. Le seuil est pose entre les deux, assez bas pour
+    -- qu une rotation modeste suffise : un seuil qu on n atteint pas empeche
+    -- de travailler, ce qui est pire qu absent.
+    c_yaw_min      CONSTANT NUMERIC := 0.11;
 
     -- Bouche ouverte : rapport d aspect des levres internes.
-    c_mouth_min    CONSTANT NUMERIC := 0.35;
+    c_mouth_min    CONSTANT NUMERIC := 0.30;
 
     -- Un geste demande du temps. Trois gestes en 100 ms trahissent un rejeu.
     c_step_min_ms  CONSTANT NUMERIC := 120;
@@ -316,16 +331,13 @@ BEGIN
                     'detail', 'Aucun clignement d''yeux n''a été détecté.');
             END IF;
 
-        ELSIF v_attendu = 'TURN_LEFT' THEN
-            IF COALESCE((v_step ->> 'yaw_peak')::numeric, 0) > -c_yaw_min THEN
+        -- TURN_LEFT et TURN_RIGHT ne sont plus jamais tires, mais restent
+        -- acceptes : un defi emis juste avant la mise a jour doit pouvoir
+        -- aboutir plutot que de refuser un employe de bonne foi.
+        ELSIF v_attendu IN ('TURN_SIDE', 'TURN_LEFT', 'TURN_RIGHT') THEN
+            IF abs(COALESCE((v_step ->> 'yaw_peak')::numeric, 0)) < c_yaw_min THEN
                 RETURN jsonb_build_object('ok', FALSE, 'code', 'LIVENESS_FAILED',
-                    'detail', 'La tête n''a pas tourné vers la gauche.');
-            END IF;
-
-        ELSIF v_attendu = 'TURN_RIGHT' THEN
-            IF COALESCE((v_step ->> 'yaw_peak')::numeric, 0) < c_yaw_min THEN
-                RETURN jsonb_build_object('ok', FALSE, 'code', 'LIVENESS_FAILED',
-                    'detail', 'La tête n''a pas tourné vers la droite.');
+                    'detail', 'La tête n''a pas assez tourné sur le côté.');
             END IF;
 
         ELSIF v_attendu = 'MOUTH_OPEN' THEN
