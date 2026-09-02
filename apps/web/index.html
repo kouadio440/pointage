@@ -2209,6 +2209,56 @@
   </div>
 
   <!--
+    JUSTIFICATION D'UN RETARD
+
+    L'employé écrit, le service RH tranche. Le texte part vers le serveur par
+    justify_lateness() : la table des pointages n'accepte aucune écriture
+    directe, un pointage ne se modifie pas.
+  -->
+  <div id="modal-justif-retard" class="fixed inset-0 z-[70] bg-black/85 backdrop-blur-md hidden items-center justify-center p-3 sm:p-4">
+    <div class="glass-panel-elevated w-full max-w-md p-5 sm:p-6 space-y-4 border border-amber-500/40 relative max-h-[95vh] overflow-y-auto">
+      <button onclick="fermerJustificationRetard()" class="absolute top-3 right-3 text-slate-400 hover:text-white p-2 min-h-tap" aria-label="Fermer">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <div class="pr-8">
+        <h3 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+          <i data-lucide="message-square-text" class="w-5 h-5 text-amber-400"></i>
+          <span>Justifier mon retard</span>
+        </h3>
+        <p id="justif-retard-contexte" class="text-[11px] text-slate-400 mt-1 font-mono"></p>
+      </div>
+
+      <div id="justif-retard-precedente" class="hidden"></div>
+
+      <div>
+        <label class="text-[11px] text-slate-400 font-semibold block mb-1.5">
+          Expliquez ce qui s'est passé
+        </label>
+        <textarea id="justif-retard-texte" rows="4" maxlength="1000"
+          placeholder="Exemple : panne du taxi sur le boulevard, immobilisé 40 minutes."
+          class="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-xs text-slate-100 focus:outline-none focus:border-amber-500 resize-none"></textarea>
+        <p class="text-[10px] text-slate-500 mt-1">
+          <span id="justif-retard-compteur">0</span> / 1000 caractères — 10 minimum.
+        </p>
+      </div>
+
+      <div id="justif-retard-resultat" class="hidden"></div>
+
+      <button id="justif-retard-envoyer" onclick="soumettreJustificationRetard()"
+        class="w-full min-h-tap py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-extrabold text-xs tracking-wider transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+        <i data-lucide="send" class="w-4 h-4"></i>
+        <span>TRANSMETTRE AU SERVICE RH</span>
+      </button>
+
+      <p class="text-[10px] text-slate-500 leading-relaxed text-center">
+        Votre explication est transmise telle quelle au service RH, avec l'heure exacte
+        de votre pointage. Vous pourrez la corriger tant qu'elle n'a pas été acceptée.
+      </p>
+    </div>
+  </div>
+
+  <!--
     ENRÔLEMENT DU VISAGE DE RÉFÉRENCE
 
     Trois prises, moyennées côté navigateur, transmises sous forme de 128
@@ -3195,7 +3245,7 @@
                   <th class="pb-2 font-semibold">Date</th>
                   <th class="pb-2 font-semibold">Heure Réelle Pointée</th>
                   <th class="pb-2 font-semibold">Retard (min)</th>
-                  <th class="pb-2 font-semibold">Motif / Justification</th>
+                  <th class="pb-2 font-semibold">Ma justification</th>
                   <th class="pb-2 font-semibold text-right">Statut Validation RH</th>
                 </tr>
               </thead>

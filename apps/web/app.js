@@ -1394,22 +1394,54 @@ function renderLatenessTable() {
     return;
   }
 
-  tbody.innerHTML = latenesses.map(lat => `
-    <tr class="hover:bg-slate-800/40 transition">
-      <td class="p-3 font-bold text-white">${escapeHtml(lat.employee || 'Employé')}</td>
-      <td class="p-3 text-slate-400">${escapeHtml(partsAbidjan(lat.serverTime) ? partsAbidjan(lat.serverTime).dateFr : (lat.date || ''))}</td>
-      <td class="p-3 text-slate-400 font-mono">${escapeHtml(heurePrevueDepuisRetard(lat) || '—')}</td>
-      <td class="p-3 text-orange-400 font-bold font-mono">${escapeHtml(partsAbidjan(lat.serverTime) ? partsAbidjan(lat.serverTime).hm : '--:--')}</td>
-      <td class="p-3 text-orange-400 font-bold">+${escapeHtml(String(lat.lateMinutes || 0))} min</td>
-      <td class="p-3 text-slate-300">${lat.reviewNote ? escapeHtml(lat.reviewNote) : '<span class="text-slate-600">— non justifié</span>'}</td>
-      <td class="p-3"><span class="${statutValidationRetard(lat).classe} text-[10px] font-mono">${escapeHtml(statutValidationRetard(lat).texte)}</span></td>
-      <td class="p-3 text-right">
-        <button onclick="openAttendanceDetail('${escapeHtml(String(lat.id))}')" class="px-2 py-1 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/30 text-[10px] font-mono transition">
-          🔍 Caractéristiques
-        </button>
+  const peut = peutConfigurerPointage();
+
+  tbody.innerHTML = latenesses.map((lat) => {
+    const t = partsAbidjan(lat.serverTime);
+    const etat = etatJustification(lat);
+    const id = escapeHtml(String(lat.id));
+
+    // Trancher n'a de sens que sur une justification déposée. Tant qu'il n'y
+    // en a pas, on n'offre que la consultation du pointage.
+    const actions = etat.code === 'PENDING' && peut
+      ? `<button onclick="deciderRetard('${id}', true)"
+           class="px-2 py-1 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 text-[10px] font-mono transition">
+           Justifié
+         </button>
+         <button onclick="deciderRetard('${id}', false)"
+           class="px-2 py-1 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30 text-[10px] font-mono transition">
+           Refuser
+         </button>`
+      : '';
+
+    return `
+    <tr class="hover:bg-slate-800/40 transition align-top">
+      <td class="p-3 font-bold text-white whitespace-nowrap">${escapeHtml(lat.employee || 'Employé')}</td>
+      <td class="p-3 text-slate-400 whitespace-nowrap">${escapeHtml(t ? t.dateFr : (lat.date || ''))}</td>
+      <td class="p-3 text-slate-400 font-mono whitespace-nowrap">${escapeHtml(heurePrevueDepuisRetard(lat) || '—')}</td>
+      <td class="p-3 text-orange-400 font-bold font-mono whitespace-nowrap">${escapeHtml(t ? t.hm : '--:--')}</td>
+      <td class="p-3 text-orange-400 font-bold whitespace-nowrap">+${escapeHtml(String(lat.lateMinutes || 0))} min</td>
+      <td class="p-3 text-slate-300 max-w-[18rem]">
+        <div class="whitespace-pre-line break-words">${
+          lat.lateJustification
+            ? escapeHtml(lat.lateJustification)
+            : '<span class="text-slate-600">— aucune justification déposée</span>'
+        }</div>
+        ${lat.lateReviewComment
+          ? `<div class="text-[10px] text-rose-300/90 mt-1 whitespace-pre-line break-words">Motif du refus : ${escapeHtml(lat.lateReviewComment)}</div>`
+          : ''}
       </td>
-    </tr>
-  `).join('');
+      <td class="p-3"><span class="${etat.badge} px-2 py-0.5 rounded text-[10px]">${escapeHtml(etat.texte)}</span></td>
+      <td class="p-3 text-right whitespace-nowrap">
+        <div class="inline-flex items-center gap-1.5">
+          ${actions}
+          <button onclick="openAttendanceDetail('${id}')" class="px-2 py-1 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/30 text-[10px] font-mono transition">
+            🔍
+          </button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 // Geofence Interactive Management (Directement connecté à Supabase DB & Sites Entreprise)
@@ -7923,6 +7955,13 @@ async function loadSupabaseData() {
             toleranceAtPunch: a.tolerance_at_punch,
             reviewNote: a.review_note || null,
             reviewedAt: a.reviewed_at || null,
+
+            // Justification du retard (migration 013).
+            lateJustification: a.late_justification || null,
+            lateJustifiedAt: a.late_justified_at || null,
+            lateStatus: a.late_status || null,
+            lateReviewedAt: a.late_reviewed_at || null,
+            lateReviewComment: a.late_review_comment || null,
             maxAccuracyAtPunch: a.max_accuracy_m_at_punch,
             selfiePath: a.selfie_path || null,
             faceVerified: a.face_verified,
@@ -10678,17 +10717,6 @@ function retardsEmploye() {
     .sort((x, y) => new Date(y.serverTime) - new Date(x.serverTime));
 }
 
-/** Ce que le service RH a fait — ou pas encore — de ce retard. */
-function statutValidationRetard(a) {
-  if (a.decision === 'PENDING_REVIEW') {
-    return { texte: 'En attente de vérification', classe: 'text-amber-400' };
-  }
-  if (a.reviewedAt) {
-    return { texte: 'Vérifié par le RH', classe: 'text-emerald-400' };
-  }
-  return { texte: 'Transmis au RH', classe: 'text-cyan-400' };
-}
-
 /** Tableau « Mes Retards Enregistrés » du Dashboard Employé. */
 function renderEmployeeLateness() {
   const corps = document.getElementById('emp-lateness-table-body');
@@ -10709,27 +10737,52 @@ function renderEmployeeLateness() {
   corps.innerHTML = retards.map((a) => {
     const t = partsAbidjan(a.serverTime);
     const prevue = heurePrevueDepuisRetard(a);
-    const statut = statutValidationRetard(a);
+    const etat = etatJustification(a);
+    const id = escapeHtml(String(a.id));
 
-    // Aucun motif n'est inventé : la saisie d'une justification par l'employé
-    // n'existe pas encore. On montre la note du RH quand il en a écrit une,
-    // et un tiret sinon — plutôt qu'un prétexte plausible et faux.
-    const motif = a.reviewNote
-      ? escapeHtml(a.reviewNote)
+    // Le bouton se trouve sur la MÊME ligne que le retard : c'est ce retard-là
+    // que l'on justifie, et aucun autre.
+    const bouton = etat.code === 'ACCEPTED'
+      ? ''
+      : `<button onclick="ouvrirJustificationRetard('${id}')"
+           class="min-h-tap px-2.5 py-1.5 rounded-lg font-bold text-[10px] transition shrink-0 ${
+             etat.code === 'REJECTED'
+               ? 'bg-rose-500/15 text-rose-300 border border-rose-500/40 hover:bg-rose-500/25'
+               : etat.code === 'PENDING'
+                 ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                 : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40'
+           }">
+           ${etat.code === 'PENDING' ? 'MODIFIER' : etat.code === 'REJECTED' ? 'CORRIGER' : 'JUSTIFIER'}
+         </button>`;
+
+    const texte = a.lateJustification
+      ? `<span class="text-slate-300">${escapeHtml(a.lateJustification)}</span>`
       : '<span class="text-slate-600">— non justifié</span>';
 
     return `
-      <tr class="hover:bg-slate-800/30 transition">
-        <td class="py-2.5 font-bold text-white">${escapeHtml(t ? t.dateFr : '')}</td>
-        <td class="py-2.5 text-amber-400 font-bold">
+      <tr class="hover:bg-slate-800/30 transition align-top">
+        <td class="py-2.5 font-bold text-white whitespace-nowrap">${escapeHtml(t ? t.dateFr : '')}</td>
+        <td class="py-2.5 text-amber-400 font-bold whitespace-nowrap">
           ${escapeHtml(t ? t.hm : '--:--')}
           ${prevue ? `<span class="text-slate-500 font-normal"> (prévu ${escapeHtml(prevue)})</span>` : ''}
         </td>
-        <td class="py-2.5 text-rose-400 font-bold">+${escapeHtml(String(a.lateMinutes || 0))} min</td>
-        <td class="py-2.5 text-slate-300">${motif}</td>
-        <td class="py-2.5 text-right font-bold ${statut.classe}">${escapeHtml(statut.texte)}</td>
+        <td class="py-2.5 text-rose-400 font-bold whitespace-nowrap">
+          <div class="flex items-center gap-2">
+            <span>+${escapeHtml(String(a.lateMinutes || 0))} min</span>
+            ${bouton}
+          </div>
+        </td>
+        <td class="py-2.5 max-w-[16rem]">
+          <div class="whitespace-pre-line break-words">${texte}</div>
+          ${a.lateReviewComment
+            ? `<div class="text-[10px] text-rose-300/90 mt-1 whitespace-pre-line break-words">RH : ${escapeHtml(a.lateReviewComment)}</div>`
+            : ''}
+        </td>
+        <td class="py-2.5 text-right font-bold ${etat.classe} whitespace-nowrap">${escapeHtml(etat.texte)}</td>
       </tr>`;
   }).join('');
+
+  if (window.lucide) lucide.createIcons();
 }
 
 
@@ -10869,4 +10922,247 @@ function demarrerVeilleMiseAJour() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') verifierMiseAJour();
   });
+}
+
+
+// =============================================================================
+//  JUSTIFICATION D'UN RETARD
+//
+//  L'employe explique, le service RH tranche. Les deux ecritures passent par
+//  des fonctions serveur : `attendances` ne porte qu'une politique de LECTURE,
+//  et c'est voulu — un pointage ne se modifie pas. Une justification est une
+//  annotation posee a cote, pas une correction de l'heure.
+// =============================================================================
+
+const justifRetard = { attendanceId: null, envoi: false };
+
+/** Libelle et couleur de l'etat d'une justification. */
+function etatJustification(a) {
+  if (!a || !a.lateStatus) {
+    return { code: null, texte: 'Non justifié', classe: 'text-slate-500', badge: 'badge-info' };
+  }
+  if (a.lateStatus === 'PENDING') {
+    return { code: 'PENDING', texte: 'En attente du RH', classe: 'text-amber-400', badge: 'badge-alert' };
+  }
+  if (a.lateStatus === 'ACCEPTED') {
+    return { code: 'ACCEPTED', texte: 'Retard justifié', classe: 'text-emerald-400', badge: 'badge-verified' };
+  }
+  return { code: 'REJECTED', texte: 'Justification refusée', classe: 'text-rose-400', badge: 'badge-danger' };
+}
+
+function ouvrirJustificationRetard(id) {
+  const att = (state.attendances || []).find((a) => String(a.id) === String(id));
+  if (!att) {
+    return showToast('Pointage introuvable',
+      'Ce retard n’est plus disponible. Actualisez la page.', 'info');
+  }
+
+  const etat = etatJustification(att);
+  if (etat.code === 'ACCEPTED') {
+    return showToast('Déjà accepté',
+      'Votre service RH a accepté cette justification : elle ne peut plus être modifiée.', 'info', 7000);
+  }
+
+  justifRetard.attendanceId = att.id;
+  justifRetard.envoi = false;
+
+  const modal = document.getElementById('modal-justif-retard');
+  if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+
+  const t = partsAbidjan(att.serverTime);
+  const prevue = heurePrevueDepuisRetard(att);
+  const contexte = document.getElementById('justif-retard-contexte');
+  if (contexte) {
+    contexte.innerText =
+      `${t ? t.dateFr : ''} — pointé à ${t ? t.hm : '--:--'}` +
+      (prevue ? ` au lieu de ${prevue}` : '') +
+      ` (+${att.lateMinutes || 0} min)`;
+  }
+
+  // Un refus doit rester visible pendant la reecriture : sans le motif sous
+  // les yeux, l'employe renvoie souvent le meme texte.
+  const precedente = document.getElementById('justif-retard-precedente');
+  if (precedente) {
+    if (etat.code === 'REJECTED') {
+      precedente.classList.remove('hidden');
+      precedente.className = 'rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 space-y-1';
+      precedente.innerHTML =
+        '<p class="text-[11px] font-extrabold text-rose-300">Justification précédente refusée</p>' +
+        (att.lateReviewComment
+          ? `<p class="text-[11px] text-slate-300 leading-relaxed">Motif du RH : ${escapeHtml(att.lateReviewComment)}</p>`
+          : '<p class="text-[11px] text-slate-400">Aucun motif n’a été précisé par le service RH.</p>');
+    } else {
+      precedente.classList.add('hidden');
+      precedente.innerHTML = '';
+    }
+  }
+
+  const zone = document.getElementById('justif-retard-texte');
+  if (zone) {
+    zone.value = att.lateJustification || '';
+    zone.oninput = majCompteurJustification;
+  }
+  majCompteurJustification();
+
+  setNodeHidden('justif-retard-resultat', true);
+  const bouton = document.getElementById('justif-retard-envoyer');
+  if (bouton) {
+    bouton.disabled = false;
+    bouton.innerHTML = '<i data-lucide="send" class="w-4 h-4"></i><span>TRANSMETTRE AU SERVICE RH</span>';
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+function majCompteurJustification() {
+  const zone = document.getElementById('justif-retard-texte');
+  const compteur = document.getElementById('justif-retard-compteur');
+  if (compteur && zone) compteur.innerText = String(zone.value.trim().length);
+}
+
+function fermerJustificationRetard() {
+  justifRetard.attendanceId = null;
+  const modal = document.getElementById('modal-justif-retard');
+  if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+}
+
+function afficherResultatJustification(type, titre, corps) {
+  const box = document.getElementById('justif-retard-resultat');
+  if (!box) return;
+  setNodeHidden('justif-retard-resultat', false);
+
+  const styles = {
+    succes: ['border-emerald-500/40 bg-emerald-500/10', 'text-emerald-300'],
+    echec: ['border-red-500/40 bg-red-500/10', 'text-red-300'],
+  };
+  const [cadre, couleur] = styles[type] || styles.echec;
+
+  box.className = `rounded-xl border p-3.5 space-y-1 ${cadre}`;
+  box.innerHTML =
+    `<p class="text-xs font-extrabold ${couleur}">${escapeHtml(titre)}</p>` +
+    `<p class="text-[11px] text-slate-300 leading-relaxed whitespace-pre-line">${escapeHtml(corps)}</p>`;
+}
+
+async function soumettreJustificationRetard() {
+  if (justifRetard.envoi || !justifRetard.attendanceId) return;
+
+  const zone = document.getElementById('justif-retard-texte');
+  const texte = zone ? zone.value.trim() : '';
+
+  // Le serveur revalide ces bornes : ce contrôle ne fait qu'éviter un
+  // aller-retour réseau pour rien.
+  if (texte.length < 10) {
+    return afficherResultatJustification('echec', 'Explication trop courte',
+      'Expliquez votre retard en quelques mots — 10 caractères minimum.');
+  }
+
+  justifRetard.envoi = true;
+  const bouton = document.getElementById('justif-retard-envoyer');
+  if (bouton) {
+    bouton.disabled = true;
+    bouton.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>ENVOI…</span>';
+    if (window.lucide) lucide.createIcons();
+  }
+
+  const session = await assurerSessionSupabase();
+  if (!session.ok) {
+    justifRetard.envoi = false;
+    return signalerSessionPerdue(session.raison);
+  }
+
+  try {
+    const { data, error } = await supabaseClient.rpc('justify_lateness', {
+      p_attendance_id: justifRetard.attendanceId,
+      p_reason: texte,
+    });
+    if (error) throw error;
+
+    if (!data || data.ok !== true) {
+      justifRetard.envoi = false;
+      if (bouton) {
+        bouton.disabled = false;
+        bouton.innerHTML = '<i data-lucide="send" class="w-4 h-4"></i><span>TRANSMETTRE AU SERVICE RH</span>';
+        if (window.lucide) lucide.createIcons();
+      }
+      return afficherResultatJustification('echec', 'Envoi refusé',
+        (data && data.message) || 'Le serveur a refusé cette justification.');
+    }
+
+    showToast('Justification transmise',
+      'Votre service RH la verra dans son cockpit.', 'success');
+    fermerJustificationRetard();
+
+    await loadSupabaseData();
+    renderEmployeeDashboard();
+    renderDashboard();
+  } catch (err) {
+    console.error('[Retard] Justification refusée :', err);
+    justifRetard.envoi = false;
+    if (bouton) {
+      bouton.disabled = false;
+      bouton.innerHTML = '<i data-lucide="send" class="w-4 h-4"></i><span>TRANSMETTRE AU SERVICE RH</span>';
+      if (window.lucide) lucide.createIcons();
+    }
+
+    const msg = String((err && err.message) || '');
+    const absente = /could not find the function|does not exist|schema cache/i.test(msg);
+    afficherResultatJustification('echec',
+      absente ? 'Fonction non installée' : 'Envoi impossible',
+      absente
+        ? "À transmettre au service technique : exécuter services/supabase_migration_013_lateness_justification.sql."
+        : `Le serveur a refusé l'envoi.\n\nDétail technique : ${msg || 'erreur inconnue'}`);
+  }
+}
+
+
+// =============================================================================
+//  COCKPIT RH — decision sur une justification
+// =============================================================================
+
+async function deciderRetard(id, accepter) {
+  if (!peutConfigurerPointage()) {
+    return showToast('Action non autorisée',
+      'Seuls le CEO et le service RH peuvent valider un retard.', 'info');
+  }
+
+  const att = (state.attendances || []).find((a) => String(a.id) === String(id));
+  const qui = att ? att.employee : 'cet employé';
+
+  let commentaire = null;
+  if (!accepter) {
+    // Un refus sans motif laisse l'employe sans rien a corriger.
+    commentaire = prompt(
+      `Refuser la justification de ${qui}.\n\n` +
+      'Indiquez le motif du refus : il sera affiché à l’employé.'
+    );
+    if (commentaire === null) return;
+    if (!commentaire.trim()) {
+      return showToast('Motif requis',
+        'Un refus sans motif ne dit pas à l’employé quoi corriger.', 'info');
+    }
+  }
+
+  const session = await assurerSessionSupabase();
+  if (!session.ok) return signalerSessionPerdue(session.raison);
+
+  try {
+    const { data, error } = await supabaseClient.rpc('decide_lateness', {
+      p_attendance_id: id,
+      p_accept: !!accepter,
+      p_comment: commentaire,
+    });
+    if (error) throw error;
+
+    if (!data || data.ok !== true) {
+      return showToast('Décision refusée',
+        (data && data.message) || 'Le serveur a refusé cette décision.', 'danger', 9000);
+    }
+
+    showToast(accepter ? 'Retard justifié' : 'Justification refusée', data.message, 'success');
+    await loadSupabaseData();
+    renderDashboard();
+  } catch (err) {
+    console.error('[Retard] Décision impossible :', err);
+    showToast('Décision impossible',
+      traduireErreurEcriture(err, 'la validation de ce retard'), 'danger', 9000);
+  }
 }
