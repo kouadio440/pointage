@@ -15,6 +15,11 @@ DROP FUNCTION IF EXISTS public.record_attendance(
     VARCHAR, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION,
     TEXT, NUMERIC, TEXT, TIMESTAMP WITH TIME ZONE, TEXT);
 
+DROP FUNCTION IF EXISTS public.record_attendance(
+    VARCHAR, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION,
+    TEXT, NUMERIC, TEXT, TIMESTAMP WITH TIME ZONE, TEXT,
+    DOUBLE PRECISION[], NUMERIC);
+
 CREATE OR REPLACE FUNCTION public.record_attendance(
     p_punch_type      VARCHAR,
     p_latitude        DOUBLE PRECISION,
@@ -26,7 +31,9 @@ CREATE OR REPLACE FUNCTION public.record_attendance(
     p_client_time     TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     p_qr_token        TEXT DEFAULT NULL,
     p_face_descriptor DOUBLE PRECISION[] DEFAULT NULL,
-    p_face_motion     NUMERIC DEFAULT NULL
+    p_face_motion     NUMERIC DEFAULT NULL,
+    p_challenge_id    UUID DEFAULT NULL,
+    p_liveness        JSONB DEFAULT NULL
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -61,6 +68,7 @@ DECLARE
     v_qr           JSONB;
     v_method       VARCHAR(50);
     v_review       TEXT := NULL;
+    v_live         JSONB;
 BEGIN
     -- 1. Identite ---------------------------------------------------------------
     IF v_uid IS NULL THEN
@@ -190,10 +198,34 @@ BEGIN
             ELSE
                 v_face_ok := TRUE;
 
-                -- Signal de mouvement. Une photo tenue devant l'objectif produit
-                -- des prises quasi identiques. Ce signal ne BLOQUE pas : il n'est
-                -- pas un test de vivacite, seulement un motif de revue humaine.
-                IF p_face_motion IS NOT NULL
+                -- ---------------------------------------------------------------
+                -- VIVACITE : le visage correspond, mais est-il VIVANT ?
+                --
+                -- Sans ce controle, une photographie du bon visage passe. C est
+                -- ici, et seulement ici, que la photo brandie est arretee.
+                -- Voir la migration 011 pour le detail des mesures.
+                -- ---------------------------------------------------------------
+                IF COALESCE(v_company.face_liveness_enabled, TRUE) THEN
+                    IF p_challenge_id IS NULL THEN
+                        v_face_ok := NULL;
+                        v_code := 'LIVENESS_REQUIRED';
+                        v_detail := 'Le contrôle anti-photo n''a pas été effectué.';
+                    ELSE
+                        v_live := public.validate_liveness(
+                            p_challenge_id, v_user.id, p_liveness,
+                            v_tpl.descriptor, v_max_dist);
+
+                        IF NOT (v_live->>'ok')::boolean THEN
+                            v_face_ok := NULL;
+                            v_code := v_live->>'code';
+                            v_detail := v_live->>'detail';
+                        END IF;
+                    END IF;
+                END IF;
+
+                -- Signal de mouvement, conserve comme motif de revue humaine.
+                -- Il n a jamais ete un test de vivacite ; celui-ci est au-dessus.
+                IF v_code IS NULL AND p_face_motion IS NOT NULL
                    AND p_face_motion <= COALESCE(v_company.face_min_motion, 0) THEN
                     v_decision := 'PENDING_REVIEW';
                     v_review := 'Mouvement du visage très faible entre les prises : vérification humaine recommandée.';
@@ -347,4 +379,4 @@ $$;
 GRANT EXECUTE ON FUNCTION public.record_attendance(
     VARCHAR, DOUBLE PRECISION, DOUBLE PRECISION, DOUBLE PRECISION,
     TEXT, NUMERIC, TEXT, TIMESTAMP WITH TIME ZONE, TEXT,
-    DOUBLE PRECISION[], NUMERIC) TO authenticated;
+    DOUBLE PRECISION[], NUMERIC, UUID, JSONB) TO authenticated;

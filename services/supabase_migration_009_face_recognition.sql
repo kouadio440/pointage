@@ -201,7 +201,11 @@ BEGIN
         'model_version', v_t.model_version,
         'quality',       v_t.quality,
         'required',      COALESCE(v_c.face_verification_enabled, FALSE),
-        'max_distance',  COALESCE(v_c.face_max_distance, 0.550)
+        'max_distance',  COALESCE(v_c.face_max_distance, 0.550),
+        -- Le client doit savoir s'il faut demander un défi de vivacité AVANT
+        -- de pointer : sans défi, record_attendance refuse LIVENESS_REQUIRED.
+        'liveness',      COALESCE(v_c.face_verification_enabled, FALSE)
+                         AND COALESCE(v_c.face_liveness_enabled, TRUE)
     );
 END;
 $$;

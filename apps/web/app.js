@@ -888,8 +888,19 @@ function renderDashboard() {
   const attendances = state.attendances || [];
   const employees = state.employees || [];
 
-  const presentsCount = attendances.filter(a => a.decision === 'ACCEPTED' || a.status === 'Présent' || a.status === 'on_time').length;
-  const retardsCount = attendances.filter(a => a.status === 'Retard' || a.status === 'late').length;
+  // Les KPI décrivent LA JOURNÉE, pas tout l'historique. Sans ce filtre, le
+  // compteur « présents » dépassait l'effectif au bout de quelques semaines.
+  const ceJour = aujourdhuiAbidjan();
+  const duJour = attendances.filter((a) => {
+    const t = partsAbidjan(a.serverTime);
+    return t && t.ymd === ceJour && a.decision !== 'REJECTED';
+  });
+  const personnesDuJour = new Set(duJour.map((a) => a.userId || a.userEmail || a.employee));
+
+  const presentsCount = personnesDuJour.size;
+  const retardsCount = new Set(
+    duJour.filter((a) => a.status === 'Retard').map((a) => a.userId || a.employee)
+  ).size;
   const congesCount = (state.leaves || []).filter(l => l.status === 'Approuvé').length;
 
   const kpiTotalEl = document.getElementById('kpi-total');
@@ -924,54 +935,11 @@ function renderDashboard() {
     alertesEl.innerText = String(attendances.filter((a) => a.decision === 'REJECTED').length);
   }
 
-  // Render Live Feed Table avec les vrais pointages Supabase
-  const tableBody = document.getElementById('live-punch-table');
-  if (tableBody) {
-    if (attendances.length === 0) {
-      tableBody.innerHTML = `
-        <tr>
-          <td colspan="5" class="p-6 text-center text-slate-500 text-xs font-mono">
-            Aucun pointage enregistré pour cette entreprise. Les nouveaux pointages s'afficheront ici en temps réel.
-          </td>
-        </tr>
-      `;
-    } else {
-      tableBody.innerHTML = attendances.map(att => {
-        let statusBadge = '';
-        if (att.decision === 'ACCEPTED' || att.status === 'Présent' || att.status === 'on_time') {
-          statusBadge = '<span class="badge-verified px-2 py-0.5 rounded text-[10px]">Présent (À l\'heure)</span>';
-        } else if (att.status === 'Retard' || att.status === 'late') {
-          statusBadge = '<span class="badge-alert px-2 py-0.5 rounded text-[10px]">Retard</span>';
-        } else if (att.decision === 'REJECTED') {
-          statusBadge = '<span class="badge-danger px-2 py-0.5 rounded text-[10px]">Refusé</span>';
-        } else {
-          statusBadge = `<span class="badge-info px-2 py-0.5 rounded text-[10px]">${escapeHtml(att.status || 'Enregistré')}</span>`;
-        }
-
-        const distanceDisplay = att.distanceFromSiteM != null ? `${Math.round(att.distanceFromSiteM)} m` : '0 m';
-
-        return `
-          <tr onclick="openAttendanceDetail('${escapeHtml(String(att.id))}')" class="hover:bg-slate-800/60 transition cursor-pointer group" title="Cliquer pour voir toutes les caractéristiques du pointage">
-            <td class="p-2.5 flex items-center space-x-2">
-              <div class="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center font-bold text-[10px]">
-                ${escapeHtml((att.employee || 'E').substring(0, 2).toUpperCase())}
-              </div>
-              <span class="font-bold text-white group-hover:text-cyan-400 transition">${escapeHtml(att.employee || 'Employé')}</span>
-            </td>
-            <td class="p-2.5 font-mono text-slate-300">${escapeHtml(att.clockIn || '--:--')}</td>
-            <td class="p-2.5 text-slate-400 font-mono text-[11px]">${escapeHtml(att.method || att.methodUsed || 'GPS Supabase')}</td>
-            <td class="p-2.5 text-emerald-400 font-mono">${escapeHtml(distanceDisplay)}</td>
-            <td class="p-2.5 flex items-center justify-between">
-              ${statusBadge}
-              <button type="button" class="ml-2 px-2 py-0.5 rounded bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/20 text-[10px] font-mono transition">
-                🔍 Caractéristiques
-              </button>
-            </td>
-          </tr>
-        `;
-      }).join('');
-    }
-  }
+  // Journal filtrable + jauge de présence : deux modules dédiés, qui lisent
+  // tous deux `state.attendances`. Ils étaient auparavant rendus ici, l'un en
+  // dur dans le HTML (la jauge), l'autre sans dates ni filtres (le journal).
+  renderPresenceGauge();
+  renderPunchLog();
 
   renderLeaveRequestsTable();
   renderOvertimeTable();
@@ -2267,6 +2235,8 @@ const empPunch = {
   // seul compare cette empreinte à la référence : rien ici n'est un verdict.
   faceDescriptor: null,
   faceMotion: null,
+  challengeId: null,
+  liveness: null,
 };
 
 /**
@@ -2415,6 +2385,8 @@ function openEmployeePunch(type) {
   empPunch.selfieBlob = null;
   empPunch.faceDescriptor = null;
   empPunch.faceMotion = null;
+  empPunch.challengeId = null;
+  empPunch.liveness = null;
 
   const modal = document.getElementById('modal-emp-punch');
   if (modal) {
@@ -2698,8 +2670,23 @@ async function captureEmployeePunch() {
     canvas.toBlob(resolve, 'image/jpeg', 0.82)
   );
 
-  // --- Empreinte du visage, tant que la caméra tourne encore ------------------
+  // --- Identité, tant que la caméra tourne encore -----------------------------
   if (await exigenceVisage()) {
+    // Contrôle anti-photo d'abord : inutile de comparer un visage si l'on ne
+    // sait pas encore s'il est vivant.
+    if (faceStatus && faceStatus.liveness) {
+      const vif = await executerControleVivacite(video);
+      if (!vif.ok) {
+        stopEmployeePunchCamera();
+        setNodeHidden('emp-punch-frame', true);
+        setNodeHidden('emp-punch-liveness', true);
+        return renderEmployeePunchFailure(vif.titre, vif.corps);
+      }
+      empPunch.challengeId = vif.challengeId;
+      empPunch.liveness = vif.evidence;
+    }
+    setNodeHidden('emp-punch-liveness', true);
+
     const capture = await capturerEmpreintePointage(video);
     if (!capture.ok) {
       stopEmployeePunchCamera();
@@ -2708,6 +2695,17 @@ async function captureEmployeePunch() {
     }
     empPunch.faceDescriptor = capture.descriptor;
     empPunch.faceMotion = capture.motion;
+
+    // Le selfie conservé comme preuve est repris APRÈS les gestes : celui pris
+    // avant montrerait l'employé en train de lire la consigne, pas de pointer.
+    ctx.drawImage(
+      video,
+      (video.videoWidth - size) / 2, (video.videoHeight - size) / 2, size, size,
+      0, 0, 512, 512
+    );
+    empPunch.selfieBlob = await new Promise((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', 0.82)
+    );
   }
 
   // Aperçu figé : l'employé voit exactement ce qui est transmis.
@@ -2893,6 +2891,8 @@ async function submitEmployeePunch() {
       p_qr_token: null,
       p_face_descriptor: empPunch.faceDescriptor,
       p_face_motion: empPunch.faceMotion,
+      p_challenge_id: empPunch.challengeId,
+      p_liveness: empPunch.liveness,
     });
 
     if (error) throw error;
@@ -3019,6 +3019,31 @@ function renderEmployeePunchRejection(verdict, steps) {
       body:
         "L'empreinte du visage n'est pas parvenue au serveur. Vérifiez que la caméra " +
         'est autorisée, puis réessayez.',
+    },
+    LIVENESS_REQUIRED: {
+      title: 'Contrôle anti-photo obligatoire',
+      body:
+        "Votre entreprise vérifie que le visage présenté est bien vivant. Le contrôle " +
+        "n'a pas pu être effectué sur cet appareil.\n\n" +
+        'Réessayez. Si le problème persiste, signalez-le à votre service RH.',
+    },
+    LIVENESS_FAILED: {
+      title: 'Gestes non reconnus',
+      body:
+        (verdict && verdict.message) ||
+        "Les gestes demandés n'ont pas été effectués correctement.",
+    },
+    LIVENESS_EXPIRED: {
+      title: 'Contrôle expiré',
+      body: 'Vous avez mis trop de temps. Relancez le pointage et suivez les consignes à l’écran.',
+    },
+    LIVENESS_REPLAY: {
+      title: 'Contrôle déjà utilisé',
+      body: 'Ce contrôle a déjà servi à un pointage. Relancez le pointage depuis le début.',
+    },
+    LIVENESS_NO_CHALLENGE: {
+      title: 'Contrôle anti-photo introuvable',
+      body: 'Le contrôle a expiré ou a été interrompu. Relancez le pointage.',
     },
     FACE_MODEL_MISMATCH: {
       title: 'Visage à réenregistrer',
@@ -3493,6 +3518,8 @@ async function pointerAvecJetonQr(token) {
       p_qr_token: token,
       p_face_descriptor: descripteur,
       p_face_motion: mouvement,
+      p_challenge_id: defiId,
+      p_liveness: preuvesVie,
     });
     if (error) throw error;
 
@@ -3617,6 +3644,27 @@ function afficherRefusQr(data) {
       corps:
         'Le modèle de reconnaissance a été mis à jour. Réenregistrez votre visage de ' +
         'référence depuis votre tableau de bord.',
+    },
+    LIVENESS_FAILED: {
+      titre: 'Gestes non reconnus',
+      corps: (data && data.message) ||
+        "Les gestes demandés n'ont pas été effectués correctement. Scannez à nouveau.",
+    },
+    LIVENESS_REQUIRED: {
+      titre: 'Contrôle anti-photo obligatoire',
+      corps: "Le contrôle n'a pas pu être effectué sur cet appareil. Scannez à nouveau.",
+    },
+    LIVENESS_EXPIRED: {
+      titre: 'Contrôle expiré',
+      corps: 'Vous avez mis trop de temps. Scannez à nouveau et suivez les consignes.',
+    },
+    LIVENESS_REPLAY: {
+      titre: 'Contrôle déjà utilisé',
+      corps: 'Ce contrôle a déjà servi à un pointage. Scannez à nouveau.',
+    },
+    LIVENESS_NO_CHALLENGE: {
+      titre: 'Contrôle introuvable',
+      corps: 'Le contrôle a expiré ou a été interrompu. Scannez à nouveau.',
     },
     OUTSIDE_GEOFENCE: {
       titre: 'Pointage impossible — hors de la zone',
@@ -4009,6 +4057,8 @@ async function envoyerPointageQr(token) {
   // Identité : exigée par l'entreprise, elle s'applique aussi au QR.
   let descripteur = null;
   let mouvement = null;
+  let defiId = null;
+  let preuvesVie = null;
   if (await exigenceVisage()) {
     const visage = await confirmerIdentitePourQr();
     if (!visage.ok) {
@@ -4017,6 +4067,8 @@ async function envoyerPointageQr(token) {
     }
     descripteur = visage.descriptor;
     mouvement = visage.motion;
+    defiId = visage.challengeId;
+    preuvesVie = visage.evidence;
   }
 
   const c = empPunch.position.coords;
@@ -4034,6 +4086,8 @@ async function envoyerPointageQr(token) {
       p_qr_token: token,
       p_face_descriptor: descripteur,
       p_face_motion: mouvement,
+      p_challenge_id: defiId,
+      p_liveness: preuvesVie,
     });
     if (error) throw error;
 
@@ -7718,8 +7772,12 @@ async function loadSupabaseData() {
     try {
       let attQuery = supabaseClient
         .from('attendances')
-        .select('*, users(full_name, email, registration_number)')
-        .order('created_at', { ascending: false });
+        // La clé étrangère est nommée explicitement. `attendances` en possède
+        // DEUX vers `users` (user_id et reviewed_by_id) : sans cette précision,
+        // PostgREST ne sait pas laquelle joindre, renvoie PGRST201, et TOUTE la
+        // requête échoue — le journal de pointage se vidait pour cette raison.
+        .select('*, users!attendances_user_id_fkey(full_name, email, registration_number)')
+        .order('server_time', { ascending: false });
 
       if (state.currentCompanyId) {
         attQuery = attQuery.eq('company_id', state.currentCompanyId);
@@ -7744,7 +7802,16 @@ async function loadSupabaseData() {
             clockOut: a.clock_out ? new Date(a.clock_out).toLocaleTimeString('fr-FR', { timeZone: 'Africa/Abidjan', hour: '2-digit', minute: '2-digit' }) : '--:--',
             workedDuration: a.worked_duration || '--:--',
             status: a.status === 'on_time' ? 'Présent' : (a.status === 'late' ? 'Retard' : 'Absent'),
-            method: a.method === 'face_id' ? 'Selfie / IA' : (a.method === 'qr_kiosk' ? 'QR Code Kiosque' : 'GPS'),
+
+            // Libellé honnête. « Selfie / IA » était affiché pour TOUT pointage
+            // enregistré en `face_id`, y compris quand aucune reconnaissance
+            // n'avait tourné (face_verified à NULL) : le journal annonçait donc
+            // une vérification d'identité qui n'avait pas eu lieu.
+            method:
+              a.method === 'qr_kiosk' ? 'QR Kiosque'
+              : a.face_verified === true ? 'Visage vérifié'
+              : a.selfie_path ? 'Selfie + GPS'
+              : 'GPS',
 
             // --- Preuves du pointage, telles que décidées par le serveur -----
             // Aucune valeur de repli ici : afficher « 14 m » quand la donnée est
@@ -8598,6 +8665,19 @@ async function confirmerIdentitePourQr() {
   // la detection alors que le visage est bien la.
   await new Promise((r) => setTimeout(r, 700));
 
+  // Contrôle anti-photo, identique au chemin selfie.
+  let defiId = null;
+  let preuvesVie = null;
+  if (faceStatus && faceStatus.liveness) {
+    const vif = await executerControleVivaciteQr(video);
+    if (!vif.ok) {
+      arreterScanQr();
+      return { ok: false, message: vif.message };
+    }
+    defiId = vif.challengeId;
+    preuvesVie = vif.evidence;
+  }
+
   const a = await calculerEmpreinteFaciale(video);
   if (!a.ok) {
     arreterScanQr();
@@ -8616,6 +8696,8 @@ async function confirmerIdentitePourQr() {
     ok: true,
     descriptor: retenue.descriptor,
     motion: motion === null ? null : Math.round(motion * 10000) / 10000,
+    challengeId: defiId,
+    evidence: preuvesVie,
   };
 }
 
@@ -8648,6 +8730,16 @@ function messageRefusQrVisage(code, defaut) {
       "L'empreinte du visage n'est pas parvenue au serveur. Réessayez face à la caméra.",
     FACE_MODEL_MISMATCH:
       'Le modèle de reconnaissance a changé. Réenregistrez votre visage de référence depuis votre tableau de bord.',
+    LIVENESS_REQUIRED:
+      "Le contrôle anti-photo n'a pas pu être effectué. Réessayez le scan.",
+    LIVENESS_FAILED:
+      "Les gestes demandés n'ont pas été effectués correctement. Scannez à nouveau et suivez les consignes.",
+    LIVENESS_EXPIRED:
+      'Le contrôle a expiré. Scannez à nouveau et suivez les consignes sans tarder.',
+    LIVENESS_REPLAY:
+      'Ce contrôle a déjà servi. Scannez à nouveau.',
+    LIVENESS_NO_CHALLENGE:
+      'Le contrôle a été interrompu. Scannez à nouveau.',
   };
   return messages[code] || defaut;
 }
@@ -8696,7 +8788,7 @@ async function renderFaceConfig() {
   const [entRes, effRes] = await Promise.all([
     supabaseClient
       .from('companies')
-      .select('id, face_verification_enabled, face_max_distance, face_min_motion')
+      .select('id, face_verification_enabled, face_max_distance, face_min_motion, face_liveness_enabled')
       .eq('id', state.currentCompanyId)
       .maybeSingle(),
     // On passe explicitement l'entreprise consultée : le rattachement fait foi
@@ -8722,6 +8814,9 @@ async function renderFaceConfig() {
   const active = !!(faceConfig.entreprise && faceConfig.entreprise.face_verification_enabled);
   const seuil = Number((faceConfig.entreprise && faceConfig.entreprise.face_max_distance) || 0.55);
   const revue = Number((faceConfig.entreprise && faceConfig.entreprise.face_min_motion) || 0);
+  // Actif par défaut : une colonne absente ou nulle ne doit pas se lire comme
+  // « contrôle éteint », ce qui rouvrirait silencieusement la faille de la photo.
+  const vivacite = !faceConfig.entreprise || faceConfig.entreprise.face_liveness_enabled !== false;
   const peut = peutConfigurerPointage();
 
   if (etat) {
@@ -8754,6 +8849,30 @@ async function renderFaceConfig() {
     </div>
 
     ${active ? `
+    <div class="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3.5 ${
+      vivacite ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-red-500/50 bg-red-500/10'
+    }">
+      <div class="min-w-0">
+        <p class="text-xs font-bold text-slate-100 flex items-center gap-1.5">
+          <i data-lucide="${vivacite ? 'shield-check' : 'shield-alert'}" class="w-3.5 h-3.5 ${vivacite ? 'text-emerald-400' : 'text-red-400'}"></i>
+          Contrôle anti-photo
+        </p>
+        <p class="text-[11px] leading-relaxed mt-0.5 ${vivacite ? 'text-slate-400' : 'text-red-300'}">
+          ${vivacite
+            ? "Le serveur impose deux gestes tirés au sort (cligner des yeux, tourner la tête, ouvrir la bouche). Une photographie brandie devant la caméra est refusée."
+            : "DÉSACTIVÉ : une simple photographie du visage suffit à pointer. Ne laissez ce réglage éteint que le temps de régler un problème d'appareil."}
+        </p>
+      </div>
+      <button ${peut ? '' : 'disabled'} onclick="basculerVivacite(${!vivacite})"
+        class="min-h-tap px-4 py-2.5 rounded-xl font-extrabold text-[11px] tracking-wider transition shrink-0 disabled:opacity-40 disabled:cursor-not-allowed ${
+          vivacite
+            ? 'bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700'
+            : 'bg-gradient-to-r from-emerald-500 to-teal-600 text-black'
+        }">
+        ${vivacite ? 'DÉSACTIVER' : 'ACTIVER'}
+      </button>
+    </div>
+
     <div class="space-y-2">
       <p class="text-[11px] font-bold text-slate-300">Niveau d'exigence</p>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -8919,4 +9038,769 @@ async function definirRevueMouvement(valeur) {
     showToast('Modification impossible',
       traduireErreurEcriture(err, 'la modification de ce réglage'), 'danger', 8000);
   }
+}
+
+
+// =============================================================================
+//  JOURNAL DE POINTAGE — Cockpit RH
+//
+//  Toutes les valeurs proviennent de `state.attendances`, c'est-à-dire de la
+//  table `attendances` de Supabase. Aucun chiffre n'est écrit en dur.
+//
+//  L'heure officielle est celle du SERVEUR (`server_time`), jamais celle du
+//  téléphone. Le fuseau d'affichage est Africa/Abidjan, fixé explicitement :
+//  un RH consultant depuis Paris doit voir les heures ivoiriennes, sinon un
+//  pointage de 08:00 s'afficherait à 10:00 et passerait pour un retard.
+// =============================================================================
+
+/** Nombre maximum de lignes rendues d'un coup. Au-delà, on invite à filtrer. */
+const JOURNAL_MAX_LIGNES = 300;
+
+const journalPointage = { periode: 'all' };
+
+/**
+ * Décompose un horodatage ISO en ses parties, dans le fuseau d'Abidjan.
+ *
+ * On passe par Intl plutôt que par les getters de Date : ces derniers rendent
+ * le fuseau du NAVIGATEUR, ce qui ferait basculer un pointage de fin de
+ * journée sur la date du lendemain pour un utilisateur situé à l'est.
+ *
+ * @returns {{ymd:string, hm:string, hms:string, dateFr:string}|null}
+ */
+function partsAbidjan(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+
+  const p = {};
+  new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Africa/Abidjan',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  })
+    .formatToParts(d)
+    .forEach((x) => { p[x.type] = x.value; });
+
+  // Intl rend « 24 » pour minuit dans certaines implémentations.
+  const hh = p.hour === '24' ? '00' : p.hour;
+
+  return {
+    ymd: `${p.year}-${p.month}-${p.day}`,
+    hm: `${hh}:${p.minute}`,
+    hms: `${hh}:${p.minute}:${p.second}`,
+    dateFr: `${p.day}/${p.month}/${p.year}`,
+  };
+}
+
+/** Date du jour à Abidjan, au format YYYY-MM-DD. */
+function aujourdhuiAbidjan() {
+  return partsAbidjan(new Date().toISOString()).ymd;
+}
+
+/** Décale une date YYYY-MM-DD de n jours, sans dériver de fuseau. */
+function decalerYmd(ymd, jours) {
+  const d = new Date(ymd + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + jours);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Applique une période prédéfinie et remplit les deux champs de date.
+ *
+ * `custom` ne touche pas aux champs : c'est l'utilisateur qui vient de les
+ * saisir. Les autres les renseignent, pour que la plage retenue reste lisible
+ * plutôt que devinée.
+ */
+function definirPeriodeJournal(periode) {
+  journalPointage.periode = periode;
+
+  const from = document.getElementById('punch-log-from');
+  const to = document.getElementById('punch-log-to');
+  const auj = aujourdhuiAbidjan();
+
+  if (periode === 'today') {
+    if (from) from.value = auj;
+    if (to) to.value = auj;
+  } else if (periode === 'yesterday') {
+    const hier = decalerYmd(auj, -1);
+    if (from) from.value = hier;
+    if (to) to.value = hier;
+  } else if (periode === '7d') {
+    if (from) from.value = decalerYmd(auj, -6);
+    if (to) to.value = auj;
+  } else if (periode === 'month') {
+    if (from) from.value = auj.slice(0, 8) + '01';
+    if (to) to.value = auj;
+  } else if (periode === 'all') {
+    if (from) from.value = '';
+    if (to) to.value = '';
+  }
+
+  renderPunchLog();
+}
+
+function majBoutonsPeriode() {
+  document.querySelectorAll('#punch-log-presets .periode-btn').forEach((b) => {
+    const actif = b.dataset.periode === journalPointage.periode;
+    b.className =
+      'periode-btn min-h-tap px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition border ' +
+      (actif
+        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
+        : 'bg-slate-900/60 text-slate-400 border-slate-700 hover:border-slate-600');
+  });
+}
+
+/** Lit les filtres saisis et renvoie les pointages retenus, du plus récent au plus ancien. */
+function filtrerJournalPointage() {
+  const lire = (id) => {
+    const el = document.getElementById(id);
+    return el ? el.value.trim() : '';
+  };
+
+  const du = lire('punch-log-from');
+  const au = lire('punch-log-to');
+  const hDe = lire('punch-log-hfrom');
+  const hA = lire('punch-log-hto');
+  const q = lire('punch-log-search').toLowerCase();
+  const statut = lire('punch-log-status');
+
+  return (state.attendances || [])
+    .map((a) => ({ a, t: partsAbidjan(a.serverTime) }))
+    .filter(({ a, t }) => {
+      if (!t) return false;
+
+      if (du && t.ymd < du) return false;
+      if (au && t.ymd > au) return false;
+      if (hDe && t.hm < hDe) return false;
+      if (hA && t.hm > hA) return false;
+
+      if (q) {
+        const foin = [a.employee, a.matricule, a.userEmail, a.siteName, a.method]
+          .filter(Boolean).join(' ').toLowerCase();
+        if (!foin.includes(q)) return false;
+      }
+
+      if (statut === 'ontime' && !(a.status === 'Présent' && a.decision !== 'PENDING_REVIEW')) return false;
+      if (statut === 'late' && a.status !== 'Retard') return false;
+      if (statut === 'review' && a.decision !== 'PENDING_REVIEW') return false;
+      if (statut === 'checkin' && a.punchType !== 'CHECK_IN') return false;
+      if (statut === 'checkout' && a.punchType !== 'CHECK_OUT') return false;
+
+      return true;
+    })
+    .sort((x, y) => new Date(y.a.serverTime) - new Date(x.a.serverTime));
+}
+
+function renderPunchLog() {
+  majBoutonsPeriode();
+
+  const body = document.getElementById('live-punch-table');
+  const compteur = document.getElementById('punch-log-count');
+  if (!body) return;
+
+  const total = (state.attendances || []).length;
+  const retenus = filtrerJournalPointage();
+
+  if (compteur) {
+    compteur.innerText = total === 0
+      ? '—'
+      : `${retenus.length} / ${total} pointage${total > 1 ? 's' : ''}`;
+  }
+
+  if (retenus.length === 0) {
+    // Deux causes très différentes, deux messages différents : « aucun
+    // pointage » quand un filtre est simplement trop étroit envoie le RH
+    // chercher une panne qui n'existe pas.
+    body.innerHTML = total === 0
+      ? `<tr><td colspan="6" class="p-6 text-center text-slate-500 text-xs font-mono leading-relaxed">
+           Aucun pointage n'a encore été enregistré pour cette entreprise.<br/>
+           Les pointages de vos équipes apparaîtront ici dès le premier badgeage.
+         </td></tr>`
+      : `<tr><td colspan="6" class="p-6 text-center text-slate-500 text-xs font-mono leading-relaxed">
+           Aucun pointage ne correspond à ces filtres.<br/>
+           ${total} pointage${total > 1 ? 's existent' : ' existe'} pour cette entreprise — élargissez la période ou effacez la recherche.
+         </td></tr>`;
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+
+  const affiches = retenus.slice(0, JOURNAL_MAX_LIGNES);
+
+  body.innerHTML = affiches.map(({ a, t }) => {
+    let badge;
+    if (a.decision === 'PENDING_REVIEW') {
+      badge = '<span class="badge-alert px-2 py-0.5 rounded text-[10px]">À vérifier</span>';
+    } else if (a.decision === 'REJECTED') {
+      badge = '<span class="badge-danger px-2 py-0.5 rounded text-[10px]">Refusé</span>';
+    } else if (a.status === 'Retard') {
+      const min = a.lateMinutes ? ` (+${a.lateMinutes} min)` : '';
+      badge = `<span class="badge-alert px-2 py-0.5 rounded text-[10px]">Retard${escapeHtml(min)}</span>`;
+    } else if (a.status === 'Présent') {
+      badge = '<span class="badge-verified px-2 py-0.5 rounded text-[10px]">À l\'heure</span>';
+    } else {
+      badge = `<span class="badge-info px-2 py-0.5 rounded text-[10px]">${escapeHtml(a.status || 'Enregistré')}</span>`;
+    }
+
+    const sens = a.punchType === 'CHECK_OUT'
+      ? '<span class="text-[9px] text-slate-500 uppercase">départ</span>'
+      : '<span class="text-[9px] text-emerald-500/70 uppercase">arrivée</span>';
+
+    // Pas de valeur de repli : afficher « 0 m » quand la distance est absente
+    // ferait croire à un contrôle de géofencing qui n'a pas eu lieu.
+    const distance = a.distanceFromSiteM != null
+      ? `${Math.round(a.distanceFromSiteM)} m`
+      : '<span class="text-slate-600">—</span>';
+
+    return `
+      <tr onclick="openAttendanceDetail('${escapeHtml(String(a.id))}')" class="hover:bg-slate-800/60 transition cursor-pointer group" title="Cliquer pour voir toutes les caractéristiques du pointage">
+        <td class="p-2.5">
+          <div class="flex items-center gap-2">
+            <div class="w-6 h-6 shrink-0 rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center font-bold text-[10px]">
+              ${escapeHtml((a.employee || 'E').substring(0, 2).toUpperCase())}
+            </div>
+            <div class="min-w-0">
+              <div class="font-bold text-white group-hover:text-cyan-400 transition truncate">${escapeHtml(a.employee || 'Employé')}</div>
+              ${a.matricule ? `<div class="text-[9px] text-slate-500">${escapeHtml(a.matricule)}</div>` : ''}
+            </div>
+          </div>
+        </td>
+        <td class="p-2.5 text-slate-300 whitespace-nowrap">${escapeHtml(t.dateFr)}</td>
+        <td class="p-2.5 text-slate-300 whitespace-nowrap">${escapeHtml(t.hms)}<br/>${sens}</td>
+        <td class="p-2.5 text-slate-400 text-[11px]">${escapeHtml(a.method || 'GPS')}</td>
+        <td class="p-2.5 text-emerald-400">${distance}</td>
+        <td class="p-2.5">${badge}</td>
+      </tr>`;
+  }).join('');
+
+  if (retenus.length > JOURNAL_MAX_LIGNES) {
+    body.insertAdjacentHTML('beforeend',
+      `<tr><td colspan="6" class="p-3 text-center text-[10px] text-amber-400/80 font-mono">
+         ${retenus.length} pointages correspondent. Seuls les ${JOURNAL_MAX_LIGNES} plus récents sont affichés — affinez la période pour voir les autres, ou exportez en CSV.
+       </td></tr>`);
+  }
+
+  if (window.lucide) lucide.createIcons();
+}
+
+/**
+ * Exporte le résultat filtré en CSV.
+ *
+ * Séparateur point-virgule et BOM UTF-8 : c'est ce qu'attend Excel en locale
+ * française. Avec une virgule, toutes les colonnes atterrissent dans la
+ * première cellule.
+ */
+function exporterJournalPointage() {
+  const retenus = filtrerJournalPointage();
+  if (retenus.length === 0) {
+    return showToast('Rien à exporter',
+      'Aucun pointage ne correspond aux filtres actuels.', 'info');
+  }
+
+  const entetes = ['Date', 'Heure', 'Employé', 'Matricule', 'Type', 'Méthode',
+                   'Distance (m)', 'Précision GPS (m)', 'Retard (min)', 'Statut', 'Identité vérifiée'];
+
+  const cellule = (v) => {
+    const s = v === null || v === undefined ? '' : String(v);
+    return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+
+  const lignes = retenus.map(({ a, t }) => [
+    t.dateFr, t.hms, a.employee, a.matricule,
+    a.punchType === 'CHECK_OUT' ? 'Départ' : 'Arrivée',
+    a.method,
+    a.distanceFromSiteM != null ? Math.round(a.distanceFromSiteM) : '',
+    a.gpsAccuracyM != null ? Math.round(a.gpsAccuracyM) : '',
+    a.lateMinutes || 0,
+    a.decision === 'PENDING_REVIEW' ? 'À vérifier' : (a.status || ''),
+    a.faceVerified === true ? 'Oui' : (a.faceVerified === false ? 'Non' : ''),
+  ].map(cellule).join(';'));
+
+  const csv = '﻿' + [entetes.join(';')].concat(lignes).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+
+  const lien = document.createElement('a');
+  lien.href = url;
+  lien.download = `pointages_${aujourdhuiAbidjan()}.csv`;
+  document.body.appendChild(lien);
+  lien.click();
+  document.body.removeChild(lien);
+  URL.revokeObjectURL(url);
+
+  showToast('Export terminé', `${retenus.length} pointage(s) exporté(s).`, 'success');
+}
+
+/**
+ * Jauge de présence du JOUR.
+ *
+ * Volontairement bornée à aujourd'hui : compter tous les pointages de
+ * l'historique donnerait un « présents » supérieur à l'effectif, ce que
+ * l'ancienne version codée en dur masquait derrière un « 8/10 » figé.
+ */
+function renderPresenceGauge() {
+  const auj = aujourdhuiAbidjan();
+
+  const duJour = (state.attendances || []).filter((a) => {
+    const t = partsAbidjan(a.serverTime);
+    return t && t.ymd === auj && a.decision !== 'REJECTED';
+  });
+
+  // Un employé peut pointer son arrivée puis son départ : on compte des
+  // personnes, pas des lignes.
+  const personnes = new Map();
+  duJour.forEach((a) => {
+    const cle = a.userId || a.userEmail || a.employee;
+    const dejaLa = personnes.get(cle);
+    if (!dejaLa || a.status === 'Retard') personnes.set(cle, a);
+  });
+
+  const effectif = (state.employees || []).length;
+  const pointes = personnes.size;
+  const retards = [...personnes.values()].filter((a) => a.status === 'Retard').length;
+  const heure = pointes - retards;
+  const conges = (state.leaves || []).filter((l) => {
+    if (l.status !== 'Approuvé') return false;
+    const d = l.startDate || l.start_date;
+    const f = l.endDate || l.end_date;
+    return d && f && String(d).slice(0, 10) <= auj && auj <= String(f).slice(0, 10);
+  }).length;
+  const manquants = Math.max(0, effectif - pointes - conges);
+
+  const set = (id, txt) => { const el = document.getElementById(id); if (el) el.innerText = txt; };
+  const pct = effectif > 0 ? Math.round((pointes / effectif) * 100) : 0;
+
+  set('gauge-ratio', effectif > 0 ? `${pointes}/${effectif}` : '—');
+  set('gauge-rate', effectif > 0 ? `${pct} % pointés` : 'Aucun employé');
+  set('gauge-ontime', heure + (heure > 1 ? ' employés' : ' employé'));
+  set('gauge-late', retards + (retards > 1 ? ' employés' : ' employé'));
+  set('gauge-leave', conges + (conges > 1 ? ' employés' : ' employé'));
+  set('gauge-missing', manquants + (manquants > 1 ? ' employés' : ' employé'));
+
+  const arc = document.getElementById('gauge-arc');
+  if (arc) {
+    arc.setAttribute('stroke-dasharray', `${Math.min(100, pct)}, 100`);
+    arc.setAttribute('class',
+      'stroke-current transition-all duration-1000 ease-out ' +
+      (pct >= 80 ? 'text-emerald-500' : pct >= 50 ? 'text-amber-500' : 'text-red-500'));
+  }
+}
+
+
+// =============================================================================
+//  VIVACITE — le geste impose, mesure sur les 68 points du visage
+//
+//  Le serveur tire au sort une suite de gestes. Ce module guide l'employe,
+//  mesure ce qui se passe, et renvoie ses MESURES. Le serveur seul decide si
+//  les gestes ont eu lieu (voir migration 011).
+//
+//  LES TROIS MESURES
+//  -----------------
+//  EAR — rapport d'aspect de l'oeil. Ouvert : 0,25 a 0,35 ; ferme : sous 0,15.
+//        Il varie d'une personne a l'autre, on cherche donc une CHUTE
+//        RELATIVE par rapport a une base mesuree juste avant.
+//
+//  MAR — rapport d'aspect des levres internes. Bouche fermee : ~0,05.
+//
+//  YAW — indice de relief. C'est la mesure qui demasque une photographie.
+//        On compare la distance du nez a chaque extremite de la machoire.
+//        Incliner une image PLATE comprime toute la surface du meme facteur :
+//        le rapport ne bouge pas. Sur une vraie tete, le nez est en relief, il
+//        se deplace par rapport aux joues, et le rapport bascule franchement.
+//
+//  SEUILS
+//  ------
+//  Ceux d'ici sont volontairement PLUS STRICTS que ceux du serveur. Un geste
+//  valide ici passe donc toujours la-bas : l'employe n'est jamais refuse apres
+//  avoir vu « geste validé » a l'ecran.
+// =============================================================================
+
+const VIVACITE = {
+  BLINK: {
+    libelle: 'Clignez des yeux',
+    aide: 'Fermez puis rouvrez les yeux, franchement.',
+    icone: 'eye',
+  },
+  TURN_LEFT: {
+    libelle: 'Tournez la tête vers la gauche',
+    aide: 'Votre gauche. Gardez les yeux vers la caméra.',
+    icone: 'arrow-left',
+  },
+  TURN_RIGHT: {
+    libelle: 'Tournez la tête vers la droite',
+    aide: 'Votre droite. Gardez les yeux vers la caméra.',
+    icone: 'arrow-right',
+  },
+  MOUTH_OPEN: {
+    libelle: 'Ouvrez la bouche',
+    aide: 'Ouvrez franchement, comme pour dire « ah ».',
+    icone: 'smile',
+  },
+};
+
+// Marges volontaires par rapport au serveur (0.62 / 0.16 / 0.14 / 0.35).
+const SEUIL_CLIGNEMENT   = 0.58;
+const SEUIL_BASE_OUVERTE = 0.19;
+const SEUIL_ROTATION     = 0.19;
+const SEUIL_BOUCHE       = 0.42;
+
+/** Durée maximale accordée à un geste avant abandon. */
+const VIVACITE_DELAI_GESTE_MS = 15000;
+/** Un geste n'est jamais validé avant ce délai : le serveur refuse l'instantané. */
+const VIVACITE_DUREE_MIN_MS = 400;
+
+function dist(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+/**
+ * Calcule EAR, MAR et l'indice de relief à partir des 68 points.
+ *
+ * Indices dlib : 36-41 oeil droit, 42-47 oeil gauche, 60-67 lèvres internes,
+ * 30 pointe du nez, 0 et 16 extrémités de la mâchoire.
+ */
+function mesuresVisage(points) {
+  if (!points || points.length < 68) return null;
+
+  const ear = (a, b, c, d, e, f) =>
+    (dist(points[b], points[f]) + dist(points[c], points[e])) /
+    (2 * dist(points[a], points[d]) || 1);
+
+  const earMoyen = (ear(36, 37, 38, 39, 40, 41) + ear(42, 43, 44, 45, 46, 47)) / 2;
+
+  const mar =
+    (dist(points[61], points[67]) + dist(points[62], points[66]) + dist(points[63], points[65])) /
+    (3 * dist(points[60], points[64]) || 1);
+
+  // Le point 0 est la mâchoire du côté DROIT du sujet, le point 16 celle du
+  // côté gauche. Quand la tête tourne vers la gauche du sujet, le nez se
+  // rapproche du point 16 : l'indice devient négatif. Vers la droite : positif.
+  const nez = points[30];
+  const d0 = dist(nez, points[0]);
+  const d16 = dist(nez, points[16]);
+  const yaw = (d16 - d0) / (d16 + d0 || 1);
+
+  return { ear: earMoyen, mar, yaw };
+}
+
+/** Détection légère : points du visage seulement, sans le modèle de reconnaissance. */
+async function pointsVisage(source) {
+  const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.4 });
+  try {
+    const r = await faceapi.detectSingleFace(source, opts).withFaceLandmarks();
+    return r && r.landmarks ? r.landmarks.positions : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Un geste est-il accompli ? Renvoie la valeur mesurée et l'avancement 0..1,
+ * ce qui permet d'afficher une jauge qui bouge en direct.
+ */
+function evaluerGeste(action, m, base) {
+  if (action === 'BLINK') {
+    if (!base || base < SEUIL_BASE_OUVERTE) return { fait: false, avance: 0, valeur: m.ear };
+    const cible = base * SEUIL_CLIGNEMENT;
+    const avance = Math.min(1, Math.max(0, (base - m.ear) / (base - cible || 1)));
+    return { fait: m.ear <= cible, avance, valeur: m.ear };
+  }
+  if (action === 'TURN_LEFT') {
+    return { fait: m.yaw <= -SEUIL_ROTATION, avance: Math.min(1, Math.max(0, -m.yaw / SEUIL_ROTATION)), valeur: m.yaw };
+  }
+  if (action === 'TURN_RIGHT') {
+    return { fait: m.yaw >= SEUIL_ROTATION, avance: Math.min(1, Math.max(0, m.yaw / SEUIL_ROTATION)), valeur: m.yaw };
+  }
+  if (action === 'MOUTH_OPEN') {
+    return { fait: m.mar >= SEUIL_BOUCHE, avance: Math.min(1, Math.max(0, m.mar / SEUIL_BOUCHE)), valeur: m.mar };
+  }
+  return { fait: false, avance: 0, valeur: null };
+}
+
+/**
+ * Déroule la suite de gestes imposée et rassemble les preuves.
+ *
+ * @param {HTMLVideoElement} video
+ * @param {string[]} actions Suite imposée par le serveur.
+ * @param {(e:{index:number,total:number,libelle:string,aide:string,avance:number,etat:string}) => void} onProgres
+ * @returns {Promise<{ok:boolean, evidence?:object, code?:string, message?:string}>}
+ */
+async function executerDefiVivacite(video, actions, onProgres) {
+  if (faceEngine.statut !== 'pret') return { ok: false, code: 'ENGINE', message: messageEchecCapture('ENGINE_NOT_READY') };
+
+  const depart = Date.now();
+  const steps = [];
+  let frames = 0;
+
+  for (let i = 0; i < actions.length; i++) {
+    const action = actions[i];
+    const info = VIVACITE[action];
+    if (!info) return { ok: false, code: 'ACTION', message: 'Geste inconnu demandé par le serveur.' };
+
+    const tDebut = Date.now() - depart;
+    const limite = Date.now() + VIVACITE_DELAI_GESTE_MS;
+
+    // Base de référence : mesurée pendant la première demi-seconde du geste,
+    // pendant que l'employé lit la consigne et n'a encore rien fait.
+    const basesEar = [];
+    let extreme = action === 'BLINK' ? Infinity : 0;
+    let earBase = null;
+    let fait = false;
+    let sansVisage = 0;
+
+    onProgres({ index: i, total: actions.length, libelle: info.libelle, aide: info.aide, avance: 0, etat: 'encours' });
+
+    while (Date.now() < limite && !fait) {
+      const pts = await pointsVisage(video);
+      frames++;
+
+      if (!pts) {
+        sansVisage++;
+        if (sansVisage % 6 === 0) {
+          onProgres({ index: i, total: actions.length, libelle: info.libelle,
+            aide: 'Aucun visage détecté — placez-vous face à la caméra.', avance: 0, etat: 'encours' });
+        }
+        continue;
+      }
+      sansVisage = 0;
+
+      const m = mesuresVisage(pts);
+      if (!m) continue;
+
+      const ecoule = Date.now() - depart - tDebut;
+
+      // Les 500 premières millisecondes servent à établir la base des yeux.
+      if (ecoule < 500) {
+        basesEar.push(m.ear);
+        onProgres({ index: i, total: actions.length, libelle: info.libelle, aide: info.aide, avance: 0, etat: 'encours' });
+        continue;
+      }
+      if (earBase === null) {
+        const tri = basesEar.slice().sort((a, b) => a - b);
+        earBase = tri.length ? tri[Math.floor(tri.length / 2)] : m.ear;
+      }
+
+      if (action === 'BLINK') extreme = Math.min(extreme, m.ear);
+      else if (action === 'TURN_LEFT') extreme = Math.min(extreme, m.yaw);
+      else if (action === 'TURN_RIGHT') extreme = Math.max(extreme, m.yaw);
+      else extreme = Math.max(extreme, m.mar);
+
+      const ev = evaluerGeste(action, m, earBase);
+      onProgres({ index: i, total: actions.length, libelle: info.libelle, aide: info.aide,
+        avance: ev.avance, etat: 'encours' });
+
+      // Le serveur refuse un geste signalé trop brièvement : on ne valide pas
+      // avant ce délai, même si la mesure est déjà franchie.
+      if (ev.fait && ecoule >= VIVACITE_DUREE_MIN_MS) fait = true;
+    }
+
+    if (!fait) {
+      return {
+        ok: false,
+        code: 'TIMEOUT',
+        message: `Le geste « ${info.libelle.toLowerCase()} » n'a pas été détecté.\n\n` +
+          "Placez-vous face à la caméra dans un endroit bien éclairé, le visage bien dans le cadre, puis réessayez.",
+      };
+    }
+
+    // Empreinte capturée AU MOMENT du geste : c'est elle qui prouve au serveur
+    // que la même personne a exécuté chaque étape.
+    const emp = await calculerEmpreinteFaciale(video);
+    if (!emp.ok) {
+      return { ok: false, code: emp.code, message: messageEchecCapture(emp.code) };
+    }
+
+    const preuve = {
+      action,
+      t_start: tDebut,
+      t_end: Date.now() - depart,
+      descriptor: emp.descriptor,
+    };
+    if (action === 'BLINK') {
+      preuve.ear_base = Math.round(earBase * 10000) / 10000;
+      preuve.ear_min = Math.round(extreme * 10000) / 10000;
+    } else if (action === 'MOUTH_OPEN') {
+      preuve.mar_peak = Math.round(extreme * 10000) / 10000;
+    } else {
+      preuve.yaw_peak = Math.round(extreme * 10000) / 10000;
+    }
+    steps.push(preuve);
+
+    onProgres({ index: i, total: actions.length, libelle: info.libelle, aide: info.aide, avance: 1, etat: 'fait' });
+  }
+
+  return {
+    ok: true,
+    evidence: { steps, total_ms: Date.now() - depart, frames },
+  };
+}
+
+/** Demande un défi au serveur. Le client ne choisit jamais ses propres gestes. */
+async function demanderDefiVivacite() {
+  try {
+    const { data, error } = await supabaseClient.rpc('issue_face_challenge');
+    if (error) throw error;
+    if (!data || data.ok !== true) {
+      return { ok: false, message: (data && data.message) || 'Contrôle anti-photo indisponible.' };
+    }
+    return { ok: true, id: data.challenge_id, actions: data.actions };
+  } catch (err) {
+    console.error('[Vivacité] Défi refusé :', err);
+    const msg = String((err && err.message) || '');
+    if (/could not find the function|does not exist|schema cache/i.test(msg)) {
+      return {
+        ok: false,
+        message: "Le contrôle anti-photo n'est pas installé sur le serveur.\n\n" +
+          'À transmettre au service technique : exécuter services/supabase_migration_011_face_liveness.sql.',
+      };
+    }
+    return { ok: false, message: 'Le contrôle anti-photo n\'a pas pu démarrer. Réessayez.' };
+  }
+}
+
+
+// =============================================================================
+//  CONTROLE ANTI-PHOTO — enchainement et affichage dans la fenetre de pointage
+// =============================================================================
+
+/**
+ * Demande un defi au serveur, guide l'employe, renvoie les preuves.
+ *
+ * @returns {Promise<{ok:boolean, challengeId?:string, evidence?:object, titre?:string, corps?:string}>}
+ */
+async function executerControleVivacite(video) {
+  const defi = await demanderDefiVivacite();
+  if (!defi.ok) {
+    return { ok: false, titre: 'Contrôle anti-photo indisponible', corps: defi.message };
+  }
+
+  setNodeHidden('emp-punch-liveness', false);
+  setNodeHidden('emp-punch-steps', true);
+
+  const resultat = await executerDefiVivacite(video, defi.actions, afficherConsigneVivacite);
+
+  if (!resultat.ok) {
+    return {
+      ok: false,
+      titre: resultat.code === 'TIMEOUT' ? 'Geste non détecté' : 'Contrôle interrompu',
+      corps: resultat.message,
+    };
+  }
+
+  return { ok: true, challengeId: defi.id, evidence: resultat.evidence };
+}
+
+/** Peint la consigne courante et la jauge d'avancement. */
+function afficherConsigneVivacite(e) {
+  const set = (id, txt) => { const el = document.getElementById(id); if (el) el.innerText = txt; };
+
+  set('live-etape', `Étape ${e.index + 1} / ${e.total}`);
+  set('live-consigne', e.libelle);
+  set('live-aide', e.aide);
+  set('live-restant', e.etat === 'fait' ? 'Geste validé' : '');
+
+  const jauge = document.getElementById('live-jauge');
+  if (jauge) {
+    jauge.style.width = Math.round(Math.min(1, Math.max(0, e.avance)) * 100) + '%';
+    jauge.className = 'h-full transition-all duration-150 ' +
+      (e.etat === 'fait' ? 'bg-emerald-500' : e.avance > 0.75 ? 'bg-emerald-400' : 'bg-cyan-500');
+  }
+
+  const icone = document.getElementById('live-icone');
+  if (icone) {
+    const info = VIVACITE[Object.keys(VIVACITE).find((k) => VIVACITE[k].libelle === e.libelle)];
+    icone.setAttribute('data-lucide', e.etat === 'fait' ? 'check-circle-2' : (info ? info.icone : 'eye'));
+    icone.className = 'w-7 h-7 shrink-0 ' + (e.etat === 'fait' ? 'text-emerald-400' : 'text-cyan-400');
+    if (window.lucide) lucide.createIcons();
+  }
+}
+
+/**
+ * Meme controle, sur le chemin QR.
+ *
+ * Le jeton QR prouve la presence devant la borne ; il ne prouve ni qui tient
+ * le telephone, ni que ce visage est vivant. Le controle s'applique donc ici
+ * aussi, avec le meme mecanisme.
+ */
+async function executerControleVivaciteQr(video) {
+  const defi = await demanderDefiVivacite();
+  if (!defi.ok) return { ok: false, message: defi.message };
+
+  const resultat = await executerDefiVivacite(video, defi.actions, (e) => {
+    majStatutScan(
+      `Étape ${e.index + 1}/${e.total} — ${e.libelle}` +
+      (e.etat === 'fait' ? ' ✓' : e.avance > 0 ? ` (${Math.round(e.avance * 100)} %)` : ''),
+      e.etat === 'fait' ? 'ok' : undefined
+    );
+  });
+
+  if (!resultat.ok) return { ok: false, message: resultat.message };
+  return { ok: true, challengeId: defi.id, evidence: resultat.evidence };
+}
+
+
+/**
+ * Active ou desactive le controle anti-photo.
+ *
+ * La desactivation est le seul reglage de cet ecran qui AFFAIBLIT la securite :
+ * elle est donc annoncee sans detour. Un RH qui l'eteint « pour depanner » et
+ * l'oublie laisse passer les photographies indefiniment.
+ */
+async function basculerVivacite(activer) {
+  if (!peutConfigurerPointage()) {
+    return showToast('Action non autorisée',
+      'Seuls le CEO et le service RH peuvent modifier ce réglage.', 'info');
+  }
+
+  if (!activer) {
+    const ok = confirm(
+      "Désactiver le contrôle anti-photo ?\n\n" +
+      "Une simple photographie du visage d'un employé suffira alors à pointer à sa place.\n\n" +
+      "Ne le faites que le temps de régler un problème d'appareil, et réactivez-le ensuite."
+    );
+    if (!ok) return;
+  }
+
+  const session = await assurerSessionSupabase();
+  if (!session.ok) return signalerSessionPerdue(session.raison);
+
+  try {
+    const { error } = await supabaseClient
+      .from('companies')
+      .update({ face_liveness_enabled: activer })
+      .eq('id', state.currentCompanyId);
+    if (error) throw error;
+
+    showToast(
+      activer ? 'Contrôle anti-photo activé' : 'Contrôle anti-photo désactivé',
+      activer
+        ? 'Deux gestes tirés au sort seront demandés à chaque pointage.'
+        : 'Une photographie suffit désormais à pointer. Pensez à réactiver ce contrôle.',
+      activer ? 'success' : 'danger',
+      activer ? 5000 : 12000
+    );
+    await renderFaceConfig();
+  } catch (err) {
+    console.error('[Vivacité] Bascule impossible :', err);
+    showToast('Modification impossible',
+      traduireErreurEcriture(err, 'la modification de ce réglage'), 'danger', 8000);
+  }
+}
+
+
+/**
+ * Deplie une question de la FAQ.
+ *
+ * Cette fonction etait appelee par trois `onclick` de la page d'accueil sans
+ * exister nulle part : chaque clic levait une ReferenceError et aucune reponse
+ * ne s'ouvrait.
+ */
+function toggleFaq(n) {
+  const reponse = document.getElementById('faq-answer-' + n);
+  const chevron = document.getElementById('faq-icon-' + n);
+  if (!reponse) return;
+
+  const ouvert = !reponse.classList.contains('hidden');
+  reponse.classList.toggle('hidden', ouvert);
+  if (chevron) chevron.style.transform = ouvert ? '' : 'rotate(180deg)';
 }
