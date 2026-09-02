@@ -937,12 +937,13 @@ function renderDashboard() {
   // Journal filtrable + jauge de présence : deux modules dédiés, qui lisent
   // tous deux `state.attendances`. Ils étaient auparavant rendus ici, l'un en
   // dur dans le HTML (la jauge), l'autre sans dates ni filtres (le journal).
-  renderPresenceGauge();
-  renderPunchLog();
-
-  renderLeaveRequestsTable();
-  renderOvertimeTable();
-  renderLatenessTable();
+  // Même isolation que dans l'onglet de configuration : un tableau qui échoue
+  // ne doit pas emporter le tableau de bord entier.
+  rendrePanneau('Jauge de présence', () => renderPresenceGauge());
+  rendrePanneau('Journal de pointage', () => renderPunchLog());
+  rendrePanneau('Demandes de congés', () => renderLeaveRequestsTable());
+  rendrePanneau('Heures supplémentaires', () => renderOvertimeTable());
+  rendrePanneau('Retards', () => renderLatenessTable());
   initIcons();
 }
 
@@ -4423,16 +4424,37 @@ async function renderPunchConfig() {
 
   const employes = Array.from(employesMap.values());
 
-  // L'enrôlement facial est chargé AVANT le tableau de préparation : celui-ci
-  // affiche une colonne « Visage » qui en dépend.
-  await renderFaceConfig();
+  // Chaque panneau est rendu SÉPARÉMENT.
+  //
+  // Ils étaient enchaînés : une erreur dans le premier faisait avorter la
+  // fonction et l'onglet entier restait blanc — sites, horaires, effectif,
+  // anomalies, tout disparaissait à cause d'un seul panneau. Un écran de
+  // configuration ne doit pas être solidaire à ce point.
+  //
+  // L'enrôlement facial passe en premier : le tableau de préparation affiche
+  // une colonne « Visage » qui en dépend.
+  await rendrePanneau('Vérification d’identité', () => renderFaceConfig());
 
-  remplirSelecteurBorneQr();
-  renderSitesList(migration003Absente);
-  renderSchedulesList(migration003Absente);
-  renderReadinessTable(employes, migration003Absente);
-  renderPunchAttempts();
-  renderPunchConfigKpis(employes);
+  rendrePanneau('Sélecteur de borne QR', () => remplirSelecteurBorneQr());
+  rendrePanneau('Sites', () => renderSitesList(migration003Absente));
+  rendrePanneau('Horaires', () => renderSchedulesList(migration003Absente));
+  rendrePanneau('État de préparation', () => renderReadinessTable(employes, migration003Absente));
+  rendrePanneau('Anomalies de pointage', () => renderPunchAttempts());
+  rendrePanneau('Indicateurs', () => renderPunchConfigKpis(employes));
+}
+
+/**
+ * Exécute le rendu d'un panneau en isolant ses erreurs.
+ *
+ * Une panne est tracée en console avec le nom du panneau — de quoi la
+ * diagnostiquer — mais elle n'empêche jamais les autres de s'afficher.
+ */
+async function rendrePanneau(nom, rendu) {
+  try {
+    await rendu();
+  } catch (err) {
+    console.error(`[Cockpit RH] Panneau « ${nom} » non rendu :`, err);
+  }
 }
 
 function siteEtat(s) {
@@ -8972,7 +8994,7 @@ async function renderFaceConfig() {
   const [entRes, effRes] = await Promise.all([
     supabaseClient
       .from('companies')
-      .select('id, face_verification_enabled, face_max_distance, face_min_motion, face_liveness_enabled')
+      .select('id, face_verification_enabled, face_max_distance, face_min_motion, face_liveness_enabled, face_liveness_mode')
       .eq('id', state.currentCompanyId)
       .maybeSingle(),
     // On passe explicitement l'entreprise consultée : le rattachement fait foi
@@ -9001,6 +9023,9 @@ async function renderFaceConfig() {
   // Actif par défaut : une colonne absente ou nulle ne doit pas se lire comme
   // « contrôle éteint », ce qui rouvrirait silencieusement la faille de la photo.
   const vivacite = !faceConfig.entreprise || faceConfig.entreprise.face_liveness_enabled !== false;
+  // Mode du contrôle anti-photo. PASSIVE par défaut : c'est le réglage normal,
+  // celui où l'employé ne fait que regarder la caméra.
+  const modeGeste = !!(faceConfig.entreprise && faceConfig.entreprise.face_liveness_mode === 'GESTURE');
   const peut = peutConfigurerPointage();
 
   if (etat) {
