@@ -3401,7 +3401,6 @@ function retryEmployeePunch() {
 }
 
 function stopEmployeePunchCamera() {
-  arreterApercuVisage();
   if (empPunch.stream) {
     empPunch.stream.getTracks().forEach((t) => t.stop());
     empPunch.stream = null;
@@ -8428,6 +8427,9 @@ async function calculerEmpreinteFaciale(source) {
     ok: true,
     descriptor: Array.from(r.descriptor),
     score: r.detection ? r.detection.score : null,
+    // Les points sont calcules par le meme passage : les renvoyer evite de
+    // refaire tourner le detecteur sur une image deja analysee.
+    points: r.landmarks ? r.landmarks.positions : null,
   };
 }
 
@@ -8623,7 +8625,9 @@ async function demarrerCameraEnrolement() {
       audio: false,
     });
     if (video) video.srcObject = faceEnrol.stream;
-    demarrerApercuVisage('face-enroll-video', 'face-enroll');
+    // Aucune analyse continue : le detecteur ne tourne qu'au moment ou
+    // l'employe appuie sur le bouton de capture.
+    majDetectionVisage('face-enroll', 'cherche');
     majBoutonCaptureEnrolement();
   } catch (err) {
     const refus = err && (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError');
@@ -8847,7 +8851,6 @@ function afficherResultatEnrolement(type, titre, corps) {
 }
 
 function arreterCameraEnrolement() {
-  arreterApercuVisage();
   if (faceEnrol.stream) {
     faceEnrol.stream.getTracks().forEach((t) => t.stop());
     faceEnrol.stream = null;
@@ -9158,7 +9161,7 @@ async function renderFaceConfig() {
           ${vivacite
             ? (modeGeste
                 ? "Deux gestes tirés au sort sont imposés à chaque pointage. Le plus sûr, le moins confortable — à réserver aux sites très exposés."
-                : "L'employé regarde simplement la caméra trois secondes, sans rien faire. Le serveur mesure la déformation du visage : une photographie est rigide, un visage vivant ne l'est pas. Un geste n'est demandé que si la mesure reste indécise.")
+                : "Quelques clichés sont pris coup sur coup au moment du pointage. Le serveur mesure la déformation du visage entre ces clichés : une photographie reste rigide, un visage vivant non. Un geste n'est demandé que si la mesure reste indécise.")
             : "DÉSACTIVÉ : une simple photographie du visage suffit à pointer. Ne laissez ce réglage éteint que le temps de régler un problème d'appareil."}
         </p>
       </div>
@@ -10002,8 +10005,9 @@ async function demanderDefiVivacite(mode) {
 /**
  * Controle anti-photo, en deux temps.
  *
- * 1. PASSIF — l'employe regarde simplement la camera trois secondes. C'est le
- *    cas de tous les jours : aucun geste n'est demande.
+ * 1. PASSIF — quatre cliches sont pris coup sur coup et analyses. C'est le
+ *    cas de tous les jours : aucun geste n'est demande, et le flux video
+ *    n'est jamais analyse en continu.
  * 2. GESTE — uniquement si la mesure passive n'a rien pu conclure. On demande
  *    alors UN seul geste.
  *
@@ -10012,7 +10016,6 @@ async function demanderDefiVivacite(mode) {
  * une question de plus, jamais a un refus.
  */
 async function executerControleVivacite(video) {
-  arreterApercuVisage();
   setNodeHidden('emp-punch-liveness', false);
   setNodeHidden('emp-punch-steps', true);
 
@@ -10098,8 +10101,9 @@ function afficherMesurePassive(e) {
 
   set('live-etape', "Vérification d'identité");
   set('live-consigne', 'Regardez la caméra');
+  set('live-etape', "Vérification d'identité");
   set('live-aide', e.vu
-    ? 'Restez naturel. Cela prend trois secondes.'
+    ? 'Ne bougez pas trop : quelques clichés sont pris.'
     : "Aucun visage détecté — cadrez votre visage dans l'écran.");
   set('live-restant', e.vu ? Math.round(Math.min(1, e.avance) * 100) + ' %' : 'Visage hors cadre');
 
@@ -10341,54 +10345,14 @@ function majDetectionVisage(cible, etat) {
   }
 }
 
-/**
- * Demarre l'apercu sur un element video jusqu'a `arreterApercuVisage()`.
- *
- * On ne calcule QUE la position du visage, sans l'empreinte : le modele de
- * reconnaissance coute dix fois plus cher et n'apporte rien a ce stade.
- */
-function demarrerApercuVisage(videoId, cible) {
-  arreterApercuVisage();
-  apercuVisage.actif = true;
-  apercuVisage.etat = null;
-  apercuVisage.candidat = null;
-  apercuVisage.tenue = 0;
-
-  const boucle = async () => {
-    if (!apercuVisage.actif) return;
-
-    const video = document.getElementById(videoId);
-    if (video && video.videoWidth && faceEngine.statut === 'pret') {
-      try {
-        const vus = await faceapi.detectAllFaces(video, optionsDetecteur());
-        if (apercuVisage.actif) {
-          const lecture = vus.length === 0 ? 'absent'
-                        : compterVisagesReels(vus) > 1 ? 'plusieurs' : 'vu';
-          const confirme = etatStabilise(lecture);
-          if (confirme) majDetectionVisage(cible, confirme);
-        }
-      } catch (e) {
-        /* une image ratee n'est pas une erreur : on retentera au tour suivant */
-      }
-    }
-
-    if (apercuVisage.actif) apercuVisage.minuteur = setTimeout(boucle, 330);
-  };
-
-  boucle();
-}
-
-function arreterApercuVisage() {
-  apercuVisage.actif = false;
-  if (apercuVisage.minuteur) {
-    clearTimeout(apercuVisage.minuteur);
-    apercuVisage.minuteur = null;
-  }
-}
+// Les fonctions demarrerApercuVisage() et arreterApercuVisage() ont ete
+// retirees. Elles faisaient tourner le detecteur en continu sur le flux video,
+// trois fois par seconde, uniquement pour peindre un temoin. Le detecteur ne
+// s'execute plus que sur les cliches pris au moment du pointage.
 
 
 // =============================================================================
-//  VIVACITE PASSIVE — l'employe regarde la camera, rien de plus
+//  VIVACITE PASSIVE — quelques cliches, aucune analyse du flux video
 //
 //  CE QUE L'ON MESURE, ET POURQUOI
 //  -------------------------------
@@ -10417,25 +10381,24 @@ function arreterApercuVisage() {
 /** Duree de la fenetre d'observation. Assez longue pour capter un clignement
  *  naturel (un toutes les 3 a 5 secondes), assez courte pour rester supportable. */
 /**
- * Nombre d'echantillons de points de visage vises pour la mesure.
+ * Nombre de cliches pris a chaque pointage.
  *
- * On compte des ECHANTILLONS, pas des secondes : la dispersion se calcule sur
- * un nombre d'observations, et un appareil lent doit prendre plus de temps
- * plutot que d'echouer.
+ * Quatre suffisent a estimer une dispersion, et coutent quatre passages du
+ * modele. La version video en demandait jusqu'a quatorze.
  */
-const PASSIF_ECHANTILLONS_VISES = 12;
-
-/** En dessous, la dispersion n'est pas estimable : on passe au geste. */
-const PASSIF_ECHANTILLONS_MIN = 6;
+const PHOTO_NOMBRE = 4;
 
 /**
-  * Plafond de la BOUCLE seule.
-  *
-  * Les deux calculs d'empreinte s'ajoutent par-dessus : sur un appareil lent
-  * ils coutent une bonne seconde chacun. Le plafond est donc pose a 4 s pour
-  * que le total reste sous les six secondes, meme sur un telephone modeste.
-  */
-const PASSIF_DUREE_MAX_MS = 4000;
+ * Temps entre deux cliches.
+ *
+ * C'est ce delai — et non le nombre d'images — qui laisse au visage
+ * l'occasion de bouger. Prendre quatre cliches en rafale ne montrerait aucune
+ * deformation, meme sur un visage bien vivant.
+ */
+const PHOTO_INTERVALLE_MS = 400;
+
+/** En dessous, la dispersion n'est pas estimable : on passe au geste. */
+const PHOTO_ECHANTILLONS_MIN = 3;
 
 /** Points rigides par rapport au crane. Les coins INTERNES des yeux (39, 42)
  *  sont exclus : ils servent au recalage, leur dispersion serait nulle par
@@ -10496,227 +10459,140 @@ function dispersion(series, indices) {
 }
 
 /**
- * Observe le visage pendant quelques secondes, sans rien demander.
+ * Prend une petite serie de PHOTOS et les analyse.
+ *
+ * POURQUOI DES PHOTOS PLUTOT QUE DE LA VIDEO
+ * ------------------------------------------
+ * La version precedente analysait le flux video en continu : jusqu'a quatorze
+ * passages du modele pour un seul pointage. Sur un telephone d'entree de gamme
+ * cela prenait six a sept secondes, chauffait l'appareil, et echouait souvent.
+ *
+ * Ici, on declenche quatre captures d'image — un simple dessin sur toile, dont
+ * le cout est negligeable — puis on n'analyse QUE ces quatre images. Quatre
+ * passages du modele au lieu de quatorze, dont un seul calcule l'empreinte.
+ *
+ * L'ecart entre les captures reste indispensable : c'est lui qui revele la
+ * deformation d'un visage vivant. Une photographie brandie reste identique
+ * d'un cliche a l'autre.
  *
  * @param {HTMLVideoElement} video
  * @param {(e:{avance:number, vu:boolean}) => void} onProgres
- * @returns {Promise<{ok:boolean, evidence?:object, code?:string, message?:string}>}
  */
 async function mesurerVivacitePassive(video, onProgres) {
   if (faceEngine.statut !== 'pret') {
     return { ok: false, code: 'ENGINE', message: messageEchecCapture('ENGINE_NOT_READY') };
   }
+  if (!video || !video.videoWidth) {
+    return { ok: false, code: 'NO_FACE', message: "L'image de la caméra n'est pas disponible." };
+  }
 
   const depart = Date.now();
+  const chrono = { captures: 0, analyse: 0 };
 
+  // --- Prise des cliches ---------------------------------------------------
+  //
+  // Dessiner une image sur une toile coute une fraction de milliseconde. On
+  // peut donc espacer les prises sans rien payer : c'est le temps qui separe
+  // les cliches qui laisse au visage l'occasion de bouger.
+  const cliches = [];
+  let t0 = Date.now();
+  for (let i = 0; i < PHOTO_NOMBRE; i++) {
+    const toile = document.createElement('canvas');
+    toile.width = video.videoWidth;
+    toile.height = video.videoHeight;
+    toile.getContext('2d').drawImage(video, 0, 0, toile.width, toile.height);
+    cliches.push(toile);
+
+    if (onProgres) onProgres({ avance: (i + 1) / (PHOTO_NOMBRE * 2), vu: true });
+    if (i < PHOTO_NOMBRE - 1) await new Promise((r) => setTimeout(r, PHOTO_INTERVALLE_MS));
+  }
+  chrono.captures = Date.now() - t0;
+
+  // --- Analyse ------------------------------------------------------------
+  //
+  // Le premier cliche subit le passage COMPLET : il fournit a la fois les
+  // points du visage et l'empreinte. Les suivants ne demandent que les points,
+  // bien moins couteux — le modele de reconnaissance de 6,3 Mo n'est sollicite
+  // qu'une seule fois.
+  t0 = Date.now();
   const series = [];
   const ears = [];
   const yaws = [];
   const descripteurs = [];
-  let frames = 0;
-  let sansVisage = 0;
-  const chrono = { empreintes: 0, points: 0 };
 
-  // --- Empreinte D'ENTREE -------------------------------------------------
-  //
-  // Les empreintes sont calculees EN DEHORS de la boucle de mesure.
-  //
-  // La version precedente en lancait TROIS a l'interieur d'une fenetre de
-  // 3,2 secondes. Chacune fait tourner le modele de reconnaissance de 6,3 Mo :
-  // 0,5 a 1,5 s sur un telephone d'entree de gamme. Elles devoraient la
-  // fenetre, il ne restait plus assez d'images de points de visage, et
-  // l'employe recevait « votre visage n'a pas pu etre suivi » alors qu'il
-  // etait devant l'objectif du debut a la fin.
-  //
-  // Deux empreintes, l'une au debut et l'autre a la fin, prouvent exactement
-  // la meme chose : c'est le meme visage d'un bout a l'autre de la mesure.
-  let t0 = Date.now();
-  const empreinteEntree = await calculerEmpreinteFaciale(video);
-  chrono.empreintes += Date.now() - t0;
-  if (empreinteEntree.ok) descripteurs.push(empreinteEntree.descriptor);
-
-  // --- Boucle de mesure : points de visage UNIQUEMENT ---------------------
-  //
-  // On s'arrete sur le NOMBRE d'echantillons, pas sur une duree fixe. Un
-  // telephone lent prend simplement un peu plus de temps au lieu d'echouer :
-  // la version precedente exigeait 10 images en 3,2 s, ce qu'un appareil
-  // modeste n'atteint jamais.
-  while (series.length < PASSIF_ECHANTILLONS_VISES && Date.now() - depart < PASSIF_DUREE_MAX_MS) {
-    t0 = Date.now();
-    const pts = await pointsVisage(video);
-    chrono.points += Date.now() - t0;
-    frames++;
-
-    const avance = Math.max(
-      series.length / PASSIF_ECHANTILLONS_VISES,
-      (Date.now() - depart) / PASSIF_DUREE_MAX_MS
-    );
-
-    if (!pts) {
-      sansVisage++;
-      if (onProgres) onProgres({ avance, vu: false });
-      continue;
-    }
-    sansVisage = 0;
-
+  const retenir = (pts) => {
+    if (!pts) return false;
     const recale = recalerVisage(pts);
     const m = mesuresVisage(pts);
-    if (recale && m) {
-      series.push(recale);
-      ears.push(m.ear);
-      yaws.push(m.yaw);
-    }
+    if (!recale || !m) return false;
+    series.push(recale); ears.push(m.ear); yaws.push(m.yaw);
+    return true;
+  };
 
-    if (onProgres) onProgres({ avance, vu: true });
+  // Les deux cliches EXTREMES subissent le passage complet : ils fournissent
+  // les deux empreintes qui prouvent au serveur que c'est le meme visage du
+  // premier au dernier cliche, ET leurs points de visage par la meme occasion.
+  const premier = await calculerEmpreinteFaciale(cliches[0]);
+  if (premier.ok) { descripteurs.push(premier.descriptor); retenir(premier.points); }
+  if (onProgres) onProgres({ avance: 0.65, vu: premier.ok });
+
+  // Les cliches du milieu ne demandent que les points : le modele de
+  // reconnaissance de 6,3 Mo n'est pas sollicite.
+  for (let i = 1; i < cliches.length - 1; i++) {
+    retenir(await pointsVisage(cliches[i]));
+    if (onProgres) onProgres({ avance: 0.65 + (i / cliches.length) * 0.25, vu: true });
   }
 
-  const dureeBoucle = Date.now() - depart - chrono.empreintes;
+  const dernier = await calculerEmpreinteFaciale(cliches[cliches.length - 1]);
+  if (dernier.ok) { descripteurs.push(dernier.descriptor); retenir(dernier.points); }
+  if (onProgres) onProgres({ avance: 1, vu: dernier.ok });
+  chrono.analyse = Date.now() - t0;
 
-  // --- Empreinte DE SORTIE ------------------------------------------------
-  t0 = Date.now();
-  const empreinteSortie = await calculerEmpreinteFaciale(video);
-  chrono.empreintes += Date.now() - t0;
-  if (empreinteSortie.ok) descripteurs.push(empreinteSortie.descriptor);
+  const mesuresBrutes = {
+    cliches: cliches.length,
+    echantillons: series.length,
+    empreintes: descripteurs.length,
+    ms_captures: chrono.captures,
+    ms_analyse: chrono.analyse,
+    duree_ms: Date.now() - depart,
+  };
 
-  // Un echec de mesure n'est PLUS une impasse.
-  //
-  // Auparavant, trop peu d'images renvoyaient « visage non suivi » et le
-  // pointage s'arretait la. Desormais on le signale comme « indecis » : le
-  // pointage bascule sur un geste, exactement comme lorsque le serveur juge
-  // la mesure trop figee. L'employe est toujours capable de pointer.
-  if (series.length < PASSIF_ECHANTILLONS_MIN || descripteurs.length < 2) {
+  // Un echec n'est jamais une impasse : le pointage bascule sur un geste.
+  if (series.length < PHOTO_ECHANTILLONS_MIN || descripteurs.length < 2) {
     return {
       ok: false,
       code: 'INDECIS',
-      mesures: {
-        echantillons: series.length,
-        empreintes: descripteurs.length,
-        images: frames,
-        ms_points: chrono.points,
-        ms_empreintes: chrono.empreintes,
-        ms_boucle: dureeBoucle,
-        duree_ms: Date.now() - depart,
-      },
-      message: "La mesure n'a pas pu aboutir sur cet appareil.",
+      mesures: mesuresBrutes,
+      message: "Le visage n'a pas pu être analysé sur ces clichés.",
     };
   }
 
   const rigide = dispersion(series, POINTS_RIGIDES);
   const souple = dispersion(series, POINTS_DEFORMABLES);
-  // Le epsilon evite une division par zero quand le detecteur est très stable.
   const rapport = souple / (rigide + 1e-9);
+  const ecartEar = Math.max(...ears) - Math.min(...ears);
 
   return {
     ok: true,
-    // Les chiffres bruts remontent jusqu'a l'ecran d'echec : sans eux,
-    // impossible de regler les seuils autrement qu'au jugé.
     mesures: {
-      echantillons: series.length,
-      images: frames,
-      ms_points: chrono.points,
-      ms_empreintes: chrono.empreintes,
-      ms_boucle: dureeBoucle,
+      ...mesuresBrutes,
       deform_ratio: Math.round(rapport * 1000) / 1000,
-      ear_range: Math.round((Math.max(...ears) - Math.min(...ears)) * 10000) / 10000,
-      duree_ms: Date.now() - depart,
+      ear_range: Math.round(ecartEar * 10000) / 10000,
     },
     evidence: {
       mode: 'PASSIVE',
       duration_ms: Date.now() - depart,
       frames: series.length,
       deform_ratio: Math.round(rapport * 1000) / 1000,
-      ear_range: Math.round((Math.max(...ears) - Math.min(...ears)) * 10000) / 10000,
+      ear_range: Math.round(ecartEar * 10000) / 10000,
       yaw_range: Math.round((Math.max(...yaws) - Math.min(...yaws)) * 10000) / 10000,
       descriptors: descripteurs,
     },
-    // La dernière empreinte sert aussi de comparaison principale au pointage :
-    // inutile de refaire un calcul complet juste après.
-    descripteurFinal: descripteurs[descripteurs.length - 1],
+    // L'empreinte du premier cliche sert aussi de comparaison principale :
+    // inutile de refaire un passage complet juste apres.
+    descripteurFinal: descripteurs[0],
   };
 }
-
-
-/**
- * Bascule entre le controle sans geste et les gestes imposes.
- *
- * Le mode passif est le reglage normal : l'employe regarde la camera, rien de
- * plus. Le mode geste est plus sur mais demande deux gestes A CHAQUE pointage,
- * ce qui use rapidement la patience des equipes. On le propose sans le
- * conseiller.
- */
-async function definirModeVivacite(mode) {
-  if (!peutConfigurerPointage()) {
-    return showToast('Action non autorisée',
-      'Seuls le CEO et le service RH peuvent modifier ce réglage.', 'info');
-  }
-
-  if (mode === 'GESTURE') {
-    const ok = confirm(
-      'Imposer les gestes à chaque pointage ?\n\n' +
-      "Vos équipes devront cligner des yeux, tourner la tête ou ouvrir la bouche " +
-      "à chaque badgeage, matin et soir.\n\n" +
-      "En mode normal, ces gestes ne sont demandés que lorsque le contrôle " +
-      "automatique reste indécis."
-    );
-    if (!ok) return;
-  }
-
-  const session = await assurerSessionSupabase();
-  if (!session.ok) return signalerSessionPerdue(session.raison);
-
-  try {
-    const { error } = await supabaseClient
-      .from('companies')
-      .update({ face_liveness_mode: mode })
-      .eq('id', state.currentCompanyId);
-    if (error) throw error;
-
-    showToast(
-      mode === 'GESTURE' ? 'Gestes imposés' : 'Contrôle sans geste',
-      mode === 'GESTURE'
-        ? 'Deux gestes seront demandés à chaque pointage.'
-        : "L'employé n'aura plus qu'à regarder la caméra trois secondes.",
-      'success'
-    );
-    await renderFaceConfig();
-  } catch (err) {
-    console.error('[Vivacité] Changement de mode impossible :', err);
-    showToast('Modification impossible',
-      traduireErreurEcriture(err, 'le changement de mode'), 'danger', 8000);
-  }
-}
-
-
-/**
- * Compte les visages CREDIBLES parmi ceux que le detecteur remonte.
- *
- * Le detecteur signale parfois une seconde « tete » sur un motif du mur, un
- * reflet ou un dossier de chaise. Ces detections sont faibles et minuscules a
- * cote du visage principal. Les compter revenait a refuser le pointage d'une
- * personne pourtant seule devant sa camera.
- *
- * On ne retient donc qu'un visage supplementaire s'il est a la fois SUR
- * (score eleve) et GROS (surface comparable au visage principal) — ce qui est
- * le cas d'un vrai collegue qui se place a cote.
- *
- * @param {Array<{score:number, box:{width:number,height:number}}>} detections
- */
-function compterVisagesReels(detections) {
-  if (!detections || detections.length <= 1) return detections ? detections.length : 0;
-
-  const aire = (d) => (d && d.box ? d.box.width * d.box.height : 0);
-  const tries = detections.slice().sort((a, b) => aire(b) - aire(a));
-  const principal = aire(tries[0]);
-
-  let n = 1;
-  for (let i = 1; i < tries.length; i++) {
-    const sur = (tries[i].score || 0) >= 0.55;
-    const gros = principal > 0 && aire(tries[i]) >= principal * 0.25;
-    if (sur && gros) n++;
-  }
-  return n;
-}
-
 
 // =============================================================================
 //  ETAT DE LA JOURNEE DE L'EMPLOYE
@@ -11700,4 +11576,86 @@ async function copierRapportDiagnostic() {
 function fermerEtDiagnostiquerVisage() {
   closeEmployeePunch();
   ouvrirDiagnosticVisage();
+}
+
+
+/**
+ * Compte les visages CREDIBLES parmi ceux que le detecteur remonte.
+ *
+ * Le detecteur signale parfois une seconde « tete » sur un motif du mur, un
+ * reflet ou un dossier de chaise. Ces detections sont faibles et minuscules a
+ * cote du visage principal. Les compter revenait a refuser le pointage d'une
+ * personne pourtant seule devant sa camera.
+ *
+ * On ne retient donc un visage supplementaire que s'il est a la fois SUR
+ * (score eleve) et GROS (surface comparable au visage principal) — ce qui est
+ * le cas d'un vrai collegue qui se place a cote.
+ *
+ * @param {Array<{score:number, box:{width:number,height:number}}>} detections
+ */
+function compterVisagesReels(detections) {
+  if (!detections || detections.length <= 1) return detections ? detections.length : 0;
+
+  const aire = (d) => (d && d.box ? d.box.width * d.box.height : 0);
+  const tries = detections.slice().sort((a, b) => aire(b) - aire(a));
+  const principal = aire(tries[0]);
+
+  let n = 1;
+  for (let i = 1; i < tries.length; i++) {
+    const sur = (tries[i].score || 0) >= 0.55;
+    const gros = principal > 0 && aire(tries[i]) >= principal * 0.25;
+    if (sur && gros) n++;
+  }
+  return n;
+}
+
+
+/**
+ * Bascule entre le controle sans geste et les gestes imposes.
+ *
+ * Le mode passif est le reglage normal : quelques cliches sont pris au moment
+ * du pointage, sans rien demander. Le mode geste est plus sur mais reclame des
+ * gestes A CHAQUE pointage, ce qui use vite la patience des equipes. On le
+ * propose sans le conseiller.
+ */
+async function definirModeVivacite(mode) {
+  if (!peutConfigurerPointage()) {
+    return showToast('Action non autorisée',
+      'Seuls le CEO et le service RH peuvent modifier ce réglage.', 'info');
+  }
+
+  if (mode === 'GESTURE') {
+    const ok = confirm(
+      'Imposer les gestes à chaque pointage ?\n\n' +
+      "Vos équipes devront cligner des yeux, tourner la tête ou ouvrir la bouche " +
+      "à chaque badgeage, matin et soir.\n\n" +
+      "En mode normal, ces gestes ne sont demandés que lorsque le contrôle " +
+      "automatique reste indécis."
+    );
+    if (!ok) return;
+  }
+
+  const session = await assurerSessionSupabase();
+  if (!session.ok) return signalerSessionPerdue(session.raison);
+
+  try {
+    const { error } = await supabaseClient
+      .from('companies')
+      .update({ face_liveness_mode: mode })
+      .eq('id', state.currentCompanyId);
+    if (error) throw error;
+
+    showToast(
+      mode === 'GESTURE' ? 'Gestes imposés' : 'Contrôle sans geste',
+      mode === 'GESTURE'
+        ? 'Deux gestes seront demandés à chaque pointage.'
+        : "L'employé n'aura plus qu'à regarder la caméra trois secondes.",
+      'success'
+    );
+    await renderFaceConfig();
+  } catch (err) {
+    console.error('[Vivacité] Changement de mode impossible :', err);
+    showToast('Modification impossible',
+      traduireErreurEcriture(err, 'le changement de mode'), 'danger', 8000);
+  }
 }
