@@ -2209,6 +2209,42 @@
   </div>
 
   <!--
+    DIAGNOSTIC DE LA RECONNAISSANCE FACIALE
+
+    Mesure, sur l'appareil de l'employé et avec son visage, tout ce qui entre
+    dans la décision de pointage. Ne pointe pas, n'écrit rien.
+  -->
+  <div id="modal-diag-visage" class="fixed inset-0 z-[70] bg-black/85 backdrop-blur-md hidden items-center justify-center p-3 sm:p-4">
+    <div class="glass-panel-elevated w-full max-w-md p-5 sm:p-6 space-y-4 border border-cyan-500/40 relative max-h-[95vh] overflow-y-auto">
+      <button onclick="fermerDiagnosticVisage()" class="absolute top-3 right-3 text-slate-400 hover:text-white p-2 min-h-tap" aria-label="Fermer">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <div class="pr-8">
+        <h3 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+          <i data-lucide="stethoscope" class="w-5 h-5 text-cyan-400"></i>
+          <span>Diagnostic de la reconnaissance</span>
+        </h3>
+        <p class="text-[11px] text-slate-400 mt-1">
+          À lancer si vous n'arrivez pas à pointer avec votre visage.
+        </p>
+      </div>
+
+      <div class="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-slate-950 border border-slate-700">
+        <video id="diag-visage-video" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover" style="transform: scaleX(-1)"></video>
+      </div>
+
+      <div id="diag-visage-corps"></div>
+
+      <button id="diag-visage-lancer" onclick="lancerDiagnosticVisage()"
+        class="w-full min-h-tap py-3.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-black font-extrabold text-xs tracking-wider transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+        <i data-lucide="activity" class="w-4 h-4"></i>
+        <span>LANCER LE DIAGNOSTIC</span>
+      </button>
+    </div>
+  </div>
+
+  <!--
     JUSTIFICATION D'UN RETARD
 
     L'employé écrit, le service RH tranche. Le texte part vers le serveur par
@@ -3546,13 +3582,23 @@
             <input type="text" id="join-otp-input" maxlength="6" placeholder="ex: 123456" class="w-full bg-black border border-amber-500/40 rounded-xl px-4 py-3 text-center text-lg text-amber-300 font-mono font-extrabold tracking-[0.4em] focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400">
           </div>
 
-          <!-- Notice spéciale en cas de limite de débit e-mail Supabase (HTTP 429) -->
+          <!--
+            Quota d'envoi atteint.
+
+            Ce bloc affichait auparavant un code « de secours » que la page
+            avait elle-même tiré au sort, et que la page acceptait ensuite.
+            Cela ne vérifiait rien : n'importe qui pouvait le lire à l'écran.
+            On dit maintenant la vérité — il faut attendre.
+          -->
           <div id="join-otp-rate-limit-notice" class="p-3 bg-amber-500/15 border border-amber-500/40 rounded-xl text-xs text-amber-200 hidden space-y-1.5 text-left">
             <div class="font-bold flex items-center gap-1.5 text-amber-300">
-              <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400"></i> Quota E-mail Supabase Cloud Atteint (Anti-Spam 429)
+              <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400"></i> Quota d'envoi atteint
             </div>
-            <p class="text-[11px] text-slate-300">Le serveur Supabase gratuit a atteint sa limite d'envoi d'e-mails (3/heure). Voici le code OTP généré pour débloquer votre inscription immédiatement :</p>
-            <div class="font-mono font-extrabold text-amber-300 text-base tracking-[0.3em] bg-black/80 p-2 rounded-lg text-center border border-amber-500/40" id="join-otp-fallback-code">123456</div>
+            <p class="text-[11px] text-slate-300">
+              Le serveur d'envoi a atteint sa limite horaire. Patientez, puis demandez un nouveau code.
+              Votre demande est déjà parvenue au service RH : signalez-lui simplement le problème si cela persiste.
+            </p>
+            <div class="hidden" id="join-otp-fallback-code"></div>
           </div>
 
           <div class="p-2.5 bg-slate-950 border border-slate-800 rounded-xl text-[11px] text-slate-400 text-left flex items-start gap-2">

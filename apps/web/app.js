@@ -3124,11 +3124,17 @@ function renderEmployeePunchRejection(verdict, steps) {
     },
     FACE_MISMATCH: {
       title: 'Visage non reconnu',
+      // Le chiffre mesuré est affiché : « écart 0,63 pour un maximum de 0,60 »
+      // se règle, « visage non reconnu » ne se règle pas.
       body:
         "Le visage capturé ne correspond pas à votre visage de référence.\n\n" +
+        (verdict && verdict.face_distance != null
+          ? `Écart mesuré : ${verdict.face_distance}\n\n`
+          : '') +
         'Placez-vous face à la caméra dans un endroit bien éclairé, sans casquette ' +
-        'ni lunettes de soleil, puis réessayez. Si le refus persiste, réenregistrez ' +
-        'votre visage de référence depuis votre tableau de bord.',
+        'ni lunettes de soleil, puis réessayez. Si le refus persiste, lancez le ' +
+        'diagnostic : il dira précisément ce qui bloque.',
+      action: { libelle: 'LANCER LE DIAGNOSTIC', onclick: 'fermerEtDiagnostiquerVisage()' },
     },
     FACE_NOT_ENROLLED: {
       title: 'Visage de référence manquant',
@@ -3174,10 +3180,14 @@ function renderEmployeePunchRejection(verdict, steps) {
     },
     LIVENESS_TOO_STATIC: {
       title: 'Vérification impossible',
+      // Le serveur renvoie les valeurs mesurées dans son message : on les
+      // reprend telles quelles plutôt que de les remplacer par une généralité.
       body:
-        "Le système n'a pas pu distinguer un visage vivant d'une photographie.\n\n" +
-        'Placez-vous bien face à la caméra, dans un endroit éclairé, sans fenêtre ' +
+        ((verdict && verdict.message) ||
+          "Le système n'a pas pu distinguer un visage vivant d'une photographie.") +
+        '\n\nPlacez-vous bien face à la caméra, dans un endroit éclairé, sans fenêtre ' +
         'derrière vous, puis relancez le pointage.',
+      action: { libelle: 'LANCER LE DIAGNOSTIC', onclick: 'fermerEtDiagnostiquerVisage()' },
     },
     FACE_MODEL_MISMATCH: {
       title: 'Visage à réenregistrer',
@@ -6965,12 +6975,11 @@ async function confirmEmailOtp() {
       }
     }
 
-    // 2. Une session ouverte par le LIEN du courriel vaut vérification.
+    // 2. Une session déjà ouverte pour cette adresse vaut vérification.
     //
-    // Sur l'offre gratuite de Supabase, les gabarits d'e-mail ne sont pas
-    // modifiables : le message contient un lien, pas un code. Cliquer ce lien
-    // ouvre une session pour cette adresse — ce qui prouve exactement la même
-    // chose qu'un code, et souvent mieux.
+    // Les gabarits envoient désormais un code à 6 chiffres. Ce second chemin
+    // couvre les courriels partis AVANT ce changement, qui contenaient un
+    // lien : celui qui l'a suivi ne doit pas rester bloqué.
     if (!isValid) isValid = await adresseDejaConfirmee(reg.email);
 
     // Il n'y a PLUS de code de secours.
@@ -6982,9 +6991,10 @@ async function confirmEmailOtp() {
     // à une vérification qui n'existe pas.
     if (!isValid) {
       showToast(
-        'Adresse non confirmée',
-        "Le code saisi n'est pas valide.\n\nSi vous avez reçu un LIEN plutôt qu'un code, " +
-        'cliquez simplement sur ce lien : il confirmera votre adresse.',
+        'Code incorrect',
+        "Ce code à 6 chiffres ne correspond pas.\n\nVérifiez votre boîte mail, y compris le " +
+        "dossier des courriers indésirables. Le code expire au bout d'une heure : passé ce " +
+        'délai, demandez-en un nouveau.',
         'danger', 12000);
       return;
     }
@@ -7145,8 +7155,8 @@ async function verifyLoginOtp() {
 
   if (!utilisateur) {
     showToast('Code invalide',
-      "Ce code ne correspond pas.\n\nSi vous avez reçu un LIEN plutôt qu'un code, " +
-      'cliquez simplement sur ce lien pour vous connecter.',
+      "Ce code à 6 chiffres ne correspond pas.\n\nVérifiez votre boîte mail, y compris le " +
+      "dossier des courriers indésirables. Le code expire au bout d'une heure.",
       'danger', 12000);
     return;
   }
@@ -8509,6 +8519,10 @@ function renderCarteVisageEmploye() {
       <div class="flex items-center gap-2">
         <button onclick="ouvrirEnrolementFacial()" class="min-h-tap px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700 font-bold text-[11px] transition">
           ${perime ? 'RÉENREGISTRER' : 'METTRE À JOUR'}
+        </button>
+        <button onclick="ouvrirDiagnosticVisage()" title="Mesurer pourquoi le pointage échoue"
+          class="min-h-tap px-3 py-2 rounded-xl bg-slate-900 hover:bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 font-bold text-[11px] transition">
+          DIAGNOSTIC
         </button>
         <button onclick="revoquerVisage()" class="min-h-tap px-3 py-2 rounded-xl bg-slate-900 hover:bg-red-500/10 text-red-300 border border-red-500/30 font-bold text-[11px] transition">
           SUPPRIMER
@@ -10011,16 +10025,31 @@ async function executerControleVivacite(video) {
     afficherMesurePassive({ avance: 0, vu: true });
     const passif = await mesurerVivacitePassive(video, afficherMesurePassive);
 
-    if (!passif.ok) {
-      return { ok: false, titre: 'Visage non détecté', corps: passif.message };
+    if (passif.ok) {
+      return {
+        ok: true,
+        challengeId: defi.id,
+        evidence: passif.evidence,
+        descripteurFinal: passif.descripteurFinal,
+        mesures: passif.mesures,
+        mode: 'PASSIVE',
+      };
     }
-    return {
-      ok: true,
-      challengeId: defi.id,
-      evidence: passif.evidence,
-      descripteurFinal: passif.descripteurFinal,
-      mode: 'PASSIVE',
-    };
+
+    // La mesure n'a rien pu conclure : on demande UN geste, on ne bloque pas.
+    //
+    // Auparavant, un appareil trop lent pour fournir assez d'images renvoyait
+    // « visage non détecté » et le pointage s'arrêtait là — sans aucun recours,
+    // alors que le visage était bien devant l'objectif. L'escalade n'existait
+    // que pour le refus du serveur.
+    if (passif.code === 'INDECIS') {
+      console.warn('[Vivacité] Mesure passive indécise, passage au geste :', passif.mesures);
+      const geste = await escaladerVersGeste(video);
+      if (geste.ok) return { ...geste, mesures: passif.mesures };
+      return geste;
+    }
+
+    return { ok: false, titre: 'Visage non détecté', corps: passif.message };
   }
 
   const resultat = await executerDefiVivacite(video, defi.actions, afficherConsigneVivacite);
@@ -10387,7 +10416,26 @@ function arreterApercuVisage() {
 
 /** Duree de la fenetre d'observation. Assez longue pour capter un clignement
  *  naturel (un toutes les 3 a 5 secondes), assez courte pour rester supportable. */
-const PASSIF_DUREE_MS = 3200;
+/**
+ * Nombre d'echantillons de points de visage vises pour la mesure.
+ *
+ * On compte des ECHANTILLONS, pas des secondes : la dispersion se calcule sur
+ * un nombre d'observations, et un appareil lent doit prendre plus de temps
+ * plutot que d'echouer.
+ */
+const PASSIF_ECHANTILLONS_VISES = 12;
+
+/** En dessous, la dispersion n'est pas estimable : on passe au geste. */
+const PASSIF_ECHANTILLONS_MIN = 6;
+
+/**
+  * Plafond de la BOUCLE seule.
+  *
+  * Les deux calculs d'empreinte s'ajoutent par-dessus : sur un appareil lent
+  * ils coutent une bonne seconde chacun. Le plafond est donc pose a 4 s pour
+  * que le total reste sous les six secondes, meme sur un telephone modeste.
+  */
+const PASSIF_DUREE_MAX_MS = 4000;
 
 /** Points rigides par rapport au crane. Les coins INTERNES des yeux (39, 42)
  *  sont exclus : ils servent au recalage, leur dispersion serait nulle par
@@ -10460,7 +10508,6 @@ async function mesurerVivacitePassive(video, onProgres) {
   }
 
   const depart = Date.now();
-  const fin = depart + PASSIF_DUREE_MS;
 
   const series = [];
   const ears = [];
@@ -10468,20 +10515,46 @@ async function mesurerVivacitePassive(video, onProgres) {
   const descripteurs = [];
   let frames = 0;
   let sansVisage = 0;
+  const chrono = { empreintes: 0, points: 0 };
 
-  // Trois empreintes reparties sur la fenetre : elles prouvent au serveur que
-  // c'est le meme visage du debut a la fin, et non une substitution en cours
-  // de route.
-  const jalons = [0.15, 0.55, 0.92].map((f) => depart + PASSIF_DUREE_MS * f);
-  let jalon = 0;
+  // --- Empreinte D'ENTREE -------------------------------------------------
+  //
+  // Les empreintes sont calculees EN DEHORS de la boucle de mesure.
+  //
+  // La version precedente en lancait TROIS a l'interieur d'une fenetre de
+  // 3,2 secondes. Chacune fait tourner le modele de reconnaissance de 6,3 Mo :
+  // 0,5 a 1,5 s sur un telephone d'entree de gamme. Elles devoraient la
+  // fenetre, il ne restait plus assez d'images de points de visage, et
+  // l'employe recevait « votre visage n'a pas pu etre suivi » alors qu'il
+  // etait devant l'objectif du debut a la fin.
+  //
+  // Deux empreintes, l'une au debut et l'autre a la fin, prouvent exactement
+  // la meme chose : c'est le meme visage d'un bout a l'autre de la mesure.
+  let t0 = Date.now();
+  const empreinteEntree = await calculerEmpreinteFaciale(video);
+  chrono.empreintes += Date.now() - t0;
+  if (empreinteEntree.ok) descripteurs.push(empreinteEntree.descriptor);
 
-  while (Date.now() < fin) {
+  // --- Boucle de mesure : points de visage UNIQUEMENT ---------------------
+  //
+  // On s'arrete sur le NOMBRE d'echantillons, pas sur une duree fixe. Un
+  // telephone lent prend simplement un peu plus de temps au lieu d'echouer :
+  // la version precedente exigeait 10 images en 3,2 s, ce qu'un appareil
+  // modeste n'atteint jamais.
+  while (series.length < PASSIF_ECHANTILLONS_VISES && Date.now() - depart < PASSIF_DUREE_MAX_MS) {
+    t0 = Date.now();
     const pts = await pointsVisage(video);
+    chrono.points += Date.now() - t0;
     frames++;
+
+    const avance = Math.max(
+      series.length / PASSIF_ECHANTILLONS_VISES,
+      (Date.now() - depart) / PASSIF_DUREE_MAX_MS
+    );
 
     if (!pts) {
       sansVisage++;
-      if (onProgres) onProgres({ avance: (Date.now() - depart) / PASSIF_DUREE_MS, vu: false });
+      if (onProgres) onProgres({ avance, vu: false });
       continue;
     }
     sansVisage = 0;
@@ -10494,35 +10567,37 @@ async function mesurerVivacitePassive(video, onProgres) {
       yaws.push(m.yaw);
     }
 
-    if (jalon < jalons.length && Date.now() >= jalons[jalon]) {
-      jalon++;
-      const emp = await calculerEmpreinteFaciale(video);
-      if (emp.ok) descripteurs.push(emp.descriptor);
-    }
-
-    if (onProgres) onProgres({ avance: (Date.now() - depart) / PASSIF_DUREE_MS, vu: true });
+    if (onProgres) onProgres({ avance, vu: true });
   }
 
-  if (series.length < 10) {
+  const dureeBoucle = Date.now() - depart - chrono.empreintes;
+
+  // --- Empreinte DE SORTIE ------------------------------------------------
+  t0 = Date.now();
+  const empreinteSortie = await calculerEmpreinteFaciale(video);
+  chrono.empreintes += Date.now() - t0;
+  if (empreinteSortie.ok) descripteurs.push(empreinteSortie.descriptor);
+
+  // Un echec de mesure n'est PLUS une impasse.
+  //
+  // Auparavant, trop peu d'images renvoyaient « visage non suivi » et le
+  // pointage s'arretait la. Desormais on le signale comme « indecis » : le
+  // pointage bascule sur un geste, exactement comme lorsque le serveur juge
+  // la mesure trop figee. L'employe est toujours capable de pointer.
+  if (series.length < PASSIF_ECHANTILLONS_MIN || descripteurs.length < 2) {
     return {
       ok: false,
-      code: 'NO_FACE',
-      message: "Votre visage n'a pas pu être suivi pendant la mesure.\n\n" +
-        "Rapprochez-vous de la caméra, cadrez bien votre visage, et évitez d'avoir une fenêtre derrière vous.",
-    };
-  }
-
-  if (descripteurs.length < 2) {
-    // Dernière chance : une empreinte de plus, maintenant que la personne est
-    // encore devant l'objectif.
-    const emp = await calculerEmpreinteFaciale(video);
-    if (emp.ok) descripteurs.push(emp.descriptor);
-  }
-  if (descripteurs.length < 2) {
-    return {
-      ok: false,
-      code: 'NO_FACE',
-      message: "Le visage n'a pas pu être analysé assez nettement. Réessayez face à la caméra.",
+      code: 'INDECIS',
+      mesures: {
+        echantillons: series.length,
+        empreintes: descripteurs.length,
+        images: frames,
+        ms_points: chrono.points,
+        ms_empreintes: chrono.empreintes,
+        ms_boucle: dureeBoucle,
+        duree_ms: Date.now() - depart,
+      },
+      message: "La mesure n'a pas pu aboutir sur cet appareil.",
     };
   }
 
@@ -10533,6 +10608,18 @@ async function mesurerVivacitePassive(video, onProgres) {
 
   return {
     ok: true,
+    // Les chiffres bruts remontent jusqu'a l'ecran d'echec : sans eux,
+    // impossible de regler les seuils autrement qu'au jugé.
+    mesures: {
+      echantillons: series.length,
+      images: frames,
+      ms_points: chrono.points,
+      ms_empreintes: chrono.empreintes,
+      ms_boucle: dureeBoucle,
+      deform_ratio: Math.round(rapport * 1000) / 1000,
+      ear_range: Math.round((Math.max(...ears) - Math.min(...ears)) * 10000) / 10000,
+      duree_ms: Date.now() - depart,
+    },
     evidence: {
       mode: 'PASSIVE',
       duration_ms: Date.now() - depart,
@@ -11270,13 +11357,15 @@ async function deciderRetard(id, accepter) {
 // =============================================================================
 //  CONFIRMATION D'ADRESSE
 //
-//  Sur l'offre gratuite de Supabase, les gabarits de courriel ne sont pas
-//  modifiables : le message contient un LIEN, jamais un code. Cliquer ce lien
-//  ouvre une session pour cette adresse — ce qui prouve exactement la meme
-//  chose qu'un code saisi, et sans recopie manuelle.
+//  Le courriel transporte un CODE a 6 chiffres : les gabarits Supabase ont ete
+//  regles sur `{{ .Token }}`. La verification passe donc par verifyOtp().
 //
-//  On accepte donc les deux chemins : le code quand un SMTP personnel est
-//  configure, le lien sinon. Dans les deux cas, c'est le SERVEUR qui atteste.
+//  Ce chemin-ci reste en second recours, pour les courriels partis AVANT ce
+//  reglage : ils contenaient un LIEN, et le suivre ouvre une session pour
+//  l'adresse — ce qui prouve la meme chose. Personne ne reste bloque a cause
+//  d'un message recu la veille.
+//
+//  Dans les deux cas, c'est le SERVEUR qui atteste, jamais la page.
 // =============================================================================
 
 /**
@@ -11338,4 +11427,277 @@ async function reprendreInscriptionApresLien() {
     'success', 12000);
 
   openPendingApprovalModal(enCours.matricule || 'EMP-0001');
+}
+
+
+// =============================================================================
+//  DIAGNOSTIC DE LA RECONNAISSANCE FACIALE
+//
+//  Un employe qui n'arrive pas a pointer ne peut rien dire d'autre que « ca ne
+//  marche pas ». Cet ecran mesure, sur SON appareil et avec SON visage, tout
+//  ce qui entre dans la decision, et l'affiche en clair.
+//
+//  Il ne pointe pas, ne consomme aucun defi, n'ecrit rien. Il mesure.
+//
+//  L'empreinte de reference ne sort jamais du serveur : seule la DISTANCE
+//  revient, calculee par diagnose_face().
+// =============================================================================
+
+const diagVisage = { stream: null, encours: false };
+
+async function ouvrirDiagnosticVisage() {
+  if (!state.isAuthenticated) {
+    return showToast('Connexion requise', 'Reconnectez-vous pour lancer le diagnostic.', 'info');
+  }
+
+  const modal = document.getElementById('modal-diag-visage');
+  if (modal) { modal.classList.remove('hidden'); modal.classList.add('flex'); }
+
+  const corps = document.getElementById('diag-visage-corps');
+  if (corps) {
+    corps.innerHTML =
+      '<p class="text-[11px] text-slate-400 leading-relaxed">' +
+      'Le diagnostic mesure la vitesse de votre appareil, la qualité de la détection ' +
+      'et l\'écart avec votre visage enregistré. Il ne pointe pas et ne modifie rien.' +
+      '</p>';
+  }
+
+  const btn = document.getElementById('diag-visage-lancer');
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = '<i data-lucide="activity" class="w-4 h-4"></i><span>LANCER LE DIAGNOSTIC</span>';
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+function fermerDiagnosticVisage() {
+  if (diagVisage.stream) {
+    diagVisage.stream.getTracks().forEach((t) => t.stop());
+    diagVisage.stream = null;
+  }
+  const v = document.getElementById('diag-visage-video');
+  if (v) v.srcObject = null;
+  diagVisage.encours = false;
+
+  const modal = document.getElementById('modal-diag-visage');
+  if (modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
+}
+
+function diagLigne(libelle, valeur, verdict) {
+  const couleurs = { ok: 'text-emerald-400', alerte: 'text-amber-400', ko: 'text-red-400' };
+  return `<div class="flex items-baseline justify-between gap-3 py-1 border-b border-slate-800/60">
+    <span class="text-[11px] text-slate-400">${escapeHtml(libelle)}</span>
+    <span class="text-[11px] font-mono font-bold ${couleurs[verdict] || 'text-slate-200'}">${escapeHtml(String(valeur))}</span>
+  </div>`;
+}
+
+async function lancerDiagnosticVisage() {
+  if (diagVisage.encours) return;
+  diagVisage.encours = true;
+
+  const corps = document.getElementById('diag-visage-corps');
+  const btn = document.getElementById('diag-visage-lancer');
+  const video = document.getElementById('diag-visage-video');
+
+  const etape = (txt) => {
+    if (corps) {
+      corps.innerHTML =
+        '<div class="flex items-center gap-2 text-[11px] text-slate-300">' +
+        '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin text-amber-400"></i>' +
+        `<span>${escapeHtml(txt)}</span></div>`;
+      if (window.lucide) lucide.createIcons();
+    }
+  };
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>MESURE EN COURS…</span>';
+    if (window.lucide) lucide.createIcons();
+  }
+
+  const R = { appareil: navigator.userAgent };
+
+  try {
+    // --- 1. Moteur ---------------------------------------------------------
+    etape('Chargement du moteur de reconnaissance…');
+    let t = Date.now();
+    const moteurOk = await chargerMoteurFacial();
+    R.ms_moteur = Date.now() - t;
+    if (!moteurOk) throw new Error("Le moteur n'a pas pu être téléchargé.");
+
+    // --- 2. Camera ---------------------------------------------------------
+    etape('Ouverture de la caméra…');
+    t = Date.now();
+    diagVisage.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 960 }, aspectRatio: { ideal: 4 / 3 } },
+      audio: false,
+    });
+    if (video) { video.srcObject = diagVisage.stream; await video.play(); }
+    R.ms_camera = Date.now() - t;
+    R.resolution = video ? `${video.videoWidth}x${video.videoHeight}` : 'inconnue';
+
+    // Laisse le capteur s'exposer avant de mesurer quoi que ce soit.
+    await new Promise((r) => setTimeout(r, 800));
+
+    // --- 3. Vitesse de detection des points --------------------------------
+    etape('Mesure de la vitesse de détection…');
+    const durees = [];
+    let vus = 0;
+    for (let i = 0; i < 8; i++) {
+      t = Date.now();
+      const pts = await pointsVisage(video);
+      durees.push(Date.now() - t);
+      if (pts) vus++;
+    }
+    R.ms_points_moyen = Math.round(durees.reduce((a, b) => a + b, 0) / durees.length);
+    R.detection = `${vus}/8`;
+
+    // --- 4. Cout d'une empreinte -------------------------------------------
+    etape('Mesure du calcul d’empreinte…');
+    t = Date.now();
+    const emp = await calculerEmpreinteFaciale(video);
+    R.ms_empreinte = Date.now() - t;
+    R.empreinte = emp.ok ? 'obtenue' : (messageEchecCapture(emp.code).split('.')[0]);
+
+    // --- 5. Mesure de vivacite complete ------------------------------------
+    etape('Mesure de vivacité (3 secondes, regardez la caméra)…');
+    const passif = await mesurerVivacitePassive(video, null);
+    R.mesures = passif.mesures || null;
+
+    // --- 6. Ecart avec le visage enregistre --------------------------------
+    if (emp.ok && supabaseClient) {
+      etape('Comparaison avec votre visage enregistré…');
+      try {
+        const { data, error } = await supabaseClient.rpc('diagnose_face', { p_descriptor: emp.descriptor });
+        if (!error && data) R.comparaison = data;
+      } catch (e) {
+        console.warn('[Diagnostic] Comparaison impossible :', e);
+      }
+    }
+
+    afficherRapportDiagnostic(R);
+  } catch (err) {
+    console.error('[Diagnostic] Échec :', err);
+    if (corps) {
+      corps.innerHTML =
+        '<div class="rounded-xl border border-red-500/40 bg-red-500/10 p-3">' +
+        '<p class="text-xs font-extrabold text-red-300">Diagnostic interrompu</p>' +
+        `<p class="text-[11px] text-slate-300 mt-1">${escapeHtml(String(err.message || err))}</p></div>`;
+    }
+  } finally {
+    diagVisage.encours = false;
+    if (diagVisage.stream) {
+      diagVisage.stream.getTracks().forEach((x) => x.stop());
+      diagVisage.stream = null;
+    }
+    if (video) video.srcObject = null;
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i><span>RELANCER</span>';
+      if (window.lucide) lucide.createIcons();
+    }
+  }
+}
+
+function afficherRapportDiagnostic(R) {
+  const corps = document.getElementById('diag-visage-corps');
+  if (!corps) return;
+
+  const m = R.mesures || {};
+  const c = R.comparaison || {};
+
+  // Verdicts : ce qui EMPECHE de pointer, et non de simples chiffres.
+  const vDetection = R.detection === '8/8' ? 'ok' : (parseInt(R.detection) >= 6 ? 'alerte' : 'ko');
+  const vVitesse = R.ms_points_moyen < 250 ? 'ok' : (R.ms_points_moyen < 500 ? 'alerte' : 'ko');
+  const vEchant = (m.echantillons || 0) >= 10 ? 'ok' : ((m.echantillons || 0) >= 6 ? 'alerte' : 'ko');
+  const vEcart = c.passe === true ? 'ok' : (c.passe === false ? 'ko' : 'alerte');
+
+  let html = '<div class="space-y-3">';
+
+  html += '<div class="rounded-xl bg-slate-900/70 border border-slate-700 p-3">';
+  html += '<p class="text-[11px] font-bold text-slate-200 mb-1.5">Appareil</p>';
+  html += diagLigne('Résolution caméra', R.resolution, 'ok');
+  html += diagLigne('Détection du visage', R.detection, vDetection);
+  html += diagLigne('Temps par image', R.ms_points_moyen + ' ms', vVitesse);
+  html += diagLigne('Calcul d’empreinte', R.ms_empreinte + ' ms', R.ms_empreinte < 1500 ? 'ok' : 'alerte');
+  html += diagLigne('Chargement du moteur', (R.ms_moteur / 1000).toFixed(1) + ' s', 'ok');
+  html += '</div>';
+
+  html += '<div class="rounded-xl bg-slate-900/70 border border-slate-700 p-3">';
+  html += '<p class="text-[11px] font-bold text-slate-200 mb-1.5">Mesure de vivacité</p>';
+  html += diagLigne('Échantillons recueillis', (m.echantillons || 0) + ' / 14', vEchant);
+  if (m.deform_ratio !== undefined) {
+    html += diagLigne('Déformation du visage', m.deform_ratio + '  (seuil 1,35)',
+      m.deform_ratio >= 1.35 ? 'ok' : 'alerte');
+    html += diagLigne('Amplitude des clignements', m.ear_range + '  (seuil 0,055)',
+      m.ear_range >= 0.055 ? 'ok' : 'alerte');
+  } else {
+    html += diagLigne('Résultat', 'mesure non aboutie', 'ko');
+  }
+  html += diagLigne('Durée totale', ((m.duree_ms || 0) / 1000).toFixed(1) + ' s', 'ok');
+  html += '</div>';
+
+  html += '<div class="rounded-xl bg-slate-900/70 border border-slate-700 p-3">';
+  html += '<p class="text-[11px] font-bold text-slate-200 mb-1.5">Comparaison avec votre visage enregistré</p>';
+  if (c.ok) {
+    html += diagLigne('Écart mesuré', c.distance + '  (maximum ' + c.max_distance + ')', vEcart);
+    html += diagLigne('Marge', (c.marge >= 0 ? '+' : '') + c.marge, vEcart);
+    html += diagLigne('Verdict', c.passe ? 'RECONNU' : 'REFUSÉ', vEcart);
+  } else {
+    html += diagLigne('Résultat', c.code === 'FACE_NOT_ENROLLED'
+      ? 'aucun visage enregistré' : (c.code || 'indisponible'), 'ko');
+  }
+  html += '</div>';
+
+  // Conclusion en clair, orientee action.
+  const soucis = [];
+  if (vDetection === 'ko') soucis.push("le visage n'est pas détecté de façon fiable — éclairage ou cadrage");
+  if (vVitesse === 'ko') soucis.push('cet appareil est lent pour la détection');
+  if (vEchant === 'ko') soucis.push('trop peu d’échantillons recueillis');
+  if (c.ok && c.passe === false) soucis.push(`l’écart (${c.distance}) dépasse le maximum (${c.max_distance})`);
+
+  html += soucis.length === 0
+    ? '<div class="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3">' +
+      '<p class="text-xs font-extrabold text-emerald-300">Tout est conforme</p>' +
+      '<p class="text-[11px] text-slate-300 mt-1">Le pointage par reconnaissance faciale devrait fonctionner sur cet appareil.</p></div>'
+    : '<div class="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">' +
+      '<p class="text-xs font-extrabold text-amber-300">Points bloquants</p><ul class="mt-1 space-y-0.5">' +
+      soucis.map((x) => `<li class="text-[11px] text-slate-300">• ${escapeHtml(x)}</li>`).join('') +
+      '</ul></div>';
+
+  html += '<button onclick="copierRapportDiagnostic()" class="w-full min-h-tap py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-[11px] transition">' +
+          'COPIER LE RAPPORT</button>';
+  html += '</div>';
+
+  corps.innerHTML = html;
+  window.__dernierDiagnosticVisage = R;
+  if (window.lucide) lucide.createIcons();
+}
+
+/** Met le rapport dans le presse-papiers, pour l'envoyer au support. */
+async function copierRapportDiagnostic() {
+  const R = window.__dernierDiagnosticVisage;
+  if (!R) return;
+
+  const texte = JSON.stringify(R, null, 2);
+  try {
+    await navigator.clipboard.writeText(texte);
+    showToast('Rapport copié', 'Vous pouvez le coller dans un message.', 'success');
+  } catch (e) {
+    // Le presse-papiers est refusé hors HTTPS, ou sans geste utilisateur.
+    const corps = document.getElementById('diag-visage-corps');
+    if (corps) {
+      corps.insertAdjacentHTML('beforeend',
+        '<textarea readonly class="w-full mt-2 bg-slate-950 border border-slate-700 rounded-lg p-2 text-[10px] text-slate-300 font-mono" rows="8">' +
+        escapeHtml(texte) + '</textarea>');
+    }
+    showToast('Copie impossible', 'Le rapport est affiché ci-dessous, sélectionnez-le à la main.', 'info');
+  }
+}
+
+
+/** Ferme la fenêtre de pointage et enchaîne sur le diagnostic. */
+function fermerEtDiagnostiquerVisage() {
+  closeEmployeePunch();
+  ouvrirDiagnosticVisage();
 }
