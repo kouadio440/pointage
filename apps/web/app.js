@@ -1,5 +1,5 @@
 /**
- * Winner Pointage — Application Logic
+ * Timora — Application Logic
  * Preset B — Sécurité Nocturne
  * Plateforme SaaS de Gestion du Temps et Pointage pour Entreprises
  */
@@ -23,7 +23,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 if (window.supabase && typeof window.supabase.createClient === 'function') {
   try {
     supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    console.log('[Supabase] Initialisé avec succès sur Winner Pointage Web.');
+    console.log('[Supabase] Initialisé avec succès sur Timora Web.');
   } catch (err) {
     console.warn('[Supabase] Erreur d\'initialisation client :', err);
   }
@@ -6509,7 +6509,7 @@ async function handleAddEmployeeSubmit(e) {
       // 1. Créer le profil employé dans public.users
       const { data: newUser, error: userErr } = await supabaseClient.from('users').insert({
         company_id: state.currentCompanyId,
-        email: email || `${phone.replace(/\+/g, '')}@temp.winnerpointage.com`,
+        email: email || `${phone.replace(/\+/g, '')}@temp.timora.tech`,
         full_name: fullName,
         phone_number: phone,
         job_title: job,
@@ -6533,7 +6533,7 @@ async function handleAddEmployeeSubmit(e) {
       });
 
       // 3. Tenter l'envoi automatique d'e-mail d'activation via Supabase Auth
-      if (email && !email.endsWith('@temp.winnerpointage.com')) {
+      if (email && !estAdresseTemporaire(email)) {
         try {
           await supabaseClient.auth.resetPasswordForEmail(email, {
             redirectTo: `${window.location.origin}${window.location.pathname}#invite?code=${inviteCode}`
@@ -6590,7 +6590,7 @@ function openInviteCreatedModal(name, companyName, inviteCode, matricule, recipi
   if (matEl) matEl.innerText = matricule || `${state.currentCompanyPrefix || 'EMP'}-0001`;
 
   if (emailNoticeEl) {
-    if (recipientEmail && !recipientEmail.includes('@temp.winnerpointage.com')) {
+    if (recipientEmail && !estAdresseTemporaire(recipientEmail)) {
       emailNoticeEl.classList.remove('hidden');
     } else {
       emailNoticeEl.classList.add('hidden');
@@ -6607,10 +6607,10 @@ function sendInviteEmail() {
     return;
   }
 
-  const subject = `Invitation à rejoindre ${currentInviteEmailData.companyName} sur Winner Pointage`;
+  const subject = `Invitation à rejoindre ${currentInviteEmailData.companyName} sur Timora`;
   const body = `Bonjour ${currentInviteEmailData.name},
 
-Vous avez été invité(e) à rejoindre l'entreprise ${currentInviteEmailData.companyName} sur la plateforme Winner Pointage.
+Vous avez été invité(e) à rejoindre l'entreprise ${currentInviteEmailData.companyName} sur la plateforme Timora.
 
 Voici vos informations d'accès et d'activation :
 - Matricule Officiel : ${currentInviteEmailData.matricule}
@@ -9725,11 +9725,9 @@ function renderPresenceGauge() {
 // =============================================================================
 
 const VIVACITE = {
-  BLINK: {
-    libelle: 'Clignez des yeux',
-    aide: 'Fermez puis rouvrez les yeux, franchement.',
-    icone: 'eye',
-  },
+  // Le clignement a ete retire : il dure une centaine de millisecondes, il
+  // faut tomber dessus, et son echec bloquait le pointage. Restent deux gestes
+  // tenus assez longtemps pour etre captes a coup sur.
   // Un seul geste de rotation, sans cote impose.
   //
   // Distinguer la gauche de la droite supposait de connaitre la convention de
@@ -10039,17 +10037,32 @@ async function executerControleVivacite(video) {
       };
     }
 
-    // La mesure n'a rien pu conclure : on demande UN geste, on ne bloque pas.
-    //
-    // Auparavant, un appareil trop lent pour fournir assez d'images renvoyait
-    // « visage non détecté » et le pointage s'arrêtait là — sans aucun recours,
-    // alors que le visage était bien devant l'objectif. L'escalade n'existait
-    // que pour le refus du serveur.
+    // Les clichés n'ont rien donné d'exploitable — visage hors cadre, ou
+    // appareil hors d'état. On envoie quand même ce qu'on a : c'est le SERVEUR
+    // qui décide s'il accepte en marquant pour vérification, ou s'il demande
+    // un geste. Ce choix appartient au réglage de l'entreprise, pas à la page.
     if (passif.code === 'INDECIS') {
-      console.warn('[Vivacité] Mesure passive indécise, passage au geste :', passif.mesures);
-      const geste = await escaladerVersGeste(video);
-      if (geste.ok) return { ...geste, mesures: passif.mesures };
-      return geste;
+      console.warn('[Vivacité] Clichés non exploitables :', passif.mesures);
+
+      if (passif.descripteurFinal) {
+        return {
+          ok: true,
+          challengeId: defi.id,
+          evidence: passif.evidence || { mode: 'PASSIVE', duration_ms: 0, frames: 0, descriptors: [] },
+          descripteurFinal: passif.descripteurFinal,
+          mesures: passif.mesures,
+          mode: 'PASSIVE',
+        };
+      }
+
+      // Aucun visage du tout : là, il n'y a rien à envoyer.
+      return {
+        ok: false,
+        titre: 'Visage non détecté',
+        corps: "Aucun visage n'a été trouvé sur les clichés.\n\n" +
+          'Rapprochez-vous de la caméra, cadrez bien votre visage, et évitez ' +
+          "d'avoir une fenêtre derrière vous.",
+      };
     }
 
     return { ok: false, titre: 'Visage non détecté', corps: passif.message };
@@ -10103,7 +10116,7 @@ function afficherMesurePassive(e) {
   set('live-consigne', 'Regardez la caméra');
   set('live-etape', "Vérification d'identité");
   set('live-aide', e.vu
-    ? 'Ne bougez pas trop : quelques clichés sont pris.'
+    ? 'Quelques clichés sont pris. Cela dure deux secondes.'
     : "Aucun visage détecté — cadrez votre visage dans l'écran.");
   set('live-restant', e.vu ? Math.round(Math.min(1, e.avance) * 100) + ' %' : 'Visage hors cadre');
 
@@ -10386,7 +10399,7 @@ function majDetectionVisage(cible, etat) {
  * Quatre suffisent a estimer une dispersion, et coutent quatre passages du
  * modele. La version video en demandait jusqu'a quatorze.
  */
-const PHOTO_NOMBRE = 4;
+const PHOTO_NOMBRE = 5;
 
 /**
  * Temps entre deux cliches.
@@ -10395,7 +10408,7 @@ const PHOTO_NOMBRE = 4;
  * l'occasion de bouger. Prendre quatre cliches en rafale ne montrerait aucune
  * deformation, meme sur un visage bien vivant.
  */
-const PHOTO_INTERVALLE_MS = 400;
+const PHOTO_INTERVALLE_MS = 450;
 
 /** En dessous, la dispersion n'est pas estimable : on passe au geste. */
 const PHOTO_ECHANTILLONS_MIN = 3;
@@ -10557,12 +10570,26 @@ async function mesurerVivacitePassive(video, onProgres) {
     duree_ms: Date.now() - depart,
   };
 
-  // Un echec n'est jamais une impasse : le pointage bascule sur un geste.
-  if (series.length < PHOTO_ECHANTILLONS_MIN || descripteurs.length < 2) {
+  // Trop peu d'echantillons pour estimer une deformation. On ne bloque pas :
+  // on renvoie ce qu'on a, et c'est le serveur qui tranche selon le reglage de
+  // l'entreprise — verification RH, ou demande de geste.
+  if (series.length < PHOTO_ECHANTILLONS_MIN || descripteurs.length < 1) {
     return {
       ok: false,
       code: 'INDECIS',
       mesures: mesuresBrutes,
+      descripteurFinal: descripteurs[0] || null,
+      evidence: descripteurs.length
+        ? {
+            mode: 'PASSIVE',
+            duration_ms: Date.now() - depart,
+            frames: series.length,
+            deform_ratio: 0,
+            ear_range: 0,
+            yaw_range: 0,
+            descriptors: descripteurs,
+          }
+        : null,
       message: "Le visage n'a pas pu être analysé sur ces clichés.",
     };
   }
@@ -11658,4 +11685,20 @@ async function definirModeVivacite(mode) {
     showToast('Modification impossible',
       traduireErreurEcriture(err, 'le changement de mode'), 'danger', 8000);
   }
+}
+
+
+/**
+ * Cette adresse est-elle une adresse de repli, fabriquee faute de courriel ?
+ *
+ * Une inscription par telephone seul recoit une adresse technique. Elle ne
+ * doit jamais servir a envoyer quoi que ce soit.
+ *
+ * Les deux domaines sont acceptes : le produit s'appelait « Winner Pointage »
+ * avant de devenir Timora, et des comptes ont pu etre crees sur la version
+ * encore deployee au moment du renommage.
+ */
+function estAdresseTemporaire(email) {
+  const a = String(email || '').toLowerCase();
+  return a.endsWith('@temp.timora.tech') || a.endsWith('@temp.winnerpointage.com');
 }

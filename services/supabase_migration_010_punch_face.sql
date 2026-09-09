@@ -219,6 +219,16 @@ BEGIN
                             v_face_ok := NULL;
                             v_code := v_live->>'code';
                             v_detail := v_live->>'detail';
+
+                        -- « accepte, mais a verifier » : la mesure passive n a
+                        -- pas conclu. Le pointage est ENREGISTRE — l employe ne
+                        -- reste jamais bloque par un indicateur dont on ignore
+                        -- le point de bascule — et le service RH le voit en
+                        -- attente, avec le selfie horodate.
+                        ELSIF COALESCE((v_live->>'soft')::boolean, FALSE) THEN
+                            v_decision := 'PENDING_REVIEW';
+                            v_review := COALESCE(v_live->>'detail',
+                                'Vivacité non confirmée : vérification humaine recommandée.');
                         END IF;
                     END IF;
                 END IF;
