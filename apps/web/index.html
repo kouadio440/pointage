@@ -2619,233 +2619,329 @@
     <!-- ==================== VIEW 3: SUPER ADMIN / SAAS OWNER DASHBOARD ==================== -->
     <section id="view-saas" class="view-section space-y-6">
 
-      <!-- Header Super Admin -->
+      <!-- ======================= EN-TÊTE SUPER ADMIN ======================= -->
       <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
         <div>
-          <h2 class="text-2xl font-extrabold text-white flex items-center gap-2">
-            Notre Tableau de Bord Propriétaire
-            <span class="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 rounded-full glow-amber">Super Admin • Fondateur SaaS</span>
+          <h2 class="text-2xl font-extrabold text-white flex items-center gap-2 flex-wrap">
+            Pilotage de la plateforme
+            <span class="text-xs font-mono font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2.5 py-0.5 rounded-full glow-amber">Super Admin • Timora</span>
           </h2>
-          <p class="text-xs text-slate-400">Pilotage stratégique, commercial, financier et technique global de la plateforme.</p>
+          <p class="text-xs text-slate-400">
+            Toutes les valeurs affichées proviennent de la base de production, sans exception.
+          </p>
         </div>
 
-        <div class="flex items-center space-x-3 flex-wrap gap-2">
-          <!-- SÉLECTEUR DE DATE DYNAMIQUE -->
-          <div class="flex items-center space-x-1.5 bg-slate-900 border border-amber-500/40 rounded-xl px-3 py-1.5 text-xs shadow-md">
-            <i data-lucide="calendar" class="w-4 h-4 text-amber-400"></i>
-            <input 
-              type="date" 
-              id="saas-header-datepicker" 
-              value="2026-08-09" 
-              onchange="handleSaasDatePickerChange(this.value)" 
-              class="bg-transparent text-amber-300 font-mono text-xs focus:outline-none cursor-pointer"
-              title="Choisir une date pour filtrer le tableau de bord"
-            />
-            <button onclick="switchView('saas'); switchSaasSection('calendar');" class="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[10px] font-bold font-mono transition" title="Ouvrir la grille du calendrier complet">
-              Planning 📅
-            </button>
-          </div>
-          <span class="text-xs font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
-            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-            Santé Réseau & API : 100% Opérationnel
+        <div class="flex items-center gap-2 flex-wrap">
+          <span id="sa-auth-status" class="text-[10px] font-mono font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-lg">
+            🔒 Connexion requise
           </span>
-          <button onclick="showToast('Export Données SaaS', 'Téléchargement complet des métriques, comptes et factures (Excel/PDF).', 'success')" class="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-black font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition">
+          <span id="sa-maj" class="text-[10px] font-mono text-slate-500 bg-slate-900/80 border border-slate-800 px-3 py-1.5 rounded-lg">
+            Jamais chargé
+          </span>
+          <button onclick="chargerSuperAdmin(true)" id="sa-refresh"
+                  class="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center gap-1.5 border border-slate-700 transition">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            Actualiser
+          </button>
+          <button onclick="exporterSuperAdmin()"
+                  class="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-black font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition">
             <i data-lucide="download" class="w-3.5 h-3.5"></i>
-            Exporter les Rapport SaaS
+            Exporter (CSV)
+          </button>
+          <button onclick="deconnecterSuperAdmin()" id="sa-logout-btn"
+                  class="hidden px-3.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold text-xs border border-red-500/30 transition flex items-center gap-1.5">
+            <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+            Déconnexion Admin
           </button>
         </div>
       </div>
 
-      <!-- MAIN FINANCIAL & OPERATIONAL KPI GRID (ALL 11 METRICS SUMMARY) -->
-      <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-3.5">
-        
-        <!-- KPI 1: Revenus Annuels (ARR) -->
-        <div class="glass-panel p-4 interactive-card border-amber-500/30 bg-amber-500/5">
-          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span class="font-semibold text-amber-300">ARR (Revenu Annuel)</span>
-            <i data-lucide="trending-up" class="w-4 h-4 text-amber-400"></i>
-          </div>
-          <div id="saas-kpi-arr" class="text-xl font-extrabold font-mono text-white tracking-tight">0 F</div>
-          <div class="text-[10px] text-emerald-400 font-bold mt-1">Calculé en temps réel</div>
-        </div>
+      <!-- ======================= FORMULAIRE D'AUTHENTIFICATION SAAS (GATE) ======================= -->
+      <div id="saas-auth-gate" class="max-w-2xl mx-auto py-8 px-4 space-y-6">
+        <div class="glass-panel p-8 border-amber-500/30 bg-slate-900/90 shadow-2xl relative overflow-hidden space-y-6 rounded-2xl">
+          <!-- Ambient Glow -->
+          <div class="absolute -top-24 -right-24 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+          <div class="absolute -bottom-24 -left-24 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
-        <!-- KPI 2: Revenus Mensuels (MRR) -->
+          <!-- Icon & Header -->
+          <div class="text-center space-y-3">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-500/20 via-orange-500/20 to-amber-400/10 border border-amber-500/40 text-amber-400 shadow-lg glow-amber mb-1">
+              <i data-lucide="shield-check" class="w-8 h-8"></i>
+            </div>
+            <h3 class="text-xl font-extrabold text-white tracking-tight">Authentification Super Admin SaaS</h3>
+            <p class="text-xs text-slate-400 max-w-md mx-auto">
+              Accès hautement sécurisé obligatoire. Connectez-vous avec un compte administrateur de la plateforme pour piloter la solution Timora.
+            </p>
+          </div>
+
+          <!-- Verification des accès existants -->
+          <div id="saas-detected-access-box" class="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-bold text-amber-400 flex items-center gap-1.5">
+                <i data-lucide="scan" class="w-4 h-4 text-amber-400"></i>
+                Vérification des accès enregistrés
+              </span>
+              <span id="saas-access-check-status" class="text-[10px] font-mono text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
+                Analyse en cours...
+              </span>
+            </div>
+            <div id="saas-detected-access-list" class="text-xs text-slate-300 pt-1 space-y-2">
+              <!-- Rempli dynamiquement -->
+            </div>
+          </div>
+
+          <!-- Message d'information de session -->
+          <div id="saas-session-info"></div>
+
+          <!-- Formulaire de Connexion -->
+          <form id="saas-login-form" onsubmit="soumettreConnexionSaas(event)" class="space-y-4 pt-2">
+            <div>
+              <label for="saas-input-email" class="block text-xs font-bold text-slate-300 mb-1.5">
+                Adresse E-mail Super Admin
+              </label>
+              <div class="relative">
+                <input id="saas-input-email" type="email" required autocomplete="username"
+                       placeholder="eliseemouaheba2001@gmail.com"
+                       class="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-600 text-xs font-mono focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition" />
+                <i data-lucide="mail" class="w-4 h-4 text-slate-500 absolute right-3.5 top-3.5"></i>
+              </div>
+            </div>
+
+            <div>
+              <label for="saas-input-password" class="block text-xs font-bold text-slate-300 mb-1.5">
+                Mot de Passe
+              </label>
+              <div class="relative">
+                <input id="saas-input-password" type="password" required autocomplete="current-password"
+                       placeholder="••••••••••••"
+                       class="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-600 text-xs font-mono focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 transition pr-10" />
+                <button type="button" onclick="toggleSaasPasswordVisible()"
+                        class="absolute right-3 top-3 text-slate-500 hover:text-slate-300 transition p-0.5">
+                  <i id="saas-pwd-eye-icon" data-lucide="eye" class="w-4 h-4"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Zone d'erreur -->
+            <div id="saas-login-error" class="hidden p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex items-center gap-2">
+              <i data-lucide="alert-triangle" class="w-4 h-4 text-red-400 shrink-0"></i>
+              <span id="saas-login-error-msg"></span>
+            </div>
+
+            <button type="submit" id="btn-saas-submit"
+                    class="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 hover:from-amber-600 hover:to-orange-600 text-black font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2">
+              <i data-lucide="key" class="w-4 h-4"></i>
+              <span>Se Connecter au Dashboard SaaS</span>
+            </button>
+          </form>
+
+          <div class="text-center border-t border-slate-800/80 pt-4 text-[11px] text-slate-500">
+            🔒 Accès protégé par Supabase Security Definer RLS &amp; vérification <code class="text-amber-400">platform_admins</code>.
+          </div>
+        </div>
+      </div>
+
+      <!-- ======================= CONTENU DASHBOARD SAAS (DÉVERROUILLÉ APRÈS AUTH) ======================= -->
+      <div id="saas-dashboard-content" class="hidden space-y-6">
+
+      <!--
+        Bandeau d'accès. Le tableau de bord interroge des fonctions verrouillées
+        sur `is_platform_admin()` : un compte non habilité ne voit aucun chiffre,
+        et on le lui dit plutôt que d'afficher des cases vides.
+      -->
+      <div id="sa-acces" class="hidden glass-panel p-5 border-red-500/40 bg-red-500/5">
+        <div class="flex items-start gap-3">
+          <i data-lucide="shield-alert" class="w-5 h-5 text-red-400 shrink-0 mt-0.5"></i>
+          <div>
+            <h3 class="font-bold text-red-300 text-sm">Accès réservé à l'administration de la plateforme</h3>
+            <p id="sa-acces-detail" class="text-xs text-slate-400 mt-1"></p>
+          </div>
+        </div>
+      </div>
+
+      <!--
+        Bandeau des tarifs manquants. Il n'apparaît que lorsque des abonnements
+        actifs n'ont aucun tarif : c'est la seule raison honnête pour laquelle
+        un MRR peut valoir zéro alors que des clients sont actifs.
+      -->
+      <div id="sa-alerte-tarifs" class="hidden glass-panel p-5 border-amber-500/40 bg-amber-500/5">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div class="flex items-start gap-3">
+            <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-400 shrink-0 mt-0.5"></i>
+            <div>
+              <h3 class="font-bold text-amber-300 text-sm">Le MRR est incomplet : des abonnements n'ont pas de tarif</h3>
+              <p id="sa-alerte-tarifs-detail" class="text-xs text-slate-400 mt-1"></p>
+            </div>
+          </div>
+          <button onclick="switchSaasSection('billing')"
+                  class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs transition shrink-0">
+            Saisir les tarifs
+          </button>
+        </div>
+      </div>
+
+      <!-- ======================= INDICATEURS CLÉS ======================= -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+
         <div class="glass-panel p-4 interactive-card border-emerald-500/30 bg-emerald-500/5">
           <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span class="font-semibold text-emerald-300">MRR (Revenu Mensuel)</span>
-            <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+            <span class="font-semibold text-emerald-300">MRR</span>
+            <i data-lucide="repeat" class="w-4 h-4 text-emerald-400"></i>
           </div>
-          <div id="saas-kpi-mrr" class="text-xl font-extrabold font-mono text-emerald-400 tracking-tight">0 F</div>
-          <div class="text-[10px] text-emerald-400/80 mt-1">Calculé en temps réel</div>
+          <div id="sa-mrr" class="text-xl font-extrabold font-mono text-emerald-400 tracking-tight">—</div>
+          <div id="sa-mrr-note" class="text-[10px] text-slate-400 mt-1">Revenu mensuel récurrent</div>
         </div>
 
-        <!-- KPI 3: Nombre total d'entreprises -->
-        <div class="glass-panel p-4 interactive-card border-slate-700">
+        <div class="glass-panel p-4 interactive-card border-amber-500/30 bg-amber-500/5">
           <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span>Total Entreprises</span>
-            <i data-lucide="building-2" class="w-4 h-4 text-slate-400"></i>
+            <span class="font-semibold text-amber-300">ARR</span>
+            <i data-lucide="trending-up" class="w-4 h-4 text-amber-400"></i>
           </div>
-          <div id="saas-kpi-total-companies" class="text-xl font-extrabold font-mono text-white">0 Clientèle</div>
-          <div class="text-[10px] text-slate-400 mt-1">Inscrites sur la plateforme</div>
+          <div id="sa-arr" class="text-xl font-extrabold font-mono text-white tracking-tight">—</div>
+          <div id="sa-arr-note" class="text-[10px] text-slate-400 mt-1">Projection sur 12 mois</div>
         </div>
 
-        <!-- KPI 4: Entreprises Actives -->
-        <div class="glass-panel p-4 interactive-card border-emerald-500/20 bg-emerald-500/5">
-          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span class="text-emerald-400 font-semibold">Entreprises Actives</span>
-            <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-400"></i>
-          </div>
-          <div id="saas-kpi-active-companies" class="text-xl font-extrabold font-mono text-emerald-400">0 Actives</div>
-          <div class="text-[10px] text-emerald-500/80 mt-1">Plateforme Supabase</div>
-        </div>
-
-        <!-- KPI 5: Employés Actifs sous Licence -->
         <div class="glass-panel p-4 interactive-card border-cyan-500/20 bg-cyan-500/5">
           <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span class="text-cyan-300 font-semibold">Employés Actifs</span>
-            <i data-lucide="users" class="w-4 h-4 text-cyan-400"></i>
+            <span class="font-semibold text-cyan-300">Encaissé (30 j)</span>
+            <i data-lucide="banknote" class="w-4 h-4 text-cyan-400"></i>
           </div>
-          <div id="saas-kpi-total-employees" class="text-xl font-extrabold font-mono text-cyan-400">0 emp.</div>
-          <div class="text-[10px] text-cyan-400/80 mt-1">Total global enregistré</div>
+          <div id="sa-encaisse" class="text-xl font-extrabold font-mono text-cyan-400 tracking-tight">—</div>
+          <div id="sa-encaisse-note" class="text-[10px] text-slate-400 mt-1">Paiements confirmés</div>
         </div>
 
-        <!-- KPI 6: Essais Expirés -->
         <div class="glass-panel p-4 interactive-card border-orange-500/20 bg-orange-500/5">
           <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span class="text-orange-300 font-semibold">Essais Expirés</span>
-            <i data-lucide="clock" class="w-4 h-4 text-orange-400"></i>
+            <span class="font-semibold text-orange-300">Encours à recouvrer</span>
+            <i data-lucide="receipt" class="w-4 h-4 text-orange-400"></i>
           </div>
-          <div id="saas-kpi-expired-trials" class="text-xl font-extrabold font-mono text-orange-400">0 Essais</div>
-          <div class="text-[10px] text-orange-400/80 mt-1">Relance commerciale à faire</div>
+          <div id="sa-encours" class="text-xl font-extrabold font-mono text-orange-400 tracking-tight">—</div>
+          <div id="sa-encours-note" class="text-[10px] text-slate-400 mt-1">Factures émises non réglées</div>
         </div>
 
-        <!-- KPI 7: Comptes Suspendus -->
-        <div class="glass-panel p-4 interactive-card border-red-500/20 bg-red-500/5">
+        <div class="glass-panel p-4 interactive-card border-slate-700">
           <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span class="text-red-400 font-semibold">Comptes Suspendus</span>
-            <i data-lucide="shield-ban" class="w-4 h-4 text-red-400"></i>
+            <span>Entreprises</span>
+            <i data-lucide="building-2" class="w-4 h-4 text-slate-400"></i>
           </div>
-          <div id="saas-kpi-suspended" class="text-xl font-extrabold font-mono text-red-400">0 Suspendus</div>
-          <div class="text-[10px] text-red-400/80 mt-1">Impayé / Non-respect CGU</div>
+          <div id="sa-entreprises" class="text-xl font-extrabold font-mono text-white">—</div>
+          <div id="sa-entreprises-note" class="text-[10px] text-slate-400 mt-1">Comptes clients</div>
         </div>
 
-        <!-- KPI 8: Tickets Support -->
+        <div class="glass-panel p-4 interactive-card border-slate-700">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span>Utilisateurs</span>
+            <i data-lucide="users" class="w-4 h-4 text-slate-400"></i>
+          </div>
+          <div id="sa-utilisateurs" class="text-xl font-extrabold font-mono text-white">—</div>
+          <div id="sa-utilisateurs-note" class="text-[10px] text-slate-400 mt-1">Comptes enregistrés</div>
+        </div>
+
+        <div class="glass-panel p-4 interactive-card border-slate-700">
+          <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
+            <span>Pointages (30 j)</span>
+            <i data-lucide="fingerprint" class="w-4 h-4 text-slate-400"></i>
+          </div>
+          <div id="sa-pointages" class="text-xl font-extrabold font-mono text-white">—</div>
+          <div id="sa-pointages-note" class="text-[10px] text-slate-400 mt-1">Usage réel du produit</div>
+        </div>
+
         <div class="glass-panel p-4 interactive-card border-purple-500/20 bg-purple-500/5">
           <div class="flex items-center justify-between text-slate-400 text-xs mb-1">
-            <span class="text-purple-300 font-semibold">Tickets Support</span>
-            <i data-lucide="life-buoy" class="w-4 h-4 text-purple-400"></i>
+            <span class="text-purple-300 font-semibold">À traiter</span>
+            <i data-lucide="inbox" class="w-4 h-4 text-purple-400"></i>
           </div>
-          <div id="saas-kpi-tickets" class="text-xl font-extrabold font-mono text-purple-400">0 Ouverts</div>
-          <div class="text-[10px] text-purple-400/80 mt-1">Assistance technique</div>
+          <div id="sa-atraiter" class="text-xl font-extrabold font-mono text-purple-400">—</div>
+          <div id="sa-atraiter-note" class="text-[10px] text-slate-400 mt-1">Demandes en attente</div>
         </div>
 
       </div>
 
-      <!-- SAAS SUB-SECTION SWITCHER TABS -->
+      <!-- ======================= ONGLETS ======================= -->
       <div class="tab-strip flex items-center gap-2 border-b border-slate-800/80 pb-2 overflow-x-auto">
-        <button onclick="switchSaasSection('overview')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-bold transition text-amber-400 bg-amber-500/10 border border-amber-500/30" data-saas-section="overview">
-          📊 Vue d'Ensemble & Revenus
+        <button onclick="switchSaasSection('overview')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-bold transition text-amber-400 bg-amber-500/10 border border-amber-500/30 whitespace-nowrap" data-saas-section="overview">
+          📊 Vue d'ensemble
         </button>
-        <button onclick="switchSaasSection('calendar')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-saas-section="calendar">
-          📅 Calendrier & Planning Échéances
+        <button onclick="switchSaasSection('companies')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition whitespace-nowrap" data-saas-section="companies">
+          🏢 Entreprises (<span id="saas-header-comp-count">—</span>)
         </button>
-        <button onclick="switchSaasSection('companies')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-saas-section="companies">
-          🏢 Entreprises & Abonnements (<span id="saas-header-comp-count">0</span>)
+        <button onclick="switchSaasSection('billing')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition whitespace-nowrap" data-saas-section="billing">
+          💳 Tarifs & encaissements
         </button>
-        <button onclick="switchSaasSection('payments')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-saas-section="payments">
-          💳 Paiements & Factures
+        <button onclick="switchSaasSection('activity')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition whitespace-nowrap" data-saas-section="activity">
+          🖥️ Activité de la plateforme
         </button>
-        <button onclick="switchSaasSection('tickets')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-saas-section="tickets">
-          🎫 Tickets Support (0)
-        </button>
-        <button onclick="switchSaasSection('logs')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-saas-section="logs">
-          🖥️ Logs Système & Sécurité
+        <button onclick="switchSaasSection('calendar')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition whitespace-nowrap" data-saas-section="calendar">
+          📅 Calendrier
         </button>
       </div>
 
-      <!-- ==================== SUB-SECTION 1: OVERVIEW & FINANCIALS ==================== -->
+      <!-- ==================== VUE D'ENSEMBLE ==================== -->
       <div id="saas-section-overview" class="saas-sub-section space-y-6">
+
         <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-          <!-- Left Column: Repartition des Abonnements -->
-          <div class="lg:col-span-5 glass-panel p-6 border-slate-800 space-y-4">
-            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
-                <i data-lucide="pie-chart" class="w-4 h-4 text-amber-400"></i>
-                Ventes par Formule d'Abonnement
-              </h3>
-              <span id="saas-companies-count-label" class="text-[10px] font-mono text-slate-400">0 Entreprises</span>
-            </div>
-
-            <div class="space-y-4 pt-1">
-              <!-- Formule Starter -->
-              <div class="space-y-1.5 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
-                <div class="flex items-center justify-between text-xs">
-                  <span class="font-bold text-white flex items-center gap-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
-                    Formule Starter (150.000 FCFA/m)
-                  </span>
-                  <span id="saas-plan-starter-count" class="font-mono text-cyan-400 font-bold">0 Abonnés</span>
-                </div>
-                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                  <div id="saas-plan-starter-bar" class="bg-cyan-400 h-full rounded-full" style="width: 0%"></div>
-                </div>
-              </div>
-
-              <!-- Formule Pro -->
-              <div class="space-y-1.5 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
-                <div class="flex items-center justify-between text-xs">
-                  <span class="font-bold text-white flex items-center gap-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-                    Formule Pro (350.000 FCFA/m)
-                  </span>
-                  <span id="saas-plan-pro-count" class="font-mono text-amber-400 font-bold">0 Abonnés</span>
-                </div>
-                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                  <div id="saas-plan-pro-bar" class="bg-amber-400 h-full rounded-full" style="width: 0%"></div>
-                </div>
-              </div>
-
-              <!-- Formule Sur-Mesure -->
-              <div class="space-y-1.5 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
-                <div class="flex items-center justify-between text-xs">
-                  <span class="font-bold text-white flex items-center gap-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-                    Formule Sur-Mesure / Groupe
-                  </span>
-                  <span id="saas-plan-enterprise-count" class="font-mono text-emerald-400 font-bold">0 Abonnés</span>
-                </div>
-                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                  <div id="saas-plan-enterprise-bar" class="bg-emerald-400 h-full rounded-full" style="width: 0%"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Right Column: Résumé Récent des Ventes -->
+          <!-- Croissance sur 12 mois -->
           <div class="lg:col-span-7 glass-panel p-6 border-slate-800 space-y-4">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
-                <i data-lucide="arrow-up-right" class="w-4 h-4 text-emerald-400"></i>
-                Croissance & Nouvelles Souscriptions
+                <i data-lucide="bar-chart-3" class="w-4 h-4 text-amber-400"></i>
+                Croissance sur 12 mois
               </h3>
-              <span id="saas-growth-label" class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Données réelles Supabase</span>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
-                <div class="text-xs text-slate-400">Base Clientèle Inscrite</div>
-                <div id="saas-total-registered-companies" class="text-2xl font-bold font-mono text-white">0 entreprise(s)</div>
-                <p class="text-[10px] text-slate-500">Mise à jour en direct depuis Supabase.</p>
-              </div>
-              <div class="p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-2">
-                <div class="text-xs text-slate-400">Collaborateurs Globaux</div>
-                <div id="saas-total-registered-employees" class="text-2xl font-bold font-mono text-emerald-400">0 employé(s)</div>
-                <p class="text-[10px] text-slate-500">Effectif total sous licence.</p>
+              <div class="flex items-center gap-2">
+                <button onclick="changerSerieSuperAdmin('utilisateurs')" data-serie="utilisateurs"
+                        class="sa-serie-btn px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30 transition">Utilisateurs</button>
+                <button onclick="changerSerieSuperAdmin('entreprises')" data-serie="entreprises"
+                        class="sa-serie-btn px-2 py-0.5 rounded text-[10px] font-mono text-slate-400 border border-transparent hover:text-white transition">Entreprises</button>
+                <button onclick="changerSerieSuperAdmin('pointages')" data-serie="pointages"
+                        class="sa-serie-btn px-2 py-0.5 rounded text-[10px] font-mono text-slate-400 border border-transparent hover:text-white transition">Pointages</button>
+                <button onclick="changerSerieSuperAdmin('encaisse_fcfa')" data-serie="encaisse_fcfa"
+                        class="sa-serie-btn px-2 py-0.5 rounded text-[10px] font-mono text-slate-400 border border-transparent hover:text-white transition">Encaissé</button>
               </div>
             </div>
+            <div id="sa-croissance" class="pt-2"></div>
           </div>
+
+          <!-- Répartition par formule -->
+          <div class="lg:col-span-5 glass-panel p-6 border-slate-800 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+                <i data-lucide="pie-chart" class="w-4 h-4 text-cyan-400"></i>
+                Abonnements par formule
+              </h3>
+              <span id="saas-companies-count-label" class="text-[10px] font-mono text-slate-400">—</span>
+            </div>
+            <div id="sa-plans-repartition" class="space-y-3 pt-1"></div>
+          </div>
+
         </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+          <!-- Adoption du produit -->
+          <div class="lg:col-span-7 glass-panel p-6 border-slate-800 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+                <i data-lucide="activity" class="w-4 h-4 text-emerald-400"></i>
+                Adoption du produit
+              </h3>
+            </div>
+            <div id="sa-adoption" class="grid grid-cols-2 sm:grid-cols-3 gap-3"></div>
+          </div>
+
+          <!-- Comptes et rôles -->
+          <div class="lg:col-span-5 glass-panel p-6 border-slate-800 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+                <i data-lucide="user-cog" class="w-4 h-4 text-purple-400"></i>
+                Comptes et rattachements
+              </h3>
+            </div>
+            <div id="sa-comptes" class="space-y-2.5"></div>
+          </div>
+
+        </div>
+
       </div>
 
       <!-- ==================== SUB-SECTION CALENDAR & SCHEDULE ==================== -->
@@ -2949,43 +3045,44 @@
         </div>
       </div>
 
-      <!-- ==================== SUB-SECTION 2: GESTION DES ENTREPRISES ==================== -->
+      <!-- ==================== ENTREPRISES ==================== -->
       <div id="saas-section-companies" class="saas-sub-section hidden space-y-4">
         <div class="glass-panel p-6 border-slate-800 space-y-4">
-          
+
           <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div>
               <h3 class="font-bold text-white text-base flex items-center gap-2">
                 <i data-lucide="building" class="w-5 h-5 text-amber-400"></i>
-                Gestion des Entreprises & Abonnements Clients
+                Entreprises clientes
               </h3>
-              <p class="text-xs text-slate-400">Supervision des comptes client, statut des essais, formules souscrites et contrôles d'accès.</p>
+              <p class="text-xs text-slate-400">
+                Abonnement, usage réel et encaissements, entreprise par entreprise.
+              </p>
             </div>
-
-            <div class="flex items-center space-x-2">
-              <button onclick="showToast('Nouvelle Entreprise', 'Ouverture du formulaire d\'onboarding d\'une nouvelle entreprise.', 'info')" class="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs transition">
-                + Ajouter une Entreprise
-              </button>
-            </div>
+            <input type="search" id="sa-companies-filtre" oninput="renderSuperAdminEntreprises()"
+                   placeholder="Filtrer par nom ou formule…"
+                   class="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-amber-500/60 w-56" />
           </div>
 
-          <!-- TABLEAU DES ENTREPRISES -->
           <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs">
+            <table class="w-full text-left text-xs min-w-[900px]">
               <thead>
                 <tr class="text-slate-400 border-b border-slate-800/80 font-mono text-[11px]">
-                  <th class="pb-2.5 font-semibold">Nom de l'Entreprise</th>
+                  <th class="pb-2.5 font-semibold">Entreprise</th>
                   <th class="pb-2.5 font-semibold">Formule</th>
-                  <th class="pb-2.5 font-semibold">Employés Actifs</th>
-                  <th class="pb-2.5 font-semibold">Revenu Mensuel</th>
-                  <th class="pb-2.5 font-semibold">Statut du Compte</th>
-                  <th class="pb-2.5 font-semibold text-right">Actions Admin</th>
+                  <th class="pb-2.5 font-semibold">Membres</th>
+                  <th class="pb-2.5 font-semibold">Pointages 30 j</th>
+                  <th class="pb-2.5 font-semibold">Dernier pointage</th>
+                  <th class="pb-2.5 font-semibold">MRR</th>
+                  <th class="pb-2.5 font-semibold">Encaissé</th>
+                  <th class="pb-2.5 font-semibold">Statut</th>
+                  <th class="pb-2.5 font-semibold text-right">Actions</th>
                 </tr>
               </thead>
               <tbody id="company-table-body" class="divide-y divide-slate-800/40 text-slate-300">
                 <tr>
-                  <td colspan="6" class="p-6 text-center text-slate-500 text-xs font-mono">
-                    Aucune entreprise enregistrée dans Supabase pour le moment.
+                  <td colspan="9" class="p-6 text-center text-slate-500 text-xs font-mono">
+                    Chargement…
                   </td>
                 </tr>
               </tbody>
@@ -2994,79 +3091,92 @@
         </div>
       </div>
 
-      <!-- ==================== SUB-SECTION 3: PAIEMENTS & FACTURES ==================== -->
-      <div id="saas-section-payments" class="saas-sub-section hidden space-y-4">
+      <!-- ==================== TARIFS & ENCAISSEMENTS ==================== -->
+      <div id="saas-section-billing" class="saas-sub-section hidden space-y-4">
+
         <div class="glass-panel p-6 border-slate-800 space-y-4">
           <div class="flex items-center justify-between border-b border-slate-800 pb-3">
             <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
-              <i data-lucide="credit-card" class="w-4 h-4 text-emerald-400"></i>
-              Historique des Paiements & Transactions SaaS
+              <i data-lucide="tag" class="w-4 h-4 text-amber-400"></i>
+              Grille tarifaire
             </h3>
-            <span class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Système Supabase En Direct</span>
+          </div>
+          <!--
+            Les tarifs sont vides tant que personne ne les a saisis. Aucun prix
+            n'est proposé par défaut : un montant deviné se retrouverait dans le
+            MRR sans que rien ne le signale.
+          -->
+          <p class="text-[11px] text-slate-400">
+            Un abonnement sans tarif est exclu du MRR et compté comme « non tarifé ». Saisissez ici vos
+            prix réels pour que le revenu se calcule.
+          </p>
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs min-w-[640px]">
+              <thead>
+                <tr class="text-slate-400 border-b border-slate-800/80 font-mono text-[11px]">
+                  <th class="pb-2.5 font-semibold">Formule</th>
+                  <th class="pb-2.5 font-semibold">Abonnés actifs</th>
+                  <th class="pb-2.5 font-semibold">Tarif mensuel (FCFA)</th>
+                  <th class="pb-2.5 font-semibold">Tarif annuel (FCFA)</th>
+                  <th class="pb-2.5 font-semibold text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody id="sa-plans-body" class="divide-y divide-slate-800/40 text-slate-300">
+                <tr><td colspan="5" class="p-6 text-center text-slate-500 text-xs font-mono">Chargement…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="glass-panel p-6 border-slate-800 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+              <i data-lucide="credit-card" class="w-4 h-4 text-emerald-400"></i>
+              Encaissements
+            </h3>
+            <div class="flex items-center gap-3 flex-wrap">
+              <span id="sa-encaisse-resume" class="text-[10px] font-mono text-slate-400"></span>
+              <button onclick="ouvrirPaiementSuperAdmin()"
+                      class="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs transition">
+                + Enregistrer un paiement
+              </button>
+            </div>
           </div>
 
           <div class="overflow-x-auto">
-            <table class="w-full text-left text-xs">
+            <table class="w-full text-left text-xs min-w-[640px]">
               <thead>
                 <tr class="text-slate-400 border-b border-slate-800/80 font-mono text-[11px]">
-                  <th class="pb-2 font-semibold">N° Transaction</th>
-                  <th class="pb-2 font-semibold">Client</th>
-                  <th class="pb-2 font-semibold">Moyen de Paiement</th>
-                  <th class="pb-2 font-semibold">Montant</th>
-                  <th class="pb-2 font-semibold text-right">Statut</th>
+                  <th class="pb-2 font-semibold">Date</th>
+                  <th class="pb-2 font-semibold">Entreprise</th>
+                  <th class="pb-2 font-semibold">Moyen</th>
+                  <th class="pb-2 font-semibold">Référence</th>
+                  <th class="pb-2 font-semibold text-right">Montant</th>
                 </tr>
               </thead>
-              <tbody id="saas-payments-table-body" class="divide-y divide-slate-800/40 text-slate-300">
-                <tr>
-                  <td colspan="5" class="p-6 text-center text-slate-500 text-xs font-mono">
-                    Aucune transaction de paiement enregistrée.
-                  </td>
-                </tr>
+              <tbody id="sa-paiements-body" class="divide-y divide-slate-800/40 text-slate-300">
+                <tr><td colspan="5" class="p-6 text-center text-slate-500 text-xs font-mono">Chargement…</td></tr>
               </tbody>
             </table>
           </div>
         </div>
+
       </div>
 
-      <!-- ==================== SUB-SECTION 4: TICKETS SUPPORT ==================== -->
-      <div id="saas-section-tickets" class="saas-sub-section hidden space-y-4">
-        <div class="glass-panel p-6 border-slate-800 space-y-4">
-          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-            <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
-              <i data-lucide="life-buoy" class="w-4 h-4 text-purple-400"></i>
-              Tickets de Support Client & Assistance Technique
-            </h3>
-            <span class="text-[10px] font-mono text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">Système En Direct</span>
-          </div>
-
-          <div id="saas-tickets-container" class="space-y-3">
-            <div class="p-6 text-center text-slate-500 text-xs font-mono">
-              Aucun ticket de support client ouvert.
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ==================== SUB-SECTION 5: LOGS SYSTÈME ==================== -->
-      <div id="saas-section-logs" class="saas-sub-section hidden space-y-4">
+      <!-- ==================== ACTIVITÉ ==================== -->
+      <div id="saas-section-activity" class="saas-sub-section hidden space-y-4">
         <div class="glass-panel p-6 border-slate-800 space-y-4">
           <div class="flex items-center justify-between border-b border-slate-800 pb-3">
             <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
               <i data-lucide="terminal" class="w-4 h-4 text-emerald-400"></i>
-              Journaux Système & Audit de Sécurité en Direct
+              Derniers événements de la plateforme
             </h3>
-            <span class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Flux WebSocket Actif</span>
+            <span class="text-[10px] font-mono text-slate-500">Pointages et rattachements, toutes entreprises</span>
           </div>
-
-          <div class="bg-black/90 p-4 rounded-xl border border-slate-800 font-mono text-xs text-slate-300 space-y-2 max-h-72 overflow-y-auto">
-            <div class="text-emerald-400">[SYSTEM 13:19:02] NestJS API Server: Healthcheck OK (0.4ms latency)</div>
-            <div class="text-cyan-400">[PRISMA 13:18:44] Database Query: SELECT * FROM "Tenant" WHERE status = 'ACTIVE' (1.2ms)</div>
-            <div class="text-slate-400">[AUTH 13:17:10] Session Refresh for RH Admin rh@votreentreprise.com</div>
-            <div class="text-emerald-400">[SECURITY 13:15:30] Anti-GPS Spoofing Shield: 0 fraudulent requests detected</div>
-            <div class="text-amber-400">[REDIS 13:10:00] Cache Purged & Synchronized for 42 Tenants</div>
-          </div>
+          <div id="sa-activite" class="space-y-1.5 max-h-[28rem] overflow-y-auto font-mono text-[11px]"></div>
         </div>
       </div>
+    </div>
 
     </section>
 
@@ -4015,6 +4125,138 @@
       <div class="pt-2 flex justify-end">
         <button onclick="closeAttendanceDetail()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition">
           Fermer
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODALE : ABONNEMENT D'UNE ENTREPRISE ==================== -->
+  <div id="modal-sa-abo" class="fixed inset-0 z-[70] bg-black/85 backdrop-blur-md hidden items-center justify-center p-3 sm:p-4">
+    <div class="glass-panel-elevated w-full max-w-md p-5 sm:p-6 space-y-4 border border-amber-500/40 relative max-h-[95vh] overflow-y-auto">
+      <button onclick="fermerAbonnementSuperAdmin()" class="absolute top-3 right-3 text-slate-400 hover:text-white p-2 min-h-tap" aria-label="Fermer">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <div class="pr-8">
+        <h3 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+          <i data-lucide="file-signature" class="w-5 h-5 text-amber-400"></i>
+          <span>Abonnement</span>
+        </h3>
+        <p id="sa-abo-contexte" class="text-[11px] text-slate-400 mt-1 font-mono"></p>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label for="sa-abo-plan" class="block text-[11px] font-semibold text-slate-300 mb-1">Formule</label>
+          <select id="sa-abo-plan" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500/60"></select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="sa-abo-periode" class="block text-[11px] font-semibold text-slate-300 mb-1">Périodicité</label>
+            <select id="sa-abo-periode" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500/60">
+              <option value="MONTHLY">Mensuelle</option>
+              <option value="ANNUAL">Annuelle</option>
+            </select>
+          </div>
+          <div>
+            <label for="sa-abo-statut" class="block text-[11px] font-semibold text-slate-300 mb-1">Statut</label>
+            <select id="sa-abo-statut" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500/60">
+              <option value="ACTIVE">Actif</option>
+              <option value="TRIAL">Essai</option>
+              <option value="PAST_DUE">Impayé</option>
+              <option value="SUSPENDED">Suspendu</option>
+              <option value="CANCELLED">Résilié</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label for="sa-abo-montant" class="block text-[11px] font-semibold text-slate-300 mb-1">
+            Montant négocié (FCFA)
+          </label>
+          <input type="number" id="sa-abo-montant" min="0" step="500" placeholder="Laisser vide pour appliquer le tarif de la formule"
+                 class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-amber-500/60" />
+          <p class="text-[10px] text-slate-500 mt-1">
+            Vide = tarif de la formule. Renseigné = ce montant prime pour cette entreprise.
+          </p>
+        </div>
+      </div>
+
+      <div class="pt-1 flex justify-end gap-2">
+        <button onclick="fermerAbonnementSuperAdmin()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition">
+          Annuler
+        </button>
+        <button id="sa-abo-valider" onclick="enregistrerAbonnementSuperAdmin()"
+                class="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-black text-xs font-bold transition">
+          Enregistrer
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== MODALE : ENCAISSEMENT ==================== -->
+  <div id="modal-sa-paiement" class="fixed inset-0 z-[70] bg-black/85 backdrop-blur-md hidden items-center justify-center p-3 sm:p-4">
+    <div class="glass-panel-elevated w-full max-w-md p-5 sm:p-6 space-y-4 border border-emerald-500/40 relative max-h-[95vh] overflow-y-auto">
+      <button onclick="fermerPaiementSuperAdmin()" class="absolute top-3 right-3 text-slate-400 hover:text-white p-2 min-h-tap" aria-label="Fermer">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <div class="pr-8">
+        <h3 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+          <i data-lucide="banknote" class="w-5 h-5 text-emerald-400"></i>
+          <span>Enregistrer un encaissement</span>
+        </h3>
+        <p class="text-[11px] text-slate-400 mt-1">
+          Ce montant entre directement dans le chiffre d'affaires encaissé.
+        </p>
+      </div>
+
+      <div class="space-y-3">
+        <div>
+          <label for="sa-pay-entreprise" class="block text-[11px] font-semibold text-slate-300 mb-1">Entreprise</label>
+          <select id="sa-pay-entreprise" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500/60"></select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="sa-pay-montant" class="block text-[11px] font-semibold text-slate-300 mb-1">Montant (FCFA)</label>
+            <input type="number" id="sa-pay-montant" min="1" step="500"
+                   class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500/60" />
+          </div>
+          <div>
+            <label for="sa-pay-date" class="block text-[11px] font-semibold text-slate-300 mb-1">Date</label>
+            <input type="date" id="sa-pay-date"
+                   class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500/60" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="sa-pay-methode" class="block text-[11px] font-semibold text-slate-300 mb-1">Moyen</label>
+            <select id="sa-pay-methode" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500/60">
+              <option value="MOBILE_MONEY">Mobile Money</option>
+              <option value="BANK_TRANSFER">Virement</option>
+              <option value="CASH">Espèces</option>
+              <option value="CARD">Carte</option>
+              <option value="OTHER">Autre</option>
+            </select>
+          </div>
+          <div>
+            <label for="sa-pay-ref" class="block text-[11px] font-semibold text-slate-300 mb-1">Référence</label>
+            <input type="text" id="sa-pay-ref" placeholder="Optionnel"
+                   class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500/60" />
+          </div>
+        </div>
+      </div>
+
+      <div class="pt-1 flex justify-end gap-2">
+        <button onclick="fermerPaiementSuperAdmin()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition">
+          Annuler
+        </button>
+        <button id="sa-pay-valider" onclick="enregistrerPaiementSuperAdmin()"
+                class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black text-xs font-bold transition">
+          Enregistrer
         </button>
       </div>
     </div>

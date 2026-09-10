@@ -412,6 +412,7 @@ function switchView(viewName) {
 
   if (viewName === 'saas') {
     renderSaasCalendar();
+    verifierAccesSaas();
   } else if (viewName === 'employee') {
     renderEmployeeDashboard();
   } else if (viewName === 'dashboard') {
@@ -790,14 +791,16 @@ function changeCalendarMonth(delta) {
 }
 
 function resetCalendarToToday() {
-  calendarState.currentDate = new Date(2026, 7, 9);
-  calendarState.selectedDate = 9;
+  const aujourdhui = new Date();
+  calendarState.currentDate = aujourdhui;
+  calendarState.selectedDate = aujourdhui.getDate();
 
   const dateInput = document.getElementById('saas-header-datepicker');
-  if (dateInput) dateInput.value = "2026-08-09";
+  if (dateInput) dateInput.value = aujourdhui.toISOString().slice(0, 10);
 
   renderSaasCalendar();
-  showToast('Reinitialisation', 'Retour à la date d\'aujourd\'hui : 9 Août 2026', 'info');
+  const lisible = aujourdhui.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  showToast('Réinitialisation', `Retour à la date du jour : ${lisible}`, 'info');
 }
 
 // Section Switcher within Super Admin SaaS Dashboard
@@ -823,19 +826,6 @@ function switchSaasSection(sectionName) {
 
   if (window.lucide) {
     window.lucide.createIcons();
-  }
-}
-
-function filterCompanyTable() {
-  const filter = document.getElementById('company-status-filter')?.value || 'all';
-  showToast('Filtre Appliqué', `Affichage des entreprises avec le statut : ${filter.toUpperCase()}`, 'info');
-}
-
-function toggleCompanyStatus(companyName, action) {
-  if (action === 'suspend') {
-    showToast('Compte Suspendu', `Le compte client de ${companyName} a été suspendu.`, 'error');
-  } else {
-    showToast('Compte Réactivé', `Le compte client de ${companyName} a été réactivé avec succès.`, 'success');
   }
 }
 
@@ -8134,6 +8124,7 @@ async function loadSupabaseData() {
     renderDashboard();
     renderStaffGrid();
     renderSaasDashboard();
+    verifierAccesPlateforme();
     renderEmployeeDashboard();
     renderLeaveRequestsTable();
 
@@ -8150,90 +8141,1238 @@ async function loadSupabaseData() {
   }
 }
 
-// Render SaaS Admin Dashboard KPIs & Tables
-function renderSaasDashboard() {
-  const companies = state.companies || [];
-  const employeesCount = state.employees ? state.employees.length : 0;
-  const totalCompanies = companies.length;
-  const activeCompanies = companies.filter(c => c.is_active !== false).length;
-  const suspendedCompanies = companies.filter(c => c.is_active === false).length;
+// =============================================================================
+//  TABLEAU DE BORD SUPER ADMIN
+// =============================================================================
+//
+//  CE QUI A ETE REMPLACE ICI, ET POURQUOI
+//  --------------------------------------
+//  L'ancienne version calculait  `mrr = entreprises_actives * 350000`  et
+//  ecrivait « 350.000 FCFA » en dur sur chaque ligne du tableau. Aucun de ces
+//  montants n'existait en base : c'etait une invention, affichee comme une
+//  mesure. Elle lisait par ailleurs `c.is_active` et `c.subscription_plan`,
+//  deux colonnes qui n'existent pas sur `companies` (les vraies sont `status`
+//  et `plan`) — donc toujours `undefined`.
+//
+//  Tout passe desormais par les fonctions de la migration 017/018, verrouillees
+//  sur `is_platform_admin()`. Rien n'est lu directement depuis le navigateur :
+//  `companies`, `users` et `company_memberships` portent des politiques RLS
+//  permissives (`USING (true)`, role `public`), donc une lecture directe
+//  exposerait toute la plateforme a n'importe quelle cle anonyme.
+//
+//  LA REGLE DU ZERO HONNETE
+//  ------------------------
+//  Un MRR a zero peut vouloir dire deux choses tres differentes : « aucun
+//  client ne paie » ou « personne n'a saisi les tarifs ». Le serveur renvoie
+//  `abonnements_non_tarifes` precisement pour les distinguer, et l'interface
+//  ne montre jamais un zero sans dire lequel des deux il est.
 
-  const mrr = activeCompanies * 350000;
-  const arr = mrr * 12;
+const superAdmin = {
+  autorise: null,     // null tant qu'on n'a pas essaye
+  charge: false,
+  chargement: false,
+  erreur: null,
+  apercu: null,
+  entreprises: [],
+  plans: [],
+  paiements: [],
+  activite: [],
+  serie: 'utilisateurs',
+};
 
-  // KPIs
-  const arrEl = document.getElementById('saas-kpi-arr');
-  if (arrEl) arrEl.innerText = `${arr.toLocaleString('fr-FR')} F`;
+/** Formate un entier en FCFA. `null` reste « non défini » : jamais 0 par défaut. */
+function fcfaSuperAdmin(valeur, siVide = 'non défini') {
+  if (valeur === null || valeur === undefined || Number.isNaN(Number(valeur))) return siVide;
+  return Math.round(Number(valeur)).toLocaleString('fr-FR') + ' F';
+}
 
-  const mrrEl = document.getElementById('saas-kpi-mrr');
-  if (mrrEl) mrrEl.innerText = `${mrr.toLocaleString('fr-FR')} F`;
+function nombreSuperAdmin(valeur) {
+  return Number(valeur || 0).toLocaleString('fr-FR');
+}
 
-  const totalCompEl = document.getElementById('saas-kpi-total-companies');
-  if (totalCompEl) totalCompEl.innerText = `${totalCompanies} Clientèle`;
+/** « 2026-09 » devient « sept. 26 ». */
+function moisCourtSuperAdmin(ym) {
+  const [a, m] = String(ym || '').split('-');
+  const noms = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
+                'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+  return (noms[Number(m) - 1] || '?') + ' ' + String(a).slice(2);
+}
 
-  const activeCompEl = document.getElementById('saas-kpi-active-companies');
-  if (activeCompEl) activeCompEl.innerText = `${activeCompanies} Actives`;
+function dateHeureSuperAdmin(iso) {
+  if (!iso) return '—';
+  try {
+    return new Intl.DateTimeFormat('fr-FR', {
+      timeZone: 'Africa/Abidjan', day: '2-digit', month: '2-digit', year: '2-digit',
+      hour: '2-digit', minute: '2-digit',
+    }).format(new Date(iso));
+  } catch (err) {
+    return '—';
+  }
+}
 
-  const totalEmpEl = document.getElementById('saas-kpi-total-employees');
-  if (totalEmpEl) totalEmpEl.innerText = `${employeesCount} emp.`;
+function dateSuperAdmin(iso) {
+  if (!iso) return '—';
+  try {
+    return new Intl.DateTimeFormat('fr-FR', {
+      timeZone: 'Africa/Abidjan', day: '2-digit', month: '2-digit', year: 'numeric',
+    }).format(new Date(iso));
+  } catch (err) {
+    return '—';
+  }
+}
 
-  const expEl = document.getElementById('saas-kpi-expired-trials');
-  if (expEl) expEl.innerText = `0 Essais`;
+/**
+ * Isole le rendu d'un bloc.
+ *
+ * Le meme garde-fou que dans le Cockpit RH : un panneau qui echoue ne doit pas
+ * emporter les sept autres. Une seule variable manquante avait deja suffi a
+ * vider entierement l'onglet « Configuration pointage ».
+ */
+function blocSuperAdmin(nom, rendu) {
+  try {
+    rendu();
+  } catch (err) {
+    console.error(`[Super Admin] Bloc « ${nom} » non rendu :`, err);
+  }
+}
 
-  const suspEl = document.getElementById('saas-kpi-suspended');
-  if (suspEl) suspEl.innerText = `${suspendedCompanies} Suspendus`;
+// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
+//  AUTHENTIFICATION ET VERROUILLAGE DU DASHBOARD SAAS (SUPER ADMIN)
+// -----------------------------------------------------------------------------
 
-  const tickEl = document.getElementById('saas-kpi-tickets');
-  if (tickEl) tickEl.innerText = `0 Ouverts`;
+/**
+ * Contrôle l'accès au Dashboard SaaS.
+ * Verrouille la vue et affiche le formulaire d'authentification si la session
+ * n'est pas authentifiée en tant que Platform Admin (`is_platform_admin()`).
+ */
+async function verifierAccesSaas(forceRecheck = false) {
+  const gateEl = document.getElementById('saas-auth-gate');
+  const contentEl = document.getElementById('saas-dashboard-content');
+  const authStatusEl = document.getElementById('sa-auth-status');
+  const logoutBtnEl = document.getElementById('sa-logout-btn');
 
-  const headerCompCount = document.getElementById('saas-header-comp-count');
-  if (headerCompCount) headerCompCount.innerText = totalCompanies;
+  // Analyse les accès administrateurs existants en arrière-plan
+  verifierAccesSaasExistant();
 
-  const compCountLabel = document.getElementById('saas-companies-count-label');
-  if (compCountLabel) compCountLabel.innerText = `${totalCompanies} Entreprises`;
+  if (!supabaseClient) {
+    if (gateEl) gateEl.classList.remove('hidden');
+    if (contentEl) contentEl.classList.add('hidden');
+    if (authStatusEl) {
+      authStatusEl.textContent = '❌ Supabase non initialisé';
+      authStatusEl.className = 'text-[10px] font-mono font-bold text-red-400 bg-red-500/10 border border-red-500/30 px-3 py-1.5 rounded-lg';
+    }
+    if (logoutBtnEl) logoutBtnEl.classList.add('hidden');
+    return false;
+  }
 
-  const totalRegComp = document.getElementById('saas-total-registered-companies');
-  if (totalRegComp) totalRegComp.innerText = `${totalCompanies} entreprise(s)`;
+  try {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    const currentUser = session?.user;
 
-  const totalRegEmp = document.getElementById('saas-total-registered-employees');
-  if (totalRegEmp) totalRegEmp.innerText = `${employeesCount} employé(s)`;
+    if (!currentUser) {
+      superAdmin.autorise = false;
+      if (gateEl) gateEl.classList.remove('hidden');
+      if (contentEl) contentEl.classList.add('hidden');
+      if (authStatusEl) {
+        authStatusEl.textContent = '🔒 Connexion requise';
+        authStatusEl.className = 'text-[10px] font-mono font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-lg';
+      }
+      if (logoutBtnEl) logoutBtnEl.classList.add('hidden');
+      return false;
+    }
 
-  // Breakdowns
-  const planProCountEl = document.getElementById('saas-plan-pro-count');
-  if (planProCountEl) planProCountEl.innerText = `${totalCompanies} Abonnés`;
+    // Vérifier si le compte est platform_admin
+    const { data: isAdmin, error: adminErr } = await supabaseClient.rpc('is_platform_admin', { p_user: currentUser.id });
 
-  const planProBarEl = document.getElementById('saas-plan-pro-bar');
-  if (planProBarEl) planProBarEl.style.width = totalCompanies > 0 ? '100%' : '0%';
+    if (!adminErr && isAdmin === true) {
+      superAdmin.autorise = true;
+      if (gateEl) gateEl.classList.add('hidden');
+      if (contentEl) contentEl.classList.remove('hidden');
+      if (authStatusEl) {
+        authStatusEl.textContent = `🟢 Admin : ${currentUser.email}`;
+        authStatusEl.className = 'text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1.5 rounded-lg';
+      }
+      if (logoutBtnEl) logoutBtnEl.classList.remove('hidden');
 
-  // Tableau des entreprises
-  const tbody = document.getElementById('company-table-body');
-  if (tbody) {
-    if (companies.length === 0) {
-      tbody.innerHTML = `
-        <tr>
-          <td colspan="6" class="p-6 text-center text-slate-500 text-xs font-mono">
-            Aucune entreprise enregistrée dans Supabase pour le moment.
-          </td>
-        </tr>
-      `;
+      // Charger les données en temps réel
+      chargerSuperAdmin(forceRecheck);
+      return true;
     } else {
-      tbody.innerHTML = companies.map(c => `
-        <tr class="hover:bg-slate-800/30 transition">
-          <td class="py-3 font-bold text-white flex items-center gap-2">
-            <span class="w-2.5 h-2.5 rounded-full ${c.is_active !== false ? 'bg-emerald-400' : 'bg-red-400'}"></span>
-            ${escapeHtml(c.name)}
-          </td>
-          <td><span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono text-[10px] border border-amber-500/20">${escapeHtml(c.subscription_plan || 'Pro')}</span></td>
-          <td class="font-mono">${employeesCount} emp.</td>
-          <td class="font-mono text-emerald-400 font-bold">350.000 FCFA</td>
-          <td><span class="px-2.5 py-0.5 rounded-full ${c.is_active !== false ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'} font-semibold text-[10px] border">${c.is_active !== false ? 'Active' : 'Suspendue'}</span></td>
-          <td class="text-right space-x-2">
-            <button onclick="toggleCompanyStatus('${escapeHtml(c.name)}', '${c.is_active !== false ? 'suspend' : 'activate'}')" class="px-2 py-1 rounded ${c.is_active !== false ? 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20' : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/20'} font-semibold text-[10px] border transition">${c.is_active !== false ? 'Suspendre' : 'Réactiver'}</button>
-          </td>
-        </tr>
-      `).join('');
+      superAdmin.autorise = false;
+      if (gateEl) gateEl.classList.remove('hidden');
+      if (contentEl) contentEl.classList.add('hidden');
+      if (authStatusEl) {
+        authStatusEl.textContent = `⛔ Non habilité (${currentUser.email})`;
+        authStatusEl.className = 'text-[10px] font-mono font-bold text-red-400 bg-red-500/10 border border-red-500/30 px-3 py-1.5 rounded-lg';
+      }
+      if (logoutBtnEl) logoutBtnEl.classList.add('hidden');
+
+      const sessionInfoEl = document.getElementById('saas-session-info');
+      if (sessionInfoEl) {
+        sessionInfoEl.innerHTML = `
+          <div class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
+            <i data-lucide="shield-alert" class="w-4 h-4 text-amber-400 shrink-0"></i>
+            <span>Session actuelle : <strong>${escapeHtml(currentUser.email)}</strong>. Ce compte n'est pas inscrit dans la table <code class="text-amber-400">platform_admins</code>. Veuillez vous connecter ci-dessous avec des identifiants Super Admin.</span>
+          </div>
+        `;
+        if (window.lucide) window.lucide.createIcons();
+      }
+      return false;
+    }
+  } catch (err) {
+    console.error('[SaaS Auth Check] Erreur:', err);
+    if (gateEl) gateEl.classList.remove('hidden');
+    if (contentEl) contentEl.classList.add('hidden');
+    return false;
+  }
+}
+
+/**
+ * Scanne les comptes Super Admin / Platform Admins préexistants dans la base Supabase.
+ * Affiche l'état des accès et permet un préremplissage en un clic.
+ */
+async function verifierAccesSaasExistant() {
+  const statusEl = document.getElementById('saas-access-check-status');
+  const listEl = document.getElementById('saas-detected-access-list');
+  if (!listEl) return;
+
+  const defaultAdminEmail = 'eliseemouaheba2001@gmail.com';
+  let detectedAdmins = [];
+
+  if (supabaseClient) {
+    try {
+      // Tenter de récupérer le compte administrateur fondateur depuis la table users
+      const { data, error } = await supabaseClient
+        .from('users')
+        .select('id, email, role, full_name')
+        .or(`email.eq.${defaultAdminEmail},role.eq.SUPER_ADMIN`);
+
+      if (!error && data && data.length > 0) {
+        detectedAdmins = data;
+      }
+    } catch (e) {
+      console.warn('[SaaS Auth] Diagnostic d\'accès existants:', e);
     }
   }
+
+  // Si aucun enregistrement renvoyé par la clé anonyme, ajouter le compte fondateur enregistré en migration 017
+  if (!detectedAdmins.some(a => a.email && a.email.toLowerCase() === defaultAdminEmail.toLowerCase())) {
+    detectedAdmins.unshift({
+      email: defaultAdminEmail,
+      full_name: 'Propriétaire Fondateur Timora (Migration 017)',
+      role: 'SUPER_ADMIN'
+    });
+  }
+
+  if (statusEl) {
+    statusEl.textContent = `${detectedAdmins.length} accès Super Admin détecté${detectedAdmins.length > 1 ? 's' : ''}`;
+    statusEl.className = 'text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded font-bold';
+  }
+
+  listEl.innerHTML = detectedAdmins.map(adm => `
+    <div class="flex items-center justify-between p-2.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-amber-500/40 transition">
+      <div class="flex items-center gap-2 overflow-hidden">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
+        <div class="truncate">
+          <div class="font-mono font-bold text-white text-xs truncate">${escapeHtml(adm.email)}</div>
+          <div class="text-[10px] text-slate-400">${escapeHtml(adm.full_name || 'Super Admin Plateforme')}</div>
+        </div>
+      </div>
+      <button type="button" onclick="remplirEmailSaas('${escapeHtml(adm.email)}')"
+              class="px-2.5 py-1 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[11px] font-bold transition shrink-0">
+        Utiliser cet accès
+      </button>
+    </div>
+  `).join('');
+
+  const emailInput = document.getElementById('saas-input-email');
+  if (emailInput && !emailInput.value && detectedAdmins.length > 0) {
+    emailInput.value = detectedAdmins[0].email;
+  }
+}
+
+/** Pre-remplit le champ email du formulaire SaaS Super Admin */
+function remplirEmailSaas(email) {
+  const emailInput = document.getElementById('saas-input-email');
+  const pwdInput = document.getElementById('saas-input-password');
+  if (emailInput) {
+    emailInput.value = email;
+    if (pwdInput) pwdInput.focus();
+  }
+}
+
+/** Alterne l'affichage en clair du mot de passe dans le formulaire SaaS */
+function toggleSaasPasswordVisible() {
+  const pwdInput = document.getElementById('saas-input-password');
+  const eyeIcon = document.getElementById('saas-pwd-eye-icon');
+  if (pwdInput) {
+    if (pwdInput.type === 'password') {
+      pwdInput.type = 'text';
+      if (eyeIcon) eyeIcon.setAttribute('data-lucide', 'eye-off');
+    } else {
+      pwdInput.type = 'password';
+      if (eyeIcon) eyeIcon.setAttribute('data-lucide', 'eye');
+    }
+    if (window.lucide) window.lucide.createIcons();
+  }
+}
+
+/** Affiche une alerte d'erreur dans le formulaire de connexion SaaS */
+function afficherErreurSaasLogin(msg) {
+  const errBox = document.getElementById('saas-login-error');
+  const errMsg = document.getElementById('saas-login-error-msg');
+  if (errBox && errMsg) {
+    errMsg.textContent = msg;
+    errBox.classList.remove('hidden');
+  }
+}
+
+/**
+ * Traite la soumission du formulaire d'authentification Super Admin SaaS.
+ */
+async function soumettreConnexionSaas(e) {
+  if (e) e.preventDefault();
+
+  const emailInput = document.getElementById('saas-input-email');
+  const pwdInput = document.getElementById('saas-input-password');
+  const btnSubmit = document.getElementById('btn-saas-submit');
+  const errBox = document.getElementById('saas-login-error');
+
+  if (errBox) errBox.classList.add('hidden');
+
+  const email = emailInput ? emailInput.value.trim() : '';
+  const password = pwdInput ? pwdInput.value : '';
+
+  if (!email || !password) {
+    afficherErreurSaasLogin('Veuillez renseigner votre adresse e-mail et votre mot de passe.');
+    return;
+  }
+
+  if (btnSubmit) {
+    btnSubmit.disabled = true;
+    btnSubmit.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Authentification en cours...`;
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  try {
+    if (!supabaseClient) {
+      throw new Error("Client Supabase non connecté.");
+    }
+
+    // 1. Connexion Supabase Auth
+    const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (authError) {
+      if (authError.message.includes('Invalid login credentials')) {
+        throw new Error("Identifiants incorrects. Vérifiez l'adresse e-mail et le mot de passe.");
+      }
+      throw authError;
+    }
+
+    const userId = authData.user.id;
+
+    // 2. Vérification des droits d'administration de la plateforme
+    const { data: isAdmin, error: adminErr } = await supabaseClient.rpc('is_platform_admin', { p_user: userId });
+
+    if (adminErr || !isAdmin) {
+      await supabaseClient.auth.signOut();
+      throw new Error("Compte authentifié, mais non inscrit dans la liste blanche des administrateurs (platform_admins).");
+    }
+
+    // 3. Authentification validée -> Mettre à jour l'état global et déverrouiller
+    state.isAuthenticated = true;
+    state.currentUser = {
+      id: userId,
+      email: authData.user.email,
+      role: 'SUPER_ADMIN'
+    };
+    state.currentUserRole = 'SUPER_ADMIN';
+
+    showToast('Bienvenue Super Admin 🎉', 'Accès plateforme autorisé.', 'success');
+
+    // Déverrouiller le dashboard
+    await verifierAccesSaas(true);
+
+  } catch (err) {
+    console.error('[SaaS Login] Erreur:', err);
+    afficherErreurSaasLogin(err.message || 'Authentification échouée.');
+    showToast('Erreur Authentification SaaS', err.message || 'Authentification échouée.', 'warning');
+  } finally {
+    if (btnSubmit) {
+      btnSubmit.disabled = false;
+      btnSubmit.innerHTML = `<i data-lucide="key" class="w-4 h-4"></i> <span>Se Connecter au Dashboard SaaS</span>`;
+      if (window.lucide) window.lucide.createIcons();
+    }
+  }
+}
+
+/** Déconnecte la session Super Admin et réactive le verrouillage */
+async function deconnecterSuperAdmin() {
+  try {
+    if (supabaseClient) {
+      await supabaseClient.auth.signOut();
+    }
+    superAdmin.autorise = false;
+    superAdmin.charge = false;
+    showToast('Déconnexion SaaS', 'Vous êtes déconnecté de l\'administration de la plateforme.', 'info');
+    await verifierAccesSaas();
+  } catch (err) {
+    console.error('Erreur déconnexion Super Admin:', err);
+  }
+}
+
+//  CHARGEMENT
+// -----------------------------------------------------------------------------
+
+/**
+ * Interroge les fonctions de la plateforme et redessine tout.
+ *
+ * Les cinq appels partent ensemble : ils sont independants, et les enchainer
+ * ajouterait quatre allers-retours reseau a chaque ouverture de l'onglet.
+ */
+async function chargerSuperAdmin(force = false) {
+  if (superAdmin.chargement) return;
+  if (superAdmin.charge && !force) { dessinerSuperAdmin(); return; }
+
+  if (!supabaseClient) {
+    superAdmin.autorise = false;
+    superAdmin.erreur = "Supabase n'est pas initialisé : aucune donnée ne peut être lue.";
+    dessinerSuperAdmin();
+    return;
+  }
+
+  superAdmin.chargement = true;
+  const bouton = document.getElementById('sa-refresh');
+  if (bouton) { bouton.disabled = true; bouton.classList.add('opacity-50'); }
+
+  try {
+    const [apercu, entreprises, plans, paiements, activite] = await Promise.all([
+      supabaseClient.rpc('platform_overview'),
+      supabaseClient.rpc('platform_companies'),
+      supabaseClient.rpc('platform_plans_list'),
+      supabaseClient.rpc('platform_payments_list', { p_limit: 50 }),
+      supabaseClient.rpc('platform_activity', { p_limit: 40 }),
+    ]);
+
+    if (apercu.error) {
+      // 42501 = le garde `is_platform_admin()` a refuse. Tout autre code est
+      // une vraie panne, et ne doit pas etre presente comme un refus d'acces.
+      const refus = apercu.error.code === '42501' ||
+                    /administrateur de la plateforme/i.test(apercu.error.message || '');
+      superAdmin.autorise = !refus;
+
+      if (!refus) {
+        superAdmin.erreur = `Lecture impossible : ${apercu.error.message}`;
+      } else if (!state.isAuthenticated) {
+        // Sans session, la cle anonyme n'a meme pas le droit d'appeler la
+        // fonction : le refus vient de la connexion manquante, pas du compte.
+        superAdmin.erreur = "Connectez-vous avec le compte propriétaire de la plateforme pour accéder à ce tableau de bord.";
+      } else {
+        superAdmin.erreur = "Ce compte n'est pas inscrit dans la liste des administrateurs de la plateforme.";
+      }
+      superAdmin.charge = false;
+      dessinerSuperAdmin();
+      return;
+    }
+
+    superAdmin.autorise = true;
+    superAdmin.erreur = null;
+    superAdmin.apercu = apercu.data || null;
+    superAdmin.entreprises = entreprises.error ? [] : (entreprises.data || []);
+    superAdmin.plans = plans.error ? [] : (plans.data || []);
+    superAdmin.paiements = paiements.error ? [] : (paiements.data || []);
+    superAdmin.activite = activite.error ? [] : (activite.data || []);
+    superAdmin.charge = true;
+
+    [entreprises, plans, paiements, activite].forEach((r) => {
+      if (r.error) console.error('[Super Admin] Appel partiel en échec :', r.error.message);
+    });
+
+    dessinerSuperAdmin();
+  } catch (err) {
+    console.error('[Super Admin] Chargement impossible :', err);
+    superAdmin.erreur = `Chargement impossible : ${err.message}`;
+    dessinerSuperAdmin();
+  } finally {
+    superAdmin.chargement = false;
+    if (bouton) { bouton.disabled = false; bouton.classList.remove('opacity-50'); }
+  }
+}
+
+/** Redessine depuis ce qui est deja en memoire, sans rien redemander au serveur. */
+function dessinerSuperAdmin() {
+  const banniere = document.getElementById('sa-acces');
+  const detail = document.getElementById('sa-acces-detail');
+
+  if (superAdmin.autorise === false || (superAdmin.erreur && !superAdmin.charge)) {
+    if (banniere) banniere.classList.remove('hidden');
+    if (detail) detail.textContent = superAdmin.erreur || 'Accès refusé.';
+    viderSuperAdmin();
+    return;
+  }
+  if (banniere) banniere.classList.add('hidden');
+  if (!superAdmin.apercu) return;
+
+  blocSuperAdmin('indicateurs', renderSuperAdminKpis);
+  blocSuperAdmin('croissance', renderSuperAdminCroissance);
+  blocSuperAdmin('formules', renderSuperAdminRepartition);
+  blocSuperAdmin('adoption', renderSuperAdminAdoption);
+  blocSuperAdmin('comptes', renderSuperAdminComptes);
+  blocSuperAdmin('entreprises', renderSuperAdminEntreprises);
+  blocSuperAdmin('tarifs', renderSuperAdminPlans);
+  blocSuperAdmin('encaissements', renderSuperAdminPaiements);
+  blocSuperAdmin('activité', renderSuperAdminActivite);
+
+  const maj = document.getElementById('sa-maj');
+  if (maj) maj.textContent = 'Données au ' + dateHeureSuperAdmin(superAdmin.apercu.genere_le);
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+/** Remet les huit tuiles a « — » : aucune valeur ne doit survivre a un refus d'accès. */
+function viderSuperAdmin() {
+  ['sa-mrr', 'sa-arr', 'sa-encaisse', 'sa-encours', 'sa-entreprises',
+   'sa-utilisateurs', 'sa-pointages', 'sa-atraiter'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '—';
+  });
+  const compteur = document.getElementById('saas-header-comp-count');
+  if (compteur) compteur.textContent = '—';
+}
+
+// -----------------------------------------------------------------------------
+//  LES HUIT INDICATEURS
+// -----------------------------------------------------------------------------
+
+function renderSuperAdminKpis() {
+  const { revenu: r, clients: c, usage: u } = superAdmin.apercu;
+
+  const poser = (id, valeur, note) => {
+    const v = document.getElementById(id);
+    if (v) v.textContent = valeur;
+    const n = document.getElementById(id + '-note');
+    if (n) n.textContent = note;
+  };
+
+  // Un MRR a zero avec des abonnements non tarifes n'est pas « zéro revenu » :
+  // c'est « revenu inconnu ». La note le dit, et la tuile passe en orange.
+  const nonTarifes = Number(r.abonnements_non_tarifes || 0);
+  poser('sa-mrr', fcfaSuperAdmin(r.mrr, '0 F'),
+    nonTarifes > 0
+      ? `${r.abonnements_payants} tarifé(s) · ${nonTarifes} sans tarif, exclu(s) du calcul`
+      : `${r.abonnements_payants} abonnement(s) actif(s) tarifé(s)`);
+
+  const tuileMrr = document.getElementById('sa-mrr');
+  if (tuileMrr) tuileMrr.className = nonTarifes > 0
+    ? 'text-xl font-extrabold font-mono text-orange-400 tracking-tight'
+    : 'text-xl font-extrabold font-mono text-emerald-400 tracking-tight';
+
+  poser('sa-arr', fcfaSuperAdmin(Number(r.mrr || 0) * 12, '0 F'),
+    nonTarifes > 0 ? 'Incomplet tant que des tarifs manquent' : 'MRR × 12');
+
+  poser('sa-encaisse', fcfaSuperAdmin(r.encaisse_30j_fcfa, '0 F'),
+    `${r.paiements_confirmes} paiement(s) confirmé(s) · ${fcfaSuperAdmin(r.encaisse_total_fcfa, '0 F')} au total`);
+
+  poser('sa-encours', fcfaSuperAdmin(r.encours_fcfa, '0 F'),
+    Number(r.factures_total || 0) === 0
+      ? 'Aucune facture émise'
+      : `${r.factures_a_recouvrer} facture(s) · ${r.factures_impayees} en retard`);
+
+  poser('sa-entreprises', nombreSuperAdmin(c.entreprises_total),
+    `${c.entreprises_actives} active(s) · ${c.entreprises_suspendues} suspendue(s) · +${c.entreprises_30j} sur 30 j`);
+
+  poser('sa-utilisateurs', nombreSuperAdmin(c.utilisateurs_total),
+    `${c.utilisateurs_actifs} actif(s) · +${c.utilisateurs_30j} sur 30 j`);
+
+  poser('sa-pointages', nombreSuperAdmin(u.pointages_30j),
+    `${u.pointages_jour} aujourd'hui · ${nombreSuperAdmin(u.pointages_total)} depuis l'origine`);
+
+  const aTraiter = Number(c.rattachements_attente || 0) + Number(u.a_verifier || 0) +
+                   Number(u.conges_attente || 0) + Number(u.heures_attente || 0);
+  poser('sa-atraiter', nombreSuperAdmin(aTraiter),
+    `${c.rattachements_attente} rattachement(s) · ${u.a_verifier} pointage(s) à vérifier`);
+
+  const compteur = document.getElementById('saas-header-comp-count');
+  if (compteur) compteur.textContent = nombreSuperAdmin(c.entreprises_total);
+
+  // Le bandeau des tarifs manquants : la seule explication honnête d'un MRR nul
+  // alors que des clients sont actifs.
+  const alerte = document.getElementById('sa-alerte-tarifs');
+  const alerteDetail = document.getElementById('sa-alerte-tarifs-detail');
+  if (alerte) alerte.classList.toggle('hidden', nonTarifes === 0);
+  if (alerteDetail && nonTarifes > 0) {
+    alerteDetail.textContent =
+      `${nonTarifes} abonnement(s) actif(s) n'ont aucun tarif : ni sur leur formule, ni négocié. ` +
+      `Ils ne sont donc pas comptés dans le MRR, qui reste incomplet tant que ces montants ne sont pas saisis.`;
+  }
+}
+
+// -----------------------------------------------------------------------------
+//  CROISSANCE SUR 12 MOIS
+// -----------------------------------------------------------------------------
+
+function changerSerieSuperAdmin(serie) {
+  superAdmin.serie = serie;
+  document.querySelectorAll('.sa-serie-btn').forEach((b) => {
+    const actif = b.dataset.serie === serie;
+    b.className = 'sa-serie-btn px-2 py-0.5 rounded text-[10px] font-mono transition ' + (actif
+      ? 'font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30'
+      : 'text-slate-400 border border-transparent hover:text-white');
+  });
+  blocSuperAdmin('croissance', renderSuperAdminCroissance);
+}
+
+function renderSuperAdminCroissance() {
+  const hote = document.getElementById('sa-croissance');
+  if (!hote || !superAdmin.apercu) return;
+
+  const serie = superAdmin.apercu.serie || [];
+  const cle = superAdmin.serie;
+  const argent = cle === 'encaisse_fcfa';
+  const valeurs = serie.map((m) => Number(m[cle] || 0));
+  const max = Math.max(...valeurs, 1);
+  const total = valeurs.reduce((a, b) => a + b, 0);
+
+  if (total === 0) {
+    hote.innerHTML = `
+      <div class="p-6 text-center text-slate-500 text-xs font-mono border border-dashed border-slate-800 rounded-xl">
+        Aucune donnée sur les 12 derniers mois pour cette série.
+      </div>`;
+    return;
+  }
+
+  const barres = serie.map((m) => {
+    const v = Number(m[cle] || 0);
+    // 4 % de hauteur minimale : un mois a 1 doit rester visible a cote d'un mois a 300.
+    const h = v === 0 ? 0 : Math.max(4, Math.round((v / max) * 100));
+    return `
+      <div class="flex-1 flex flex-col items-center gap-1.5 group min-w-0">
+        <div class="text-[9px] font-mono ${v ? 'text-slate-300' : 'text-slate-700'} tabular-nums">
+          ${argent ? (v ? Math.round(v / 1000) + 'k' : '0') : v}
+        </div>
+        <div class="w-full h-28 flex items-end">
+          <div class="w-full rounded-t transition-all ${v ? 'bg-gradient-to-t from-amber-600 to-amber-400 group-hover:from-amber-500 group-hover:to-amber-300' : 'bg-slate-800'}"
+               style="height: ${h}%" title="${escapeHtml(moisCourtSuperAdmin(m.mois))} : ${argent ? fcfaSuperAdmin(v, '0 F') : v}"></div>
+        </div>
+        <div class="text-[9px] font-mono text-slate-500 truncate w-full text-center">${escapeHtml(moisCourtSuperAdmin(m.mois))}</div>
+      </div>`;
+  }).join('');
+
+  const libelle = { utilisateurs: 'nouveaux utilisateurs', entreprises: 'nouvelles entreprises',
+                    pointages: 'pointages', encaisse_fcfa: 'encaissé' }[cle] || cle;
+
+  hote.innerHTML = `
+    <div class="flex items-end gap-1.5">${barres}</div>
+    <div class="mt-3 pt-3 border-t border-slate-800 text-[10px] font-mono text-slate-400">
+      Total sur 12 mois : <span class="text-amber-400 font-bold">${argent ? fcfaSuperAdmin(total, '0 F') : nombreSuperAdmin(total)}</span> ${escapeHtml(libelle)}
+    </div>`;
+}
+
+// -----------------------------------------------------------------------------
+//  REPARTITION PAR FORMULE
+// -----------------------------------------------------------------------------
+
+function renderSuperAdminRepartition() {
+  const hote = document.getElementById('sa-plans-repartition');
+  if (!hote) return;
+
+  const parPlan = (superAdmin.apercu.clients || {}).par_plan || {};
+  const entrees = Object.entries(parPlan);
+  const total = entrees.reduce((a, [, n]) => a + Number(n), 0);
+
+  const etiquette = document.getElementById('saas-companies-count-label');
+  if (etiquette) etiquette.textContent = `${total} abonnement(s) actif(s)`;
+
+  if (!entrees.length) {
+    hote.innerHTML = `<div class="p-5 text-center text-slate-500 text-xs font-mono border border-dashed border-slate-800 rounded-xl">
+      Aucun abonnement actif.
+    </div>`;
+    return;
+  }
+
+  const couleurs = ['bg-amber-400', 'bg-cyan-400', 'bg-emerald-400', 'bg-purple-400', 'bg-rose-400'];
+
+  hote.innerHTML = entrees
+    .sort((a, b) => Number(b[1]) - Number(a[1]))
+    .map(([code, n], i) => {
+      const plan = superAdmin.plans.find((p) => p.code === code);
+      // Le tarif affiche est celui reellement enregistre, ou l'aveu qu'il manque.
+      const tarif = plan && plan.mensuel !== null && plan.mensuel !== undefined
+        ? fcfaSuperAdmin(plan.mensuel) + '/mois'
+        : 'tarif non défini';
+      const pct = total ? Math.round((Number(n) / total) * 100) : 0;
+      return `
+        <div class="space-y-1.5 p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+          <div class="flex items-center justify-between text-xs gap-2">
+            <span class="font-bold text-white flex items-center gap-2 min-w-0">
+              <span class="w-2.5 h-2.5 rounded-full ${couleurs[i % couleurs.length]} shrink-0"></span>
+              <span class="truncate">${escapeHtml(plan ? plan.nom : code)}</span>
+            </span>
+            <span class="font-mono ${plan && plan.mensuel != null ? 'text-slate-400' : 'text-orange-400'} text-[10px] shrink-0">${escapeHtml(tarif)}</span>
+          </div>
+          <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+            <div class="${couleurs[i % couleurs.length]} h-full rounded-full transition-all" style="width: ${pct}%"></div>
+          </div>
+          <div class="text-[10px] font-mono text-slate-500">${n} abonné(s) — ${pct} %</div>
+        </div>`;
+    }).join('');
+}
+
+// -----------------------------------------------------------------------------
+//  ADOPTION DU PRODUIT
+// -----------------------------------------------------------------------------
+
+function renderSuperAdminAdoption() {
+  const hote = document.getElementById('sa-adoption');
+  if (!hote) return;
+
+  const u = superAdmin.apercu.usage || {};
+  const decisions = u.par_decision || {};
+  const acceptes = Number(decisions.ACCEPTED || 0);
+  const totalDecides = Object.values(decisions).reduce((a, b) => a + Number(b), 0);
+  const tauxAcceptation = totalDecides ? Math.round((acceptes / totalDecides) * 100) : null;
+
+  const pointeurs = Number(u.employes_pointeurs || 0);
+  const couverture = pointeurs ? Math.round((Number(u.empreintes || 0) / pointeurs) * 100) : null;
+
+  const cases = [
+    ['Pointages (7 j)', nombreSuperAdmin(u.pointages_7j), 'text-white'],
+    ['Taux d\'acceptation', tauxAcceptation === null ? '—' : tauxAcceptation + ' %',
+      tauxAcceptation === null ? 'text-slate-500' : (tauxAcceptation >= 90 ? 'text-emerald-400' : 'text-orange-400')],
+    ['À vérifier', nombreSuperAdmin(u.a_verifier), Number(u.a_verifier) ? 'text-orange-400' : 'text-slate-400'],
+    ['Refusés', nombreSuperAdmin(u.refuses), Number(u.refuses) ? 'text-red-400' : 'text-slate-400'],
+    ['Retards détectés', nombreSuperAdmin(u.retards), 'text-amber-400'],
+    ['GPS suspects', nombreSuperAdmin(u.gps_suspects), Number(u.gps_suspects) ? 'text-red-400' : 'text-slate-400'],
+    ['Visages enrôlés', `${nombreSuperAdmin(u.empreintes)} / ${nombreSuperAdmin(pointeurs)}`,
+      'text-cyan-400', couverture === null ? '' : `${couverture} % des employés soumis au pointage`],
+    ['Sites géolocalisés', `${nombreSuperAdmin(u.sites_actifs)} / ${nombreSuperAdmin(u.sites)}`, 'text-white',
+      `${u.sites_qr} avec QR`],
+    ['Horaires configurés', nombreSuperAdmin(u.horaires), 'text-white'],
+  ];
+
+  hote.innerHTML = cases.map(([titre, valeur, couleur, note]) => `
+    <div class="p-3 rounded-xl bg-slate-900/80 border border-slate-800">
+      <div class="text-[10px] text-slate-400 mb-1">${escapeHtml(titre)}</div>
+      <div class="text-base font-extrabold font-mono ${couleur}">${escapeHtml(String(valeur))}</div>
+      ${note ? `<div class="text-[9px] text-slate-500 font-mono mt-0.5">${escapeHtml(note)}</div>` : ''}
+    </div>`).join('');
+}
+
+// -----------------------------------------------------------------------------
+//  COMPTES ET RATTACHEMENTS
+// -----------------------------------------------------------------------------
+
+function renderSuperAdminComptes() {
+  const hote = document.getElementById('sa-comptes');
+  if (!hote) return;
+
+  const c = superAdmin.apercu.clients || {};
+  const roles = Object.entries(c.par_role || {}).sort((a, b) => Number(b[1]) - Number(a[1]));
+
+  const rangee = (libelle, valeur, couleur = 'text-slate-200') => `
+    <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-900/80 border border-slate-800">
+      <span class="text-xs text-slate-400">${escapeHtml(libelle)}</span>
+      <span class="text-xs font-mono font-bold ${couleur}">${escapeHtml(String(valeur))}</span>
+    </div>`;
+
+  hote.innerHTML =
+    roles.map(([role, n]) => rangee('Rôle ' + role, n)).join('') +
+    rangee('Rattachements actifs', c.rattachements_actifs, 'text-emerald-400') +
+    rangee('En attente d\'approbation', c.rattachements_attente,
+      Number(c.rattachements_attente) ? 'text-orange-400' : 'text-slate-400') +
+    rangee('Invitations non acceptées', c.rattachements_invites,
+      Number(c.rattachements_invites) ? 'text-amber-400' : 'text-slate-400') +
+    rangee('Comptes désactivés', c.utilisateurs_inactifs,
+      Number(c.utilisateurs_inactifs) ? 'text-red-400' : 'text-slate-400');
+}
+
+// -----------------------------------------------------------------------------
+//  TABLEAU DES ENTREPRISES
+// -----------------------------------------------------------------------------
+
+function renderSuperAdminEntreprises() {
+  const corps = document.getElementById('company-table-body');
+  if (!corps) return;
+
+  const filtre = (document.getElementById('sa-companies-filtre')?.value || '').trim().toLowerCase();
+  const lignes = superAdmin.entreprises.filter((e) => !filtre ||
+    String(e.nom || '').toLowerCase().includes(filtre) ||
+    String(e.plan || '').toLowerCase().includes(filtre));
+
+  if (!lignes.length) {
+    corps.innerHTML = `<tr><td colspan="9" class="p-6 text-center text-slate-500 text-xs font-mono">
+      ${filtre ? 'Aucune entreprise ne correspond à ce filtre.' : 'Aucune entreprise enregistrée.'}
+    </td></tr>`;
+    return;
+  }
+
+  const etatAbo = {
+    ACTIVE: ['Actif', 'text-emerald-400'], TRIAL: ['Essai', 'text-cyan-400'],
+    PAST_DUE: ['Impayé', 'text-orange-400'], SUSPENDED: ['Suspendu', 'text-red-400'],
+    CANCELLED: ['Résilié', 'text-slate-500'],
+  };
+
+  corps.innerHTML = lignes.map((e) => {
+    const suspendue = e.statut === 'suspended';
+    const [libelleAbo, couleurAbo] = etatAbo[e.abonnement] || ['Sans abonnement', 'text-slate-500'];
+    // `mrr_fcfa` vaut null quand aucun tarif n'est connu : on l'ecrit, on ne
+    // le remplace pas par zero.
+    const mrrConnu = e.mrr_fcfa !== null && e.mrr_fcfa !== undefined;
+
+    return `
+      <tr class="hover:bg-slate-800/30 transition">
+        <td class="py-3 font-bold text-white">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full ${suspendue ? 'bg-red-400' : 'bg-emerald-400'} shrink-0"></span>
+            <span class="truncate max-w-[10rem]">${escapeHtml(e.nom || '(sans nom)')}</span>
+          </div>
+          <div class="text-[9px] font-mono text-slate-500 pl-4.5">créée le ${dateSuperAdmin(e.created_at)}</div>
+        </td>
+        <td>
+          <span class="px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-mono text-[10px] border border-amber-500/20">
+            ${escapeHtml(e.plan || 'aucune')}
+          </span>
+          <div class="text-[9px] font-mono ${couleurAbo} mt-0.5">${escapeHtml(libelleAbo)}${e.periodicite === 'ANNUAL' ? ' · annuel' : ''}</div>
+        </td>
+        <td class="font-mono">
+          ${e.membres}
+          ${Number(e.membres_attente) ? `<span class="text-orange-400 text-[10px]"> +${e.membres_attente} en attente</span>` : ''}
+        </td>
+        <td class="font-mono ${Number(e.pointages_30j) ? 'text-slate-200' : 'text-slate-600'}">${e.pointages_30j}</td>
+        <td class="font-mono text-[10px] ${e.dernier_pointage ? 'text-slate-400' : 'text-slate-600'}">
+          ${e.dernier_pointage ? dateHeureSuperAdmin(e.dernier_pointage) : 'jamais'}
+        </td>
+        <td class="font-mono font-bold ${mrrConnu ? 'text-emerald-400' : 'text-orange-400'}">
+          ${mrrConnu ? fcfaSuperAdmin(e.mrr_fcfa) : 'non tarifé'}
+        </td>
+        <td class="font-mono ${Number(e.encaisse_fcfa) ? 'text-cyan-400' : 'text-slate-600'}">
+          ${fcfaSuperAdmin(e.encaisse_fcfa, '0 F')}
+        </td>
+        <td>
+          <span class="px-2.5 py-0.5 rounded-full font-semibold text-[10px] border ${suspendue
+            ? 'bg-red-500/10 text-red-400 border-red-500/20'
+            : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'}">
+            ${suspendue ? 'Suspendue' : 'Active'}
+          </span>
+        </td>
+        <td class="text-right whitespace-nowrap">
+          <button onclick="ouvrirAbonnementSuperAdmin('${e.id}')"
+                  class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-[10px] border border-slate-700 transition">
+            Abonnement
+          </button>
+          <button onclick="basculerStatutSuperAdmin('${e.id}', ${suspendue ? 'false' : 'true'})"
+                  class="px-2 py-1 rounded font-semibold text-[10px] border transition ${suspendue
+                    ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/20'
+                    : 'bg-red-500/10 hover:bg-red-500/20 text-red-400 border-red-500/20'}">
+            ${suspendue ? 'Réactiver' : 'Suspendre'}
+          </button>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+// -----------------------------------------------------------------------------
+//  GRILLE TARIFAIRE
+// -----------------------------------------------------------------------------
+
+function renderSuperAdminPlans() {
+  const corps = document.getElementById('sa-plans-body');
+  if (!corps) return;
+
+  if (!superAdmin.plans.length) {
+    corps.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-slate-500 text-xs font-mono">
+      Aucune formule enregistrée.
+    </td></tr>`;
+    return;
+  }
+
+  corps.innerHTML = superAdmin.plans.map((p) => `
+    <tr class="hover:bg-slate-800/30 transition">
+      <td class="py-3 font-bold text-white">${escapeHtml(p.nom || p.code)}
+        <div class="text-[9px] font-mono text-slate-500">${escapeHtml(p.code)}</div>
+      </td>
+      <td class="font-mono">${p.abonnes}</td>
+      <td>
+        <input type="number" min="0" step="500" id="sa-tarif-m-${escapeHtml(p.code)}"
+               value="${p.mensuel === null || p.mensuel === undefined ? '' : p.mensuel}"
+               placeholder="non défini"
+               class="w-32 bg-slate-900 border ${p.mensuel == null ? 'border-orange-500/50' : 'border-slate-700'} rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-200 placeholder:text-orange-400/70 focus:outline-none focus:border-amber-500/60" />
+      </td>
+      <td>
+        <input type="number" min="0" step="500" id="sa-tarif-a-${escapeHtml(p.code)}"
+               value="${p.annuel === null || p.annuel === undefined ? '' : p.annuel}"
+               placeholder="optionnel"
+               class="w-32 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-amber-500/60" />
+      </td>
+      <td class="text-right">
+        <button onclick="enregistrerTarifSuperAdmin('${escapeHtml(p.code)}')"
+                class="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-black font-bold text-[10px] transition">
+          Enregistrer
+        </button>
+      </td>
+    </tr>`).join('');
+}
+
+async function enregistrerTarifSuperAdmin(code) {
+  const mensuel = document.getElementById(`sa-tarif-m-${code}`)?.value;
+  const annuel = document.getElementById(`sa-tarif-a-${code}`)?.value;
+
+  // Un champ vide efface le tarif : c'est le seul moyen de revenir a « inconnu »
+  // apres une saisie erronee, et c'est preferable a un faux montant qui resterait.
+  const versEntier = (v) => (String(v).trim() === '' ? null : Math.round(Number(v)));
+  const m = versEntier(mensuel);
+  const a = versEntier(annuel);
+
+  if ((m !== null && (Number.isNaN(m) || m < 0)) || (a !== null && (Number.isNaN(a) || a < 0))) {
+    showToast('Tarif invalide', 'Saisissez un montant positif, ou laissez vide.', 'error');
+    return;
+  }
+
+  const { error } = await supabaseClient.rpc('platform_set_plan_price',
+    { p_code: code, p_monthly: m, p_annual: a });
+
+  if (error) {
+    showToast('Enregistrement refusé', error.message, 'error');
+    return;
+  }
+  showToast('Tarif enregistré',
+    m === null ? `La formule « ${code} » n'a plus de tarif mensuel.`
+               : `La formule « ${code} » est à ${fcfaSuperAdmin(m)} par mois.`, 'success');
+  await chargerSuperAdmin(true);
+}
+
+// -----------------------------------------------------------------------------
+//  ENCAISSEMENTS
+// -----------------------------------------------------------------------------
+
+function renderSuperAdminPaiements() {
+  const corps = document.getElementById('sa-paiements-body');
+  const resume = document.getElementById('sa-encaisse-resume');
+  if (!corps) return;
+
+  const r = superAdmin.apercu.revenu || {};
+  if (resume) {
+    resume.textContent = `Total encaissé : ${fcfaSuperAdmin(r.encaisse_total_fcfa, '0 F')} · ` +
+                         `ce mois : ${fcfaSuperAdmin(r.encaisse_mois_fcfa, '0 F')}`;
+  }
+
+  if (!superAdmin.paiements.length) {
+    corps.innerHTML = `<tr><td colspan="5" class="p-6 text-center text-slate-500 text-xs font-mono">
+      Aucun encaissement enregistré à ce jour.
+    </td></tr>`;
+    return;
+  }
+
+  const moyens = { MOBILE_MONEY: 'Mobile Money', BANK_TRANSFER: 'Virement',
+                   CASH: 'Espèces', CARD: 'Carte', OTHER: 'Autre' };
+
+  corps.innerHTML = superAdmin.paiements.map((p) => `
+    <tr class="hover:bg-slate-800/30 transition">
+      <td class="py-2.5 font-mono text-slate-400">${dateHeureSuperAdmin(p.paid_at)}</td>
+      <td class="font-bold text-white">${escapeHtml(p.entreprise || '—')}</td>
+      <td class="font-mono text-slate-400">${escapeHtml(moyens[p.methode] || p.methode || '—')}</td>
+      <td class="font-mono text-slate-500 text-[10px]">${escapeHtml(p.ref || '—')}</td>
+      <td class="text-right font-mono font-bold text-emerald-400">${fcfaSuperAdmin(p.montant, '0 F')}</td>
+    </tr>`).join('');
+}
+
+// -----------------------------------------------------------------------------
+//  JOURNAL D'ACTIVITE
+// -----------------------------------------------------------------------------
+
+function renderSuperAdminActivite() {
+  const hote = document.getElementById('sa-activite');
+  if (!hote) return;
+
+  if (!superAdmin.activite.length) {
+    hote.innerHTML = `<div class="p-6 text-center text-slate-500 text-xs font-mono">
+      Aucun événement enregistré.
+    </div>`;
+    return;
+  }
+
+  const couleurs = { ok: 'text-emerald-400', attention: 'text-amber-400', refus: 'text-red-400' };
+
+  hote.innerHTML = superAdmin.activite.map((a) => `
+    <div class="flex items-start gap-2 px-3 py-2 rounded-lg bg-black/40 border border-slate-800/60">
+      <span class="${couleurs[a.gravite] || 'text-slate-400'} shrink-0">[${escapeHtml(a.type)}]</span>
+      <span class="text-slate-500 shrink-0">${dateHeureSuperAdmin(a.quand)}</span>
+      <span class="text-slate-300 min-w-0">
+        <span class="text-slate-400">${escapeHtml(a.entreprise || '—')}</span>
+        · ${escapeHtml(a.acteur || 'compte supprimé')}
+        · ${escapeHtml(a.detail || '')}
+      </span>
+    </div>`).join('');
+}
+
+// -----------------------------------------------------------------------------
+//  ACTIONS : STATUT D'UNE ENTREPRISE
+// -----------------------------------------------------------------------------
+
+async function basculerStatutSuperAdmin(companyId, suspendre) {
+  const entreprise = superAdmin.entreprises.find((e) => e.id === companyId);
+  const nom = entreprise ? entreprise.nom : 'cette entreprise';
+
+  if (suspendre && !window.confirm(
+      `Suspendre « ${nom} » ?\n\nSon abonnement passera en suspendu et sortira du MRR.`)) {
+    return;
+  }
+
+  const { error } = await supabaseClient.rpc('platform_set_company_status',
+    { p_company: companyId, p_status: suspendre ? 'suspended' : 'active' });
+
+  if (error) {
+    showToast('Action refusée', error.message, 'error');
+    return;
+  }
+  showToast(suspendre ? 'Entreprise suspendue' : 'Entreprise réactivée',
+    `« ${nom} » est désormais ${suspendre ? 'suspendue' : 'active'}.`,
+    suspendre ? 'error' : 'success');
+  await chargerSuperAdmin(true);
+}
+
+// -----------------------------------------------------------------------------
+//  ACTIONS : ABONNEMENT
+// -----------------------------------------------------------------------------
+
+let abonnementSuperAdminEnCours = null;
+
+function ouvrirAbonnementSuperAdmin(companyId) {
+  const e = superAdmin.entreprises.find((x) => x.id === companyId);
+  if (!e) return;
+  abonnementSuperAdminEnCours = companyId;
+
+  const contexte = document.getElementById('sa-abo-contexte');
+  if (contexte) contexte.textContent = e.nom;
+
+  const selPlan = document.getElementById('sa-abo-plan');
+  if (selPlan) {
+    selPlan.innerHTML = superAdmin.plans.map((p) =>
+      `<option value="${escapeHtml(p.code)}">${escapeHtml(p.nom)}${p.mensuel != null
+        ? ` — ${fcfaSuperAdmin(p.mensuel)}/mois` : ' — tarif non défini'}</option>`).join('');
+    if (e.plan) selPlan.value = e.plan;
+  }
+
+  const selPeriode = document.getElementById('sa-abo-periode');
+  if (selPeriode) selPeriode.value = e.periodicite || 'MONTHLY';
+
+  const selStatut = document.getElementById('sa-abo-statut');
+  if (selStatut) selStatut.value = e.abonnement || 'ACTIVE';
+
+  const montant = document.getElementById('sa-abo-montant');
+  if (montant) montant.value = e.montant_negocie == null ? '' : e.montant_negocie;
+
+  const modale = document.getElementById('modal-sa-abo');
+  if (modale) { modale.classList.remove('hidden'); modale.classList.add('flex'); }
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function fermerAbonnementSuperAdmin() {
+  const modale = document.getElementById('modal-sa-abo');
+  if (modale) { modale.classList.add('hidden'); modale.classList.remove('flex'); }
+  abonnementSuperAdminEnCours = null;
+}
+
+async function enregistrerAbonnementSuperAdmin() {
+  if (!abonnementSuperAdminEnCours) return;
+
+  const brut = (document.getElementById('sa-abo-montant')?.value || '').trim();
+  const montant = brut === '' ? null : Math.round(Number(brut));
+  if (montant !== null && (Number.isNaN(montant) || montant < 0)) {
+    showToast('Montant invalide', 'Saisissez un montant positif, ou laissez vide.', 'error');
+    return;
+  }
+
+  const bouton = document.getElementById('sa-abo-valider');
+  if (bouton) { bouton.disabled = true; bouton.textContent = 'Enregistrement…'; }
+
+  const { error } = await supabaseClient.rpc('platform_set_subscription', {
+    p_company: abonnementSuperAdminEnCours,
+    p_plan: document.getElementById('sa-abo-plan')?.value || null,
+    p_period: document.getElementById('sa-abo-periode')?.value || null,
+    p_amount: montant,
+    p_status: document.getElementById('sa-abo-statut')?.value || null,
+    // Sans ce drapeau, un champ vide serait compris comme « ne change rien »
+    // et le tarif negocie precedent survivrait a sa propre suppression.
+    p_clear_amount: montant === null,
+  });
+
+  if (bouton) { bouton.disabled = false; bouton.textContent = 'Enregistrer'; }
+
+  if (error) {
+    showToast('Enregistrement refusé', error.message, 'error');
+    return;
+  }
+  fermerAbonnementSuperAdmin();
+  showToast('Abonnement mis à jour', 'Le MRR a été recalculé.', 'success');
+  await chargerSuperAdmin(true);
+}
+
+// -----------------------------------------------------------------------------
+//  ACTIONS : ENCAISSEMENT
+// -----------------------------------------------------------------------------
+
+function ouvrirPaiementSuperAdmin() {
+  const sel = document.getElementById('sa-pay-entreprise');
+  if (sel) {
+    sel.innerHTML = superAdmin.entreprises
+      .map((e) => `<option value="${e.id}">${escapeHtml(e.nom || '(sans nom)')}</option>`).join('');
+  }
+  const date = document.getElementById('sa-pay-date');
+  if (date) date.value = typeof aujourdhuiAbidjan === 'function'
+    ? aujourdhuiAbidjan() : new Date().toISOString().slice(0, 10);
+
+  const montant = document.getElementById('sa-pay-montant');
+  if (montant) montant.value = '';
+  const ref = document.getElementById('sa-pay-ref');
+  if (ref) ref.value = '';
+
+  const modale = document.getElementById('modal-sa-paiement');
+  if (modale) { modale.classList.remove('hidden'); modale.classList.add('flex'); }
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function fermerPaiementSuperAdmin() {
+  const modale = document.getElementById('modal-sa-paiement');
+  if (modale) { modale.classList.add('hidden'); modale.classList.remove('flex'); }
+}
+
+async function enregistrerPaiementSuperAdmin() {
+  const companyId = document.getElementById('sa-pay-entreprise')?.value;
+  const montant = Math.round(Number(document.getElementById('sa-pay-montant')?.value));
+  const jour = document.getElementById('sa-pay-date')?.value;
+
+  if (!companyId) { showToast('Entreprise manquante', 'Choisissez une entreprise.', 'error'); return; }
+  if (!montant || Number.isNaN(montant) || montant <= 0) {
+    showToast('Montant invalide', 'Saisissez un montant strictement positif.', 'error');
+    return;
+  }
+
+  const bouton = document.getElementById('sa-pay-valider');
+  if (bouton) { bouton.disabled = true; bouton.textContent = 'Enregistrement…'; }
+
+  const { error } = await supabaseClient.rpc('platform_record_payment', {
+    p_company: companyId,
+    p_amount: montant,
+    p_method: document.getElementById('sa-pay-methode')?.value || 'MOBILE_MONEY',
+    // Midi UTC : quel que soit le fuseau du navigateur, la date reste celle
+    // qui a ete choisie une fois ramenee a Abidjan.
+    p_paid_at: jour ? new Date(jour + 'T12:00:00Z').toISOString() : new Date().toISOString(),
+    p_ref: (document.getElementById('sa-pay-ref')?.value || '').trim() || null,
+    p_notes: null,
+  });
+
+  if (bouton) { bouton.disabled = false; bouton.textContent = 'Enregistrer'; }
+
+  if (error) {
+    showToast('Enregistrement refusé', error.message, 'error');
+    return;
+  }
+  fermerPaiementSuperAdmin();
+  showToast('Encaissement enregistré', `${fcfaSuperAdmin(montant)} ajoutés au chiffre d'affaires.`, 'success');
+  await chargerSuperAdmin(true);
+}
+
+// -----------------------------------------------------------------------------
+//  EXPORT
+// -----------------------------------------------------------------------------
+
+/**
+ * Exporte ce qui est affiche, et rien d'autre.
+ *
+ * Separateur `;` et BOM UTF-8 : Excel en configuration francaise ouvre
+ * autrement toutes les colonnes dans une seule, et massacre les accents.
+ */
+function exporterSuperAdmin() {
+  if (!superAdmin.charge || !superAdmin.apercu) {
+    showToast('Rien à exporter', 'Les données ne sont pas encore chargées.', 'error');
+    return;
+  }
+
+  const r = superAdmin.apercu.revenu || {};
+  const c = superAdmin.apercu.clients || {};
+  const u = superAdmin.apercu.usage || {};
+  const cell = (v) => `"${String(v === null || v === undefined ? '' : v).replace(/"/g, '""')}"`;
+  const lignes = [];
+
+  lignes.push(['Indicateur', 'Valeur'].map(cell).join(';'));
+  [
+    ['MRR (FCFA)', r.mrr], ['ARR (FCFA)', Number(r.mrr || 0) * 12],
+    ['Abonnements tarifés', r.abonnements_payants],
+    ['Abonnements sans tarif', r.abonnements_non_tarifes],
+    ['Encaissé total (FCFA)', r.encaisse_total_fcfa],
+    ['Encaissé 30 jours (FCFA)', r.encaisse_30j_fcfa],
+    ['Encours à recouvrer (FCFA)', r.encours_fcfa],
+    ['Entreprises', c.entreprises_total], ['Entreprises actives', c.entreprises_actives],
+    ['Utilisateurs', c.utilisateurs_total], ['Utilisateurs 30 jours', c.utilisateurs_30j],
+    ['Rattachements en attente', c.rattachements_attente],
+    ['Pointages total', u.pointages_total], ['Pointages 30 jours', u.pointages_30j],
+    ['Pointages à vérifier', u.a_verifier], ['Visages enrôlés', u.empreintes],
+  ].forEach((l) => lignes.push(l.map(cell).join(';')));
+
+  lignes.push('');
+  lignes.push(['Entreprise', 'Formule', 'Abonnement', 'Périodicité', 'MRR (FCFA)',
+               'Membres actifs', 'En attente', 'Pointages 30j', 'Dernier pointage',
+               'Sites', 'Encaissé (FCFA)', 'Statut', 'Créée le'].map(cell).join(';'));
+  superAdmin.entreprises.forEach((e) => lignes.push([
+    e.nom, e.plan, e.abonnement, e.periodicite,
+    e.mrr_fcfa === null || e.mrr_fcfa === undefined ? 'non tarifé' : e.mrr_fcfa,
+    e.membres, e.membres_attente, e.pointages_30j,
+    e.dernier_pointage ? dateHeureSuperAdmin(e.dernier_pointage) : 'jamais',
+    e.sites, e.encaisse_fcfa, e.statut, dateSuperAdmin(e.created_at),
+  ].map(cell).join(';')));
+
+  const blob = new Blob(['﻿' + lignes.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const lien = document.createElement('a');
+  lien.href = URL.createObjectURL(blob);
+  lien.download = `timora-plateforme-${aujourdhuiAbidjan()}.csv`;
+  document.body.appendChild(lien);
+  lien.click();
+  document.body.removeChild(lien);
+  URL.revokeObjectURL(lien.href);
+  showToast('Export terminé', `${superAdmin.entreprises.length} entreprise(s) exportée(s).`, 'success');
+}
+
+/**
+ * Masque l'entree de navigation pour un compte non habilite.
+ *
+ * Ce n'est PAS le controle d'acces : celui-ci vit dans `is_platform_admin()`,
+ * cote base, et rien de ce que fait le navigateur ne peut le contourner. Ici
+ * on evite seulement de proposer a un employe un onglet qui ne lui repondra
+ * que « accès refusé ».
+ *
+ * En cas de panne, l'onglet reste visible : cacher un bouton sur une erreur
+ * reseau priverait le proprietaire de son propre tableau de bord.
+ */
+async function verifierAccesPlateforme() {
+  const bouton = document.getElementById('btn-view-saas');
+  if (!bouton || !supabaseClient) return;
+
+  try {
+    const { data, error } = await supabaseClient.rpc('is_platform_admin');
+    if (error) return;
+    bouton.classList.toggle('hidden', data !== true);
+  } catch (err) {
+    console.error('[Super Admin] Vérification d\'accès impossible :', err);
+  }
+}
+
+/**
+ * Point d'entree conserve pour les appels existants.
+ *
+ * Il ne declenche une requete que si la vue est reellement affichee : sinon
+ * chaque employe qui ouvre l'application appellerait des fonctions qui vont
+ * lui repondre « accès refusé », a chaque chargement.
+ */
+function renderSaasDashboard() {
+  const vue = document.getElementById('view-saas');
+  const visible = vue && !vue.classList.contains('hidden');
+  if (visible) { chargerSuperAdmin(); return; }
+  if (superAdmin.charge) dessinerSuperAdmin();
 }
 
 // Initialisation globale au chargement
