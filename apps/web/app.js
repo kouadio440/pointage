@@ -125,6 +125,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderSaasDashboard();
   setTheme('terracotta');
   updateRoiCalculator();
+  initialiserTarifs();
 
   // Chargement automatique et immédiat des données réelles Supabase au démarrage
   if (supabaseClient) {
@@ -5284,7 +5285,10 @@ function updateRoiCalculator() {
   const totalHoursSaved = Math.round(count * 6.5);
 
   // Cost of SaaS plan estimated
-  const saasCostMonthly = count <= 15 ? 25000 : count <= 60 ? 65000 : 150000;
+  // Le cout mensuel vient de la grille tarifaire publiee, jamais d'une
+  // table parallele : les deux ont deja diverge par le passe.
+  const planRoi = planRecommandeTarifs(count);
+  const saasCostMonthly = planRoi.mensuel ?? PLANS_TIMORA[PLANS_TIMORA.length - 2].mensuel;
   const netProfitMonthly = totalMonthlySavings - saasCostMonthly;
   const roiMultiplier = Math.round((netProfitMonthly / saasCostMonthly) * 100);
 
@@ -5294,24 +5298,573 @@ function updateRoiCalculator() {
   if (roiPercentageEl) roiPercentageEl.innerText = `+${roiMultiplier}%`;
 }
 
-function togglePricingBilling(period) {
-  const btnMonthly = document.getElementById('btn-billing-monthly');
-  const btnAnnual = document.getElementById('btn-billing-annual');
-  const starterPrice = document.getElementById('price-starter');
-  const proPrice = document.getElementById('price-pro');
+// =============================================================================
+//  SECTION ABONNEMENTS DE LA PAGE D'ACCUEIL
+// =============================================================================
+//
+//  UNE SEULE SOURCE DE VERITE POUR LES PRIX
+//  ----------------------------------------
+//  Avant, un tarif vivait a trois endroits : le balisage de la carte,
+//  `togglePricingBilling()` et le calculateur de ROI. Les trois divergeaient
+//  deja — 25 000 dans la carte, 20 000 en annuel (presente comme un prix
+//  mensuel), 150 000 dans le ROI pour une offre qui n'existait pas. Tout
+//  descend desormais de `PLANS_TIMORA`, y compris le ROI.
+//
+//  Le seuil d'une formule est son `maxEmployes` : la recommandation prend le
+//  PREMIER plan capable d'accueillir l'effectif saisi. Ajouter une formule ne
+//  demande donc aucune condition supplementaire ailleurs.
 
-  if (period === 'annual') {
-    if (btnAnnual) btnAnnual.className = 'px-4 py-1.5 rounded-full text-xs font-bold bg-amber-500 text-black shadow-md transition';
-    if (btnMonthly) btnMonthly.className = 'px-4 py-1.5 rounded-full text-xs font-medium text-[var(--color-muted)] hover:text-white transition';
-    if (starterPrice) starterPrice.innerText = '20.000 FCFA';
-    if (proPrice) proPrice.innerText = '52.000 FCFA';
+/** Duree de l'essai, affichee sur chaque carte. */
+const TARIFS_ESSAI_JOURS = 7;
+
+/**
+ * Destination du bouton « Parler à notre équipe ».
+ *
+ * Laisser vide tant qu'aucune adresse commerciale n'existe reellement : le
+ * bouton bascule alors vers l'inscription a l'essai, qui fonctionne. Y mettre
+ * une adresse inventee enverrait les demandes de devis dans le vide.
+ * Accepte une adresse e-mail ou un lien (https://wa.me/225...).
+ */
+const TARIFS_CONTACT_COMMERCIAL = '';
+
+const PLANS_TIMORA = [
+  {
+    code: 'essentiel',
+    nom: 'Essentiel',
+    cible: 'Jusqu\'à 10 employés',
+    maxEmployes: 10,
+    mensuel: 15000,
+    annuel: 150000,
+    cta: 'Essayer gratuitement',
+    principales: [
+      'Reconnaissance faciale',
+      'Pointage GPS & géofencing',
+      'Détection des retards',
+      'Gestion des absences',
+      'Dashboard RH',
+    ],
+    secondaires: [
+      'Gestion des horaires',
+      'Rapports basiques',
+      'Export Excel / PDF',
+      '1 site',
+      '1 administrateur',
+      'Support standard',
+    ],
+  },
+  {
+    code: 'business',
+    nom: 'Business',
+    cible: 'Jusqu\'à 30 employés',
+    maxEmployes: 30,
+    mensuel: 35000,
+    annuel: 350000,
+    badge: 'Le choix des PME',
+    misEnAvant: true,
+    cta: 'Essayer gratuitement',
+    principales: [
+      'Reconnaissance faciale',
+      'Pointage GPS & géofencing',
+      'Dashboard RH complet',
+      'Congés et permissions',
+      'Alertes automatiques',
+    ],
+    secondaires: [
+      'Détection des retards',
+      'Gestion des absences',
+      'Gestion des horaires',
+      'Rapports complets',
+      'Export Excel / PDF',
+      'Jusqu\'à 3 sites',
+      'Jusqu\'à 3 administrateurs',
+      'Support prioritaire',
+    ],
+  },
+  {
+    code: 'pro',
+    nom: 'Pro',
+    cible: 'Jusqu\'à 100 employés',
+    maxEmployes: 100,
+    mensuel: 75000,
+    annuel: 750000,
+    cta: 'Essayer gratuitement',
+    principales: [
+      'Toutes les fonctionnalités Business',
+      'Gestion multi-sites',
+      'Rôles et permissions avancés',
+      'API / intégrations',
+      'Automatisations',
+    ],
+    secondaires: [
+      'Jusqu\'à 10 sites',
+      'Jusqu\'à 10 administrateurs',
+      'Rapports avancés',
+      'Export des données',
+      'Support prioritaire',
+    ],
+  },
+  {
+    code: 'entreprise',
+    nom: 'Entreprise',
+    cible: 'Plus de 100 employés',
+    // Aucune borne haute : c'est la formule qui absorbe tout le reste.
+    maxEmployes: Infinity,
+    mensuel: null,
+    annuel: null,
+    surDevis: true,
+    cta: 'Parler à notre équipe',
+    principales: [
+      'Nombre d\'employés personnalisé',
+      'Multi-sites avancé',
+      'Administrateurs personnalisés',
+      'Onboarding et formation RH',
+      'Support dédié',
+    ],
+    secondaires: [
+      'API et intégrations spécifiques',
+      'Accompagnement personnalisé',
+      'Configuration personnalisée',
+      'SLA contractuel',
+    ],
+  },
+];
+
+/** Matrice de comparaison. Les valeurs `true` / `false` deviennent une coche ou un tiret. */
+const COMPARAISON_TARIFS = [
+  {
+    groupe: 'Pointage et contrôle',
+    lignes: [
+      { intitule: 'Reconnaissance faciale', valeurs: { essentiel: true, business: true, pro: true, entreprise: true } },
+      { intitule: 'Pointage GPS & géofencing', valeurs: { essentiel: true, business: true, pro: true, entreprise: true } },
+      { intitule: 'Détection des retards', valeurs: { essentiel: true, business: true, pro: true, entreprise: true } },
+      { intitule: 'Gestion des absences', valeurs: { essentiel: true, business: true, pro: true, entreprise: true } },
+      { intitule: 'Congés et permissions', valeurs: { essentiel: false, business: true, pro: true, entreprise: true } },
+      { intitule: 'Alertes automatiques', valeurs: { essentiel: false, business: true, pro: true, entreprise: true } },
+    ],
+  },
+  {
+    groupe: 'Capacité',
+    lignes: [
+      { intitule: 'Employés inclus', valeurs: { essentiel: '10', business: '30', pro: '100', entreprise: 'Sur mesure' } },
+      { intitule: 'Sites', valeurs: { essentiel: '1', business: '3', pro: '10', entreprise: 'Illimité' } },
+      { intitule: 'Administrateurs', valeurs: { essentiel: '1', business: '3', pro: '10', entreprise: 'Sur mesure' } },
+    ],
+  },
+  {
+    groupe: 'Pilotage RH',
+    lignes: [
+      { intitule: 'Dashboard RH', valeurs: { essentiel: 'Standard', business: 'Complet', pro: 'Complet', entreprise: 'Complet' } },
+      { intitule: 'Gestion des horaires', valeurs: { essentiel: true, business: true, pro: true, entreprise: true } },
+      { intitule: 'Rapports', valeurs: { essentiel: 'Basiques', business: 'Complets', pro: 'Avancés', entreprise: 'Avancés' } },
+      { intitule: 'Export Excel / PDF', valeurs: { essentiel: true, business: true, pro: true, entreprise: true } },
+      { intitule: 'Rôles et permissions avancés', valeurs: { essentiel: false, business: false, pro: true, entreprise: true } },
+    ],
+  },
+  {
+    groupe: 'Intégration et accompagnement',
+    lignes: [
+      { intitule: 'API / intégrations', valeurs: { essentiel: false, business: false, pro: true, entreprise: true } },
+      { intitule: 'Automatisations', valeurs: { essentiel: false, business: false, pro: true, entreprise: true } },
+      { intitule: 'Onboarding et formation RH', valeurs: { essentiel: false, business: false, pro: false, entreprise: true } },
+      { intitule: 'Support', valeurs: { essentiel: 'Standard', business: 'Prioritaire', pro: 'Prioritaire', entreprise: 'Dédié' } },
+    ],
+  },
+];
+
+const etatTarifs = {
+  periode: 'mensuel',
+  employes: 24,
+  /** Un seul dépliage de carte ouvert à la fois, comme un accordéon classique. */
+  carteDepliee: null,
+  comparaisonOuverte: false,
+  groupeCompare: COMPARAISON_TARIFS[0].groupe,
+  derniereRecommandation: null,
+  vueSignalee: false,
+};
+
+// -----------------------------------------------------------------------------
+//  MESURE
+// -----------------------------------------------------------------------------
+
+/**
+ * Emet un evenement de suivi.
+ *
+ * Le site n'embarque aucun outil d'analytics — on n'en ajoute donc pas un.
+ * Les evenements sont poses sur `dataLayer` (la convention que lisent Google
+ * Tag Manager, Matomo Tag Manager et consorts) ET diffuses en `CustomEvent`.
+ * Brancher un outil plus tard ne demandera aucune modification ici.
+ */
+function suivreTarifs(nom, donnees = {}) {
+  const charge = { event: nom, ...donnees };
+  try {
+    window.dataLayer = window.dataLayer || [];
+    window.dataLayer.push(charge);
+    window.dispatchEvent(new CustomEvent('timora:analytics', { detail: charge }));
+  } catch (err) {
+    console.error('[Tarifs] Suivi impossible :', err);
+  }
+}
+
+// -----------------------------------------------------------------------------
+//  CALCULS
+// -----------------------------------------------------------------------------
+
+/** La premiere formule capable d'accueillir cet effectif. */
+function planRecommandeTarifs(employes) {
+  return PLANS_TIMORA.find((p) => employes <= p.maxEmployes) || PLANS_TIMORA[PLANS_TIMORA.length - 1];
+}
+
+/** Le montant affiche pour la periode en cours, ou `null` si la formule est sur devis. */
+function montantTarifs(plan, periode = etatTarifs.periode) {
+  if (plan.surDevis) return null;
+  return periode === 'annuel' ? plan.annuel : plan.mensuel;
+}
+
+/** Ramene toute formule a un cout mensuel, pour que les comparaisons restent justes. */
+function mensualiseTarifs(plan, periode = etatTarifs.periode) {
+  if (plan.surDevis) return null;
+  return periode === 'annuel' ? plan.annuel / 12 : plan.mensuel;
+}
+
+function formaterFcfa(valeur) {
+  return Math.round(valeur).toLocaleString('fr-FR') + ' FCFA';
+}
+
+/**
+ * Le cout par employe, ou `null` quand il n'aurait pas de sens.
+ *
+ * On ne le calcule PAS pour une formule trop petite pour l'effectif saisi :
+ * diviser le prix d'Essentiel par 24 employes afficherait un tarif
+ * attractif pour une offre qui en refuse 14.
+ */
+function coutParEmployeTarifs(plan) {
+  const mensuel = mensualiseTarifs(plan);
+  if (mensuel === null || etatTarifs.employes > plan.maxEmployes) return null;
+  return Math.round(mensuel / etatTarifs.employes);
+}
+
+// -----------------------------------------------------------------------------
+//  RENDU
+// -----------------------------------------------------------------------------
+
+function renderTarifs() {
+  const grille = document.getElementById('tarifs-grille');
+  if (!grille) return;
+
+  const recommande = planRecommandeTarifs(etatTarifs.employes);
+  const rangRecommande = PLANS_TIMORA.indexOf(recommande);
+
+  grille.innerHTML = PLANS_TIMORA.map((plan, i) => {
+    const estRecommande = plan.code === recommande.code;
+    const montant = montantTarifs(plan);
+    const parEmploye = coutParEmployeTarifs(plan);
+    const depliee = etatTarifs.carteDepliee === plan.code;
+    const tropPetit = !plan.surDevis && etatTarifs.employes > plan.maxEmployes;
+
+    // Sur mobile, la formule recommandee remonte en tete ; l'ordre d'origine
+    // est conserve pour les autres. Le CSS n'applique cet ordre qu'en dessous
+    // de 768 px, donc le bureau garde Essentiel -> Entreprise.
+    const ordreMobile = estRecommande ? 0 : i + 1;
+
+    const puces = (liste) => liste.map((f) => `
+      <li>
+        <i data-lucide="check" class="tarifs__puce" aria-hidden="true"></i>
+        <span>${escapeHtml(f)}</span>
+      </li>`).join('');
+
+    return `
+      <article class="tarifs__carte${estRecommande ? ' is-recommandee' : ''}"
+               style="--ordre-mobile: ${ordreMobile}"
+               aria-labelledby="tarifs-nom-${plan.code}">
+
+        ${plan.badge ? `<span class="tarifs__badge">${escapeHtml(plan.badge)}</span>` : ''}
+
+        ${estRecommande ? `
+          <p class="tarifs__recommande">
+            <i data-lucide="sparkles" class="w-3.5 h-3.5" aria-hidden="true"></i>
+            Recommandé pour votre équipe
+          </p>` : ''}
+
+        <div>
+          <h3 id="tarifs-nom-${plan.code}" class="tarifs__nom">${escapeHtml(plan.nom)}</h3>
+          <p class="tarifs__cible">${escapeHtml(plan.cible)}</p>
+        </div>
+
+        <div class="tarifs__prix-bloc">
+          <p class="tarifs__prix">
+            <span class="tarifs__montant">
+              ${montant === null ? 'Sur devis' : formaterFcfa(montant)}
+            </span>
+            ${montant === null ? '' :
+              `<span class="tarifs__unite">/ ${etatTarifs.periode === 'annuel' ? 'an' : 'mois'}</span>`}
+          </p>
+          <p class="tarifs__par-employe">
+            ${parEmploye !== null
+              ? `Soit environ ${formaterFcfa(parEmploye)} / employé / mois`
+              : tropPetit
+                ? `<span style="color: var(--color-muted); opacity: .75">Limité à ${plan.maxEmployes} employés</span>`
+                : ''}
+          </p>
+        </div>
+
+        ${plan.surDevis ? '' : `
+          <span class="tarifs__essai">
+            <i data-lucide="gift" class="w-3 h-3" aria-hidden="true"></i>
+            ${TARIFS_ESSAI_JOURS} jours gratuits
+          </span>`}
+
+        <ul class="tarifs__liste">${puces(plan.principales)}</ul>
+
+        ${plan.secondaires.length ? `
+          <ul class="tarifs__liste" id="tarifs-plus-${plan.code}" ${depliee ? '' : 'hidden'}>
+            ${puces(plan.secondaires)}
+          </ul>
+          <button type="button" class="tarifs__voir-plus"
+                  data-deplier="${plan.code}"
+                  aria-expanded="${depliee}" aria-controls="tarifs-plus-${plan.code}">
+            ${depliee ? 'Masquer les fonctionnalités' : 'Voir toutes les fonctionnalités'}
+          </button>` : ''}
+
+        <button type="button"
+                class="tarifs__cta${estRecommande || plan.misEnAvant ? ' is-principal' : ''}"
+                data-plan-cta="${plan.code}">
+          ${escapeHtml(plan.cta)}
+        </button>
+      </article>`;
+  }).join('');
+
+  // La valeur lue par les lecteurs d'ecran suit l'effectif ET la recommandation.
+  const valeur = document.getElementById('tarifs-effectif-valeur');
+  if (valeur) {
+    const n = etatTarifs.employes;
+    valeur.textContent = `${n}${n >= 500 ? '+' : ''} employé${n > 1 ? 's' : ''} — ${recommande.nom}`;
+  }
+
+  const slider = document.getElementById('tarifs-slider');
+  if (slider && Number(slider.value) !== etatTarifs.employes) slider.value = String(etatTarifs.employes);
+
+  document.querySelectorAll('.tarifs__pas').forEach((b) => {
+    const pas = Number(b.dataset.pas);
+    b.disabled = (pas < 0 && etatTarifs.employes <= 1) || (pas > 0 && etatTarifs.employes >= 500);
+  });
+
+  // La recommandation n'est signalee QUE lorsqu'elle change, pas a chaque
+  // pixel parcouru par le curseur du slider.
+  if (etatTarifs.derniereRecommandation !== recommande.code) {
+    etatTarifs.derniereRecommandation = recommande.code;
+    suivreTarifs('pricing_plan_recommended', {
+      plan: recommande.code, employes: etatTarifs.employes, rang: rangRecommande,
+    });
+  }
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function renderComparaisonTarifs() {
+  const hote = document.getElementById('tarifs-comparaison');
+  if (!hote) return;
+
+  const cellule = (valeur, plan) => {
+    if (valeur === true) return `<span class="tarifs__compare-cellule tarifs__compare-oui" data-formule="${escapeHtml(plan.nom)}">✓</span>`;
+    if (valeur === false) return `<span class="tarifs__compare-cellule tarifs__compare-non" data-formule="${escapeHtml(plan.nom)}">—</span>`;
+    return `<span class="tarifs__compare-cellule" data-formule="${escapeHtml(plan.nom)}">${escapeHtml(String(valeur))}</span>`;
+  };
+
+  hote.innerHTML = COMPARAISON_TARIFS.map((groupe) => {
+    const ouvert = etatTarifs.groupeCompare === groupe.groupe;
+    const id = 'tarifs-cmp-' + groupe.groupe.replace(/[^a-zA-Z]/g, '').toLowerCase();
+
+    return `
+      <section class="tarifs__compare-groupe">
+        <button type="button" class="tarifs__compare-titre" data-groupe="${escapeHtml(groupe.groupe)}"
+                aria-expanded="${ouvert}" aria-controls="${id}">
+          <span>${escapeHtml(groupe.groupe)}</span>
+          <i data-lucide="chevron-down" class="w-4 h-4 tarifs__chevron"
+             style="${ouvert ? 'transform: rotate(180deg)' : ''}" aria-hidden="true"></i>
+        </button>
+        <div id="${id}" class="tarifs__compare-corps" ${ouvert ? '' : 'hidden'}>
+          <div class="tarifs__compare-ligne is-entete">
+            <span>Fonctionnalité</span>
+            ${PLANS_TIMORA.map((p) => `<span class="tarifs__compare-cellule">${escapeHtml(p.nom)}</span>`).join('')}
+          </div>
+          ${groupe.lignes.map((l) => `
+            <div class="tarifs__compare-ligne">
+              <span class="tarifs__compare-intitule">${escapeHtml(l.intitule)}</span>
+              ${PLANS_TIMORA.map((p) => cellule(l.valeurs[p.code], p)).join('')}
+            </div>`).join('')}
+        </div>
+      </section>`;
+  }).join('');
+
+  if (window.lucide) window.lucide.createIcons();
+}
+
+// -----------------------------------------------------------------------------
+//  ACTIONS
+// -----------------------------------------------------------------------------
+
+let minuteurEffectifTarifs = null;
+
+/** Change l'effectif, redessine, et signale le changement une fois la saisie calmee. */
+function definirEffectifTarifs(valeur) {
+  const n = Math.min(500, Math.max(1, Math.round(Number(valeur) || 1)));
+  if (n === etatTarifs.employes) return;
+  etatTarifs.employes = n;
+  renderTarifs();
+
+  // Sans ce delai, faire glisser le curseur de 1 a 500 emettrait 500 evenements.
+  clearTimeout(minuteurEffectifTarifs);
+  minuteurEffectifTarifs = setTimeout(() => {
+    suivreTarifs('employee_count_changed', {
+      employes: n, plan: planRecommandeTarifs(n).code,
+    });
+  }, 400);
+}
+
+function definirPeriodeTarifs(periode) {
+  if (etatTarifs.periode === periode) return;
+  etatTarifs.periode = periode;
+
+  document.querySelectorAll('.tarifs__periode-btn').forEach((b) => {
+    const actif = b.dataset.periode === periode;
+    b.classList.toggle('is-actif', actif);
+    b.setAttribute('aria-pressed', String(actif));
+  });
+
+  renderTarifs();
+  suivreTarifs(periode === 'annuel' ? 'annual_selected' : 'monthly_selected',
+    { employes: etatTarifs.employes });
+}
+
+function basculerFonctionsTarifs(code) {
+  // Un seul dépliage ouvert : rouvrir celui qui l'est déjà le referme.
+  etatTarifs.carteDepliee = etatTarifs.carteDepliee === code ? null : code;
+  renderTarifs();
+  if (etatTarifs.carteDepliee === code) {
+    suivreTarifs('pricing_features_expanded', { plan: code });
+  }
+}
+
+function basculerComparaisonTarifs() {
+  etatTarifs.comparaisonOuverte = !etatTarifs.comparaisonOuverte;
+
+  const zone = document.getElementById('tarifs-comparaison');
+  const bouton = document.getElementById('tarifs-btn-comparer');
+  if (!zone || !bouton) return;
+
+  bouton.setAttribute('aria-expanded', String(etatTarifs.comparaisonOuverte));
+  bouton.querySelector('span').textContent =
+    etatTarifs.comparaisonOuverte ? 'Masquer la comparaison' : 'Comparer les offres';
+
+  if (etatTarifs.comparaisonOuverte) {
+    renderComparaisonTarifs();
+    zone.hidden = false;
   } else {
-    if (btnMonthly) btnMonthly.className = 'px-4 py-1.5 rounded-full text-xs font-bold bg-amber-500 text-black shadow-md transition';
-    if (btnAnnual) btnAnnual.className = 'px-4 py-1.5 rounded-full text-xs font-medium text-[var(--color-muted)] hover:text-white transition';
-    if (starterPrice) starterPrice.innerText = '25.000 FCFA';
-    if (proPrice) proPrice.innerText = '65.000 FCFA';
+    zone.hidden = true;
+  }
 }
+
+/**
+ * Lance l'essai gratuit.
+ *
+ * Reutilise le formulaire d'inscription existant : aucune authentification
+ * parallele, aucune route nouvelle.
+ */
+function demarrerEssaiTarifs(code) {
+  const plan = PLANS_TIMORA.find((p) => p.code === code);
+
+  suivreTarifs('pricing_cta_clicked', {
+    plan: code,
+    periode: etatTarifs.periode,
+    employes: etatTarifs.employes,
+    montant: plan ? montantTarifs(plan) : null,
+  });
+
+  if (plan && plan.surDevis) {
+    suivreTarifs('enterprise_contact_clicked', { employes: etatTarifs.employes });
+
+    if (TARIFS_CONTACT_COMMERCIAL) {
+      const cible = TARIFS_CONTACT_COMMERCIAL.includes('@')
+        ? `mailto:${TARIFS_CONTACT_COMMERCIAL}?subject=${encodeURIComponent(
+            `Demande de devis Timora — ${etatTarifs.employes} employés`)}`
+        : TARIFS_CONTACT_COMMERCIAL;
+      window.open(cible, '_blank', 'noopener');
+      return;
+    }
+    // Sans adresse commerciale renseignee, l'essai reste le chemin le plus
+    // court : le compte cree permet a l'equipe de rappeler le prospect.
+  }
+
+  openAuthModal('register');
 }
+
+// -----------------------------------------------------------------------------
+//  MISE EN PLACE
+// -----------------------------------------------------------------------------
+
+/**
+ * Branche la section.
+ *
+ * Un seul ecouteur par type d'evenement, pose sur la section : ajouter une
+ * formule ne cree aucun ecouteur supplementaire, et rien ne fuit quand les
+ * cartes sont redessinees.
+ */
+function initialiserTarifs() {
+  const section = document.getElementById('tarifs');
+  if (!section) return;
+
+  section.addEventListener('click', (e) => {
+    const cible = e.target.closest('[data-pas], [data-plan-cta], [data-deplier], [data-groupe], #tarifs-btn-comparer, [data-periode]');
+    if (!cible) return;
+
+    if (cible.dataset.pas) {
+      definirEffectifTarifs(etatTarifs.employes + Number(cible.dataset.pas));
+    } else if (cible.dataset.periode) {
+      definirPeriodeTarifs(cible.dataset.periode);
+    } else if (cible.dataset.planCta) {
+      demarrerEssaiTarifs(cible.dataset.planCta);
+    } else if (cible.dataset.deplier) {
+      basculerFonctionsTarifs(cible.dataset.deplier);
+    } else if (cible.id === 'tarifs-btn-comparer') {
+      basculerComparaisonTarifs();
+    } else if (cible.dataset.groupe) {
+      etatTarifs.groupeCompare = etatTarifs.groupeCompare === cible.dataset.groupe
+        ? null : cible.dataset.groupe;
+      renderComparaisonTarifs();
+    }
+  });
+
+  const slider = document.getElementById('tarifs-slider');
+  if (slider) slider.addEventListener('input', (e) => definirEffectifTarifs(e.target.value));
+
+  // Le CTA collant est en dehors de la section : il a son propre ecouteur.
+  const sticky = document.getElementById('tarifs-cta-mobile');
+  if (sticky) {
+    sticky.addEventListener('click', () => demarrerEssaiTarifs(etatTarifs.derniereRecommandation || 'business'));
+  }
+
+  // `pricing_viewed` et l'apparition du CTA collant partagent le meme
+  // observateur : le bouton ne surgit donc jamais avant que le visiteur
+  // n'ait atteint les offres.
+  if ('IntersectionObserver' in window) {
+    const observateur = new IntersectionObserver((entrees) => {
+      entrees.forEach((entree) => {
+        if (entree.isIntersecting && !etatTarifs.vueSignalee) {
+          etatTarifs.vueSignalee = true;
+          suivreTarifs('pricing_viewed', { employes: etatTarifs.employes });
+        }
+        if (sticky) {
+          sticky.hidden = !entree.isIntersecting;
+          sticky.classList.toggle('is-visible', entree.isIntersecting);
+        }
+      });
+    }, { threshold: 0.12 });
+    observateur.observe(section);
+  }
+
+  renderTarifs();
+}
+
 
 // Extra state parameters for Multi-Tenant RBAC
 state.currentCompanyId = null;

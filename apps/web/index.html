@@ -708,94 +708,106 @@
         </div>
       </div>
 
-      <!-- SECTION: GRILLE TARIFAIRE SAAS TRANSPARENTE -->
-      <div class="space-y-8 pt-6">
-        <div class="text-center max-w-3xl mx-auto space-y-3">
-          <span class="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 font-mono text-xs font-bold">TARIFICATION SAAS SIMPLE</span>
-          <h2 class="text-3xl font-extrabold text-[var(--color-offwhite)]">
-            Formules d'abonnement adaptées à votre taille
+      <!-- ==================== SECTION : ABONNEMENTS ==================== -->
+      <!--
+        Les cartes ne sont PAS ecrites ici : elles sont generees depuis la
+        constante PLANS_TIMORA dans app.js. Un prix n'existe donc qu'a un seul
+        endroit du code — l'ancienne version le repetait dans le balisage, dans
+        `togglePricingBilling()` et dans le calculateur de ROI, qui affichaient
+        deja trois grilles differentes.
+      -->
+      <section id="tarifs" class="tarifs" aria-labelledby="tarifs-titre">
+
+        <div class="tarifs__entete">
+          <span class="tarifs__surtitre">TARIFICATION TRANSPARENTE</span>
+          <h2 id="tarifs-titre" class="tarifs__titre">
+            Trouvez la formule adaptée à <span class="tarifs__accent">votre équipe</span>.
           </h2>
-          <p class="text-xs text-[var(--color-muted)]">Aucun frais caché, activation immédiate sans engagement de durée.</p>
-
-          <!-- Billing Switcher -->
-          <div class="flex items-center justify-center space-x-3 pt-2">
-            <div class="bg-[var(--bg-card)] p-1 rounded-full border border-[var(--border-subtle)] flex items-center">
-              <button id="btn-billing-monthly" onclick="togglePricingBilling('monthly')" class="px-4 py-1.5 rounded-full text-xs font-bold bg-amber-500 text-black shadow-md">Mensuel</button>
-              <button id="btn-billing-annual" onclick="togglePricingBilling('annual')" class="px-4 py-1.5 rounded-full text-xs font-medium text-[var(--color-muted)] hover:text-white">Annuel (-20%)</button>
-            </div>
-            <span class="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold">2 MOIS OFFERTS EN ANNUEL</span>
-          </div>
+          <p class="tarifs__sous-titre">
+            Commencez gratuitement pendant 7 jours. Aucune carte bancaire nécessaire.
+          </p>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-          
-          <!-- Plan Starter -->
-          <div class="glass-panel p-6 space-y-6 flex flex-col justify-between border-t-4 border-t-amber-500">
-            <div class="space-y-4">
-              <span class="px-2.5 py-1 rounded-md bg-amber-500/20 text-amber-400 text-xs font-mono font-bold">STARTER PME</span>
-              <h3 class="text-xl font-bold text-[var(--color-offwhite)]">Pour les petites équipes</h3>
-              <div class="font-mono">
-                <span id="price-starter" class="text-3xl font-extrabold text-[var(--color-offwhite)]">25.000 FCFA</span>
-                <span class="text-xs text-[var(--color-muted)]"> / mois</span>
-              </div>
-              <ul class="text-xs text-[var(--color-muted)] space-y-2.5 pt-2">
-                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-400"></i> Jusqu'à 15 employés inclus</li>
-                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-400"></i> Pointage GPS Géofencé</li>
-                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-400"></i> Selfie de vérification IA</li>
-                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-400"></i> Calcul des retards</li>
-              </ul>
+        <!-- ---------- Sélecteur d'effectif + périodicité ---------- -->
+        <div class="tarifs__controles glass-panel">
+
+          <div class="tarifs__effectif">
+            <label class="tarifs__label" for="tarifs-slider" id="tarifs-effectif-label">
+              Combien avez-vous d'employés ?
+            </label>
+
+            <div class="tarifs__stepper" role="group" aria-labelledby="tarifs-effectif-label">
+              <button type="button" class="tarifs__pas" data-pas="-1"
+                      aria-label="Retirer un employé">
+                <span aria-hidden="true">−</span>
+              </button>
+              <!--
+                `output` + aria-live : un lecteur d'écran annonce le nouvel
+                effectif et la formule recommandée sans que le focus bouge.
+              -->
+              <output id="tarifs-effectif-valeur" class="tarifs__valeur"
+                      for="tarifs-slider" aria-live="polite">24 employés</output>
+              <button type="button" class="tarifs__pas" data-pas="1"
+                      aria-label="Ajouter un employé">
+                <span aria-hidden="true">+</span>
+              </button>
             </div>
-            <button onclick="openAuthModal('register')" class="w-full py-2.5 rounded-xl bg-[var(--border-subtle)] hover:bg-[var(--border-accent)] text-[var(--color-offwhite)] font-bold text-xs transition">
-              S'abonner au plan Starter
-            </button>
+
+            <input id="tarifs-slider" class="tarifs__slider" type="range"
+                   min="1" max="500" value="24" step="1"
+                   aria-label="Nombre d'employés dans votre entreprise"
+                   aria-describedby="tarifs-effectif-valeur" />
+
+            <div class="tarifs__echelle" aria-hidden="true">
+              <span>1</span><span>100</span><span>250</span><span>500+</span>
+            </div>
           </div>
 
-          <!-- Plan Business Pro (Recommandé ⭐) -->
-          <div class="glass-panel-elevated p-6 space-y-6 flex flex-col justify-between border-2 border-amber-500 relative transform md:-translate-y-2">
-            <div class="absolute -top-3.5 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-black font-bold text-[10px] uppercase tracking-wider shadow-md">
-              ⭐ PLUS POPULAIRE & RECOMMANDÉ
+          <div class="tarifs__periode-bloc">
+            <div class="tarifs__periode" role="group" aria-label="Période de facturation">
+              <button type="button" id="tarifs-btn-mensuel" class="tarifs__periode-btn is-actif"
+                      data-periode="mensuel" aria-pressed="true">Mensuel</button>
+              <button type="button" id="tarifs-btn-annuel" class="tarifs__periode-btn"
+                      data-periode="annuel" aria-pressed="false">Annuel</button>
             </div>
-            <div class="space-y-4 pt-2">
-              <span class="px-2.5 py-1 rounded-md bg-orange-500/20 text-orange-400 text-xs font-mono font-bold">BUSINESS PRO</span>
-              <h3 class="text-xl font-bold text-[var(--color-offwhite)]">Pour entreprises en croissance</h3>
-              <div class="font-mono">
-                <span id="price-pro" class="text-3xl font-extrabold text-amber-400">65.000 FCFA</span>
-                <span class="text-xs text-[var(--color-muted)]"> / mois</span>
-              </div>
-              <ul class="text-xs text-[var(--color-muted)] space-y-2.5 pt-2">
-                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-amber-400"></i> Jusqu'à 60 employés inclus</li>
-                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-amber-400"></i> Détection Faux GPS (Mock Location)</li>
-                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-amber-400"></i> Mode Kiosque QR Code Tablette</li>
-                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-amber-400"></i> Gestion des Congés & Majorations Heures Supp</li>
-                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-amber-400"></i> Support prioritaire WhatsApp RH 7j/7</li>
-              </ul>
-            </div>
-            <button onclick="openAuthModal('register')" class="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white font-bold text-xs shadow-lg shadow-orange-500/25 transition flex items-center justify-center gap-2">
-              <i data-lucide="credit-card" class="w-4 h-4"></i> S'abonner au plan Business Pro
-            </button>
-          </div>
-
-          <!-- Plan Enterprise -->
-          <div class="glass-panel p-6 space-y-6 flex flex-col justify-between border-t-4 border-t-emerald-500">
-            <div class="space-y-4">
-              <span class="px-2.5 py-1 rounded-md bg-emerald-500/20 text-emerald-400 text-xs font-mono font-bold">ENTERPRISE</span>
-              <h3 class="text-xl font-bold text-[var(--color-offwhite)]">Grands comptes & usines</h3>
-              <div class="font-mono">
-                <span class="text-3xl font-extrabold text-[var(--color-offwhite)]">Sur Mesure</span>
-              </div>
-              <ul class="text-xs text-[var(--color-muted)] space-y-2.5 pt-2">
-                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-400"></i> Nombre d'employés illimité</li>
-                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-400"></i> Intégration API direct avec votre logiciel de Paie</li>
-                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-400"></i> Hébergement dédié privé (Souveraineté)</li>
-                <li class="flex items-center gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-400"></i> Account Manager dédié sur site</li>
-              </ul>
-            </div>
-            <button onclick="openAuthModal('register')" class="w-full py-2.5 rounded-xl bg-[var(--border-subtle)] hover:bg-[var(--border-accent)] text-[var(--color-offwhite)] font-bold text-xs transition">
-              Souscrire une offre Enterprise
-            </button>
+            <span class="tarifs__economie">
+              <i data-lucide="gift" class="w-3 h-3" aria-hidden="true"></i>
+              2 mois offerts
+            </span>
           </div>
 
         </div>
+
+        <!-- ---------- Les quatre formules ---------- -->
+        <div id="tarifs-grille" class="tarifs__grille"></div>
+
+        <p class="tarifs__reassurance">
+          <i data-lucide="shield-check" class="w-4 h-4" aria-hidden="true"></i>
+          7 jours gratuits &nbsp;•&nbsp; aucune carte bancaire nécessaire &nbsp;•&nbsp; annulez quand vous voulez
+        </p>
+
+        <!-- ---------- Comparaison dépliable ---------- -->
+        <div class="tarifs__comparaison-bloc">
+          <button type="button" id="tarifs-btn-comparer" class="tarifs__lien-comparer"
+                  aria-expanded="false" aria-controls="tarifs-comparaison">
+            <span>Comparer les offres</span>
+            <i data-lucide="chevron-down" class="w-4 h-4 tarifs__chevron" aria-hidden="true"></i>
+          </button>
+          <div id="tarifs-comparaison" class="tarifs__comparaison" hidden></div>
+        </div>
+
+      </section>
+
+      <!--
+        CTA collant, mobile uniquement. Il vit DANS `#view-hero` a dessein :
+        quand le visiteur quitte la page d'accueil, la vue est masquee et le
+        bouton disparait avec elle, sans code supplementaire.
+      -->
+      <div id="tarifs-cta-mobile" class="tarifs__sticky" hidden>
+        <button type="button" class="tarifs__sticky-btn" data-plan-cta="sticky">
+          <i data-lucide="rocket" class="w-4 h-4" aria-hidden="true"></i>
+          Essayer Timora gratuitement
+        </button>
       </div>
 
       <!-- FAQ ACCORDION -->

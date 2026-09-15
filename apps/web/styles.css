@@ -314,3 +314,618 @@ body {
   scrollbar-width: thin;
 }
 
+/* ==========================================================================
+   SECTION ABONNEMENTS
+   --------------------------------------------------------------------------
+   Aucune couleur en dur : tout passe par les variables du theme, pour que la
+   section suive les trois themes du site (terracotta, foret, clair).
+
+   Les animations ne touchent que `transform` et `opacity` — les seules deux
+   proprietes que le navigateur peut animer sans recalculer la mise en page.
+   ========================================================================== */
+
+.tarifs {
+  --tarifs-rayon: 1.25rem;
+  --tarifs-duree: 200ms;
+  --tarifs-courbe: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  display: flex;
+  flex-direction: column;
+  gap: clamp(1.5rem, 3vw, 2.5rem);
+  padding-top: 1.5rem;
+}
+
+/* ---------- En-tete ---------- */
+
+.tarifs__entete {
+  max-width: 44rem;
+  margin-inline: auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.tarifs__surtitre {
+  align-self: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  background: var(--color-green-glow);
+  color: var(--color-green);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.tarifs__titre {
+  font-size: clamp(1.6rem, 4.2vw, 2.5rem);
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--color-offwhite);
+  text-wrap: balance;
+}
+
+.tarifs__accent { color: var(--color-gold); }
+
+.tarifs__sous-titre {
+  font-size: clamp(0.8125rem, 1.6vw, 0.9375rem);
+  color: var(--color-muted);
+  text-wrap: pretty;
+}
+
+/* ---------- Controles ---------- */
+
+.tarifs__controles {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  padding: clamp(1rem, 2.5vw, 1.75rem);
+  align-items: center;
+}
+
+@media (min-width: 992px) {
+  .tarifs__controles { grid-template-columns: minmax(0, 1fr) auto; gap: 2.5rem; }
+}
+
+.tarifs__effectif { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+
+.tarifs__label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-offwhite);
+}
+
+.tarifs__stepper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  align-self: flex-start;
+  padding: 0.25rem;
+  border-radius: 9999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-dark);
+}
+
+/* 44 px : la cible tactile minimale recommandee, respectee jusque sur 320 px. */
+.tarifs__pas {
+  width: 44px;
+  height: 44px;
+  border-radius: 9999px;
+  border: none;
+  background: var(--border-subtle);
+  color: var(--color-offwhite);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform var(--tarifs-duree) var(--tarifs-courbe),
+              background-color var(--tarifs-duree) var(--tarifs-courbe);
+}
+
+.tarifs__pas:hover:not(:disabled) { background: var(--border-accent); transform: scale(1.06); }
+.tarifs__pas:active:not(:disabled) { transform: scale(0.94); }
+.tarifs__pas:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.tarifs__valeur {
+  min-width: 8.5rem;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: clamp(0.875rem, 2vw, 1rem);
+  font-weight: 700;
+  color: var(--color-gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.tarifs__slider {
+  width: 100%;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--border-subtle);
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.tarifs__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  background: var(--color-gold);
+  border: 3px solid var(--bg-dark);
+  box-shadow: 0 0 0 1px var(--border-accent);
+  cursor: grab;
+}
+
+.tarifs__slider::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  border-radius: 9999px;
+  background: var(--color-gold);
+  border: 3px solid var(--bg-dark);
+  cursor: grab;
+}
+
+.tarifs__echelle {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--color-muted);
+  opacity: 0.7;
+}
+
+.tarifs__periode-bloc {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.tarifs__periode {
+  display: flex;
+  padding: 0.25rem;
+  border-radius: 9999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-dark);
+}
+
+.tarifs__periode-btn {
+  min-height: 40px;
+  padding: 0 1.25rem;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color var(--tarifs-duree) var(--tarifs-courbe),
+              background-color var(--tarifs-duree) var(--tarifs-courbe);
+}
+
+.tarifs__periode-btn.is-actif {
+  background: var(--color-gold);
+  color: #1a1207;
+  font-weight: 700;
+}
+
+.tarifs__economie {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  background: var(--color-green-glow);
+  color: var(--color-green);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ---------- Grille des formules ---------- */
+
+.tarifs__grille {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+  align-items: stretch;
+}
+
+@media (min-width: 768px)  { .tarifs__grille { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1200px) { .tarifs__grille { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; } }
+
+
+/* Sur mobile uniquement, la formule recommandee remonte en tete de pile.
+   Au-dessus de 768 px, l ordre du document reprend : Essentiel -> Entreprise. */
+@media (max-width: 767px) {
+  .tarifs__carte { order: var(--ordre-mobile, 0); }
+}
+
+.tarifs__carte {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: clamp(1.125rem, 2.2vw, 1.5rem);
+  border-radius: var(--tarifs-rayon);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 12px 32px -14px rgba(0, 0, 0, 0.4);
+  min-width: 0;
+  transition: transform var(--tarifs-duree) var(--tarifs-courbe),
+              border-color var(--tarifs-duree) var(--tarifs-courbe),
+              box-shadow var(--tarifs-duree) var(--tarifs-courbe);
+}
+
+/* Le survol n'est propose que la ou il existe vraiment un curseur. */
+@media (hover: hover) and (min-width: 768px) {
+  .tarifs__carte:hover { transform: translateY(-4px); border-color: var(--border-accent); }
+  .tarifs__carte:hover .tarifs__cta { transform: translateY(-1px); filter: brightness(1.08); }
+}
+
+/* La formule recommandee : un cran au-dessus, sans crier. */
+.tarifs__carte.is-recommandee {
+  border-color: var(--color-gold);
+  background: var(--bg-card-elevated);
+  box-shadow: 0 0 0 1px var(--color-gold-glow), 0 18px 40px -16px var(--color-gold-glow);
+}
+
+@media (min-width: 1200px) {
+  .tarifs__carte.is-recommandee { transform: translateY(-8px); }
+  @media (hover: hover) {
+    .tarifs__carte.is-recommandee:hover { transform: translateY(-12px); }
+  }
+}
+
+.tarifs__badge {
+  position: absolute;
+  top: -0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, var(--color-gold), var(--color-orange));
+  color: #1a1207;
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px -4px var(--color-gold-glow);
+}
+
+.tarifs__recommande {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.625rem;
+  border-radius: 0.5rem;
+  background: var(--color-green-glow);
+  color: var(--color-green);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  /* Apparition discrete a chaque changement de recommandation. */
+  animation: tarifs-apparition 280ms var(--tarifs-courbe);
+}
+
+@keyframes tarifs-apparition {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.tarifs__nom {
+  font-size: 1.0625rem;
+  font-weight: 800;
+  color: var(--color-offwhite);
+  letter-spacing: -0.01em;
+}
+
+.tarifs__cible { font-size: 0.75rem; color: var(--color-muted); }
+
+.tarifs__prix-bloc { display: flex; flex-direction: column; gap: 0.25rem; }
+
+.tarifs__prix {
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+}
+
+.tarifs__montant {
+  font-size: clamp(1.5rem, 3.4vw, 1.875rem);
+  font-weight: 800;
+  color: var(--color-offwhite);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  /* Le changement mensuel/annuel se joue ici, en opacite seule. */
+  animation: tarifs-prix 220ms var(--tarifs-courbe);
+}
+
+.tarifs__carte.is-recommandee .tarifs__montant { color: var(--color-gold); }
+
+@keyframes tarifs-prix {
+  from { opacity: 0; transform: translateY(3px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.tarifs__unite { font-size: 0.75rem; color: var(--color-muted); }
+
+.tarifs__par-employe {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--color-green);
+  min-height: 1rem;
+}
+
+.tarifs__essai {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.375rem;
+  background: var(--border-subtle);
+  color: var(--color-offwhite);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.tarifs__liste {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tarifs__liste li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--color-muted);
+}
+
+.tarifs__puce {
+  flex-shrink: 0;
+  width: 0.875rem;
+  height: 0.875rem;
+  margin-top: 0.125rem;
+  color: var(--color-green);
+}
+
+.tarifs__carte.is-recommandee .tarifs__puce { color: var(--color-gold); }
+
+.tarifs__voir-plus {
+  align-self: flex-start;
+  padding: 0.25rem 0;
+  border: none;
+  background: none;
+  color: var(--color-gold);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* `margin-top: auto` colle le bouton en bas : les quatre CTA s'alignent,
+   quelle que soit la longueur des listes au-dessus. */
+.tarifs__cta {
+  margin-top: auto;
+  min-height: 44px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.75rem;
+  background: var(--border-subtle);
+  color: var(--color-offwhite);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform var(--tarifs-duree) var(--tarifs-courbe),
+              filter var(--tarifs-duree) var(--tarifs-courbe);
+}
+
+.tarifs__cta.is-principal {
+  border-color: transparent;
+  background: linear-gradient(90deg, var(--color-gold), var(--color-orange));
+  color: #1a1207;
+  box-shadow: 0 10px 24px -12px var(--color-gold-glow);
+}
+
+.tarifs__cta:active { transform: scale(0.985); }
+
+/* ---------- Reassurance et comparaison ---------- */
+
+.tarifs__reassurance {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.tarifs__reassurance i { color: var(--color-green); }
+
+.tarifs__comparaison-bloc { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+
+.tarifs__lien-comparer {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 44px;
+  padding: 0 1rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--color-offwhite);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--tarifs-duree) var(--tarifs-courbe);
+}
+
+.tarifs__lien-comparer:hover { border-color: var(--border-accent); }
+.tarifs__lien-comparer[aria-expanded="true"] .tarifs__chevron { transform: rotate(180deg); }
+.tarifs__chevron { transition: transform var(--tarifs-duree) var(--tarifs-courbe); }
+
+.tarifs__comparaison { width: 100%; }
+
+.tarifs__compare-groupe { border-top: 1px solid var(--border-subtle); }
+
+.tarifs__compare-titre {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 44px;
+  padding: 0.75rem 0.25rem;
+  border: none;
+  background: none;
+  color: var(--color-offwhite);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tarifs__compare-corps { padding-bottom: 0.75rem; }
+
+.tarifs__compare-ligne {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.5rem 0.25rem;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.tarifs__compare-ligne.is-entete {
+  border-top: none;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: var(--color-offwhite);
+  text-transform: uppercase;
+}
+
+.tarifs__compare-cellule { text-align: center; font-family: var(--font-mono); font-size: 0.6875rem; }
+.tarifs__compare-oui { color: var(--color-green); }
+.tarifs__compare-non { color: var(--color-muted); opacity: 0.4; }
+
+/*
+  Sous 768 px, un tableau a cinq colonnes devient illisible : chaque
+  fonctionnalite passe en pile, avec le nom de la formule devant sa valeur.
+*/
+@media (max-width: 767px) {
+  .tarifs__compare-ligne { grid-template-columns: 1fr; gap: 0.25rem; }
+  .tarifs__compare-ligne.is-entete { display: none; }
+  .tarifs__compare-intitule { font-weight: 700; color: var(--color-offwhite); }
+  .tarifs__compare-cellule {
+    display: flex;
+    justify-content: space-between;
+    text-align: left;
+    padding-left: 0.75rem;
+  }
+  .tarifs__compare-cellule::before {
+    content: attr(data-formule);
+    color: var(--color-muted);
+    opacity: 0.75;
+  }
+}
+
+/* ---------- CTA collant (mobile uniquement) ---------- */
+
+.tarifs__sticky {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  padding: 0.625rem 1rem;
+  /* Encoche et barre d'accueil iPhone : sans cela le bouton passe dessous. */
+  padding-bottom: calc(0.625rem + env(safe-area-inset-bottom, 0px));
+  /* Repli opaque d'abord : `color-mix` est ignore par Safari < 16.2, et une
+     barre transparente rendrait le bouton illisible par-dessus le contenu. */
+  background: var(--bg-dark);
+  background: color-mix(in srgb, var(--bg-dark) 92%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border-subtle);
+  transform: translateY(100%);
+  transition: transform 260ms var(--tarifs-courbe);
+}
+
+.tarifs__sticky.is-visible { transform: none; }
+
+.tarifs__sticky-btn {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: none;
+  border-radius: 0.75rem;
+  background: linear-gradient(90deg, var(--color-gold), var(--color-orange));
+  color: #1a1207;
+  font-size: 0.875rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+@media (min-width: 768px) {
+  .tarifs__sticky { display: none; }
+}
+
+/* ---------- Tres petits ecrans (<= 360 px) ---------- */
+
+@media (max-width: 360px) {
+  .tarifs__valeur { min-width: 6.5rem; font-size: 0.8125rem; }
+  .tarifs__pas { width: 40px; height: 40px; }
+  .tarifs__periode-btn { padding: 0 0.875rem; font-size: 0.75rem; }
+  .tarifs__carte { padding: 1rem; }
+  .tarifs__montant { font-size: 1.375rem; }
+}
+
+/* ---------- Focus visible ---------- */
+
+.tarifs :is(button, input, a):focus-visible,
+.tarifs__sticky-btn:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+  border-radius: 0.5rem;
+}
+
+/* ---------- Mouvement reduit ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .tarifs *,
+  .tarifs__sticky,
+  .tarifs__sticky * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .tarifs__carte.is-recommandee,
+  .tarifs__carte:hover { transform: none; }
+}
