@@ -134,6 +134,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Restaurer la session Supabase en arrière-plan sans réémettre de toast ni rediriger si déjà sur la bonne vue
   if (supabaseClient) {
+    // Un retour de Google est traite en premier : la session qu'il ouvre doit
+    // etre en place quand la restauration ci-dessous interroge le serveur.
+    let retourGoogle = null;
+    try {
+      retourGoogle = await traiterRetourGoogle();
+    } catch (e) {
+      console.error('[Google] Traitement du retour impossible :', e);
+    }
+
     try {
       const { data: { session } } = await supabaseClient.auth.getSession();
       if (session && session.user) {
@@ -190,6 +199,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     } catch (e) {
       console.warn('[Supabase Auth] Erreur vérification session :', e);
+    }
+
+    // Le routage d'une connexion Google vient en dernier : la restauration
+    // ci-dessus reecrit `state.currentUser` a partir de la fiche `users`, et
+    // aurait sinon ecrase le role etabli par les rattachements.
+    if (retourGoogle) {
+      try {
+        await ouvrirEspaceApresConnexion(retourGoogle);
+      } catch (e) {
+        console.error('[Google] Ouverture de l espace impossible :', e);
+        showToast('Connexion', 'Votre compte est connecté, mais votre espace n\'a pas pu être chargé. Rechargez la page.', 'info', 10000);
+      }
     }
 
     // Garde l'état de l'application aligné sur la session réelle : une
@@ -6114,61 +6135,21 @@ async function handleAuthSubmit(e) {
 
         if (error) throw error;
 
-        const userId = authData.user.id;
-
-        // Récupération des appartenances d'entreprises (Company Memberships)
-        const { data: memberships } = await supabaseClient
-          .from('company_memberships')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('status', 'ACTIVE');
-
-        state.isAuthenticated = true;
-        state.currentUser = {
-          id: userId,
-          email: emailVal,
-          fullName: authData.user.email.split('@')[0].toUpperCase(),
-        };
-
-        if (memberships && memberships.length > 1) {
-          // L'utilisateur appartient à plusieurs entreprises -> Choix d'espace
-          state.userMemberships = memberships;
-          openSelectWorkspaceModal(memberships);
-          showToast('Sélection d\'Espace', 'Veuillez choisir votre espace de travail.', 'info');
-        } else if (memberships && memberships.length === 1) {
-          const m = memberships[0];
-          let compName = state.company.name;
-          if (m.company_id) {
-            const { data: comp } = await supabaseClient.from('companies').select('name').eq('id', m.company_id).maybeSingle();
-            if (comp && comp.name) compName = comp.name;
-          }
-          selectCompanyWorkspace(m.company_id, m.role, m.attendance_required, compName);
-        } else {
-          // Fallback user unique
-          const { data: dbUser } = await supabaseClient
-            .from('users')
-            .select('*')
-            .eq('id', userId)
-            .maybeSingle();
-
-          const companyId = dbUser ? dbUser.company_id : null;
-          const userRole = dbUser ? (dbUser.role || 'EMPLOYEE') : 'EMPLOYEE';
-          const attReq = dbUser ? (dbUser.attendance_required !== false) : true;
-          let compName = state.company.name;
-
-          if (companyId) {
-            const { data: comp } = await supabaseClient.from('companies').select('name').eq('id', companyId).maybeSingle();
-            if (comp && comp.name) compName = comp.name;
-          }
-
-          selectCompanyWorkspace(companyId, userRole, attReq, compName);
-        }
+        // Meme routage que la connexion Google : l'acces se prouve par un
+        // rattachement ACTIF. L'ancien repli sur `users.company_id` et
+        // `users.role` ouvrait un Cockpit RH a un compte que la base ne
+        // reconnait plus comme membre depuis la migration 022.
+        await ouvrirEspaceApresConnexion(authData.user);
       }
     } else {
-      // Offline fallback
-      state.isAuthenticated = true;
-      state.currentUser = { email: emailVal, role: 'CEO' };
-      selectCompanyWorkspace(null, 'CEO', false, companyVal || 'SaaS Entreprise');
+      // Plus de « mode hors ligne ». Quand la bibliotheque d'authentification
+      // ne se chargeait pas, ce repli connectait N'IMPORTE QUEL couple
+      // e-mail / mot de passe en tant que CEO. Depuis que le script est charge
+      // avec une empreinte d'integrite, un fichier altere sur le CDN mene
+      // precisement ici : ce repli serait devenu la voie d'entree.
+      showToast('Service indisponible',
+        'Le service de connexion n\'a pas pu être chargé. Vérifiez votre connexion internet, puis rechargez la page.',
+        'info', 10000);
     }
   } catch (err) {
     console.error('Erreur Supabase Auth:', err);
@@ -7820,6 +7801,370 @@ async function reprendreInscriptionTimora() {
     oublierInscriptionEnAttente();
     showToast('Inscription incomplète', err.message || 'Reprise impossible.', 'info', 10000);
   }
+}
+
+// =============================================================================
+//  CONNEXION AVEC GOOGLE
+// =============================================================================
+//
+//  FLUX PKCE, SUR UN CLIENT DEDIE
+//  ------------------------------
+//  Le client Supabase principal fonctionne en flux « implicite » : au retour
+//  d'un fournisseur, les jetons arrivent dans le fragment de l'URL
+//  (#access_token=...). Deux raisons de ne pas l'utiliser pour Google :
+//
+//    - ce site route ses vues par le fragment (#hero, #saas, #invite?code=) :
+//      les jetons y entreraient en collision avec le routage ;
+//    - un jeton dans l'URL reste dans l'historique du navigateur.
+//
+//  Le flux PKCE ne renvoie qu'un CODE a usage unique, dans la query string, et
+//  ce code ne s'echange contre une session qu'avec un « verifier » reste dans
+//  CE navigateur. Un code intercepte, ou glisse dans un lien piege pour
+//  connecter la victime au compte de l'attaquant, est inutilisable.
+//
+//  Pourquoi ne pas passer tout le client en PKCE : les liens d'invitation
+//  employe sont demandes depuis le navigateur du RH et ouverts sur le
+//  telephone de l'employe. En PKCE, le verifier resterait chez le RH et chaque
+//  invitation echouerait. Seul Google passe donc par un client separe, avec sa
+//  propre cle de stockage — verifie dans le code de supabase-js 2.116.0 : un
+//  client n'echange un `?code=` que s'il detient le verifier sous SA cle.
+
+const OAUTH_GOOGLE_CLE = 'timora-oauth-google';
+const OAUTH_GOOGLE_MARQUEUR = 'google';
+
+let clientOAuthGoogleCache = null;
+
+function clientOAuthGoogle() {
+  if (clientOAuthGoogleCache) return clientOAuthGoogleCache;
+  if (!window.supabase || typeof window.supabase.createClient !== 'function') return null;
+
+  clientOAuthGoogleCache = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      flowType: 'pkce',
+      storageKey: OAUTH_GOOGLE_CLE,
+      // Le verifier doit survivre a l'aller-retour vers Google : stockage
+      // persistant obligatoire. La session obtenue, elle, est aussitot
+      // transferee au client principal puis effacee d'ici.
+      persistSession: true,
+      autoRefreshToken: false,
+      // L'echange est declenche explicitement par traiterRetourGoogle().
+      detectSessionInUrl: false,
+    },
+  });
+  return clientOAuthGoogleCache;
+}
+
+/** Efface tout ce que le client OAuth a laisse dans le stockage local. */
+function purgerStockageOAuthGoogle() {
+  try {
+    Object.keys(localStorage)
+      .filter((cle) => cle.startsWith(OAUTH_GOOGLE_CLE))
+      .forEach((cle) => localStorage.removeItem(cle));
+  } catch (err) {
+    console.error('[Google] Purge du stockage OAuth impossible :', err);
+  }
+}
+
+/**
+ * Messages affiches au retour d'un echec.
+ *
+ * On n'affiche JAMAIS `error_description` tel qu'il arrive dans l'URL :
+ * `showToast` ecrit en innerHTML, et n'importe qui peut fabriquer un lien
+ * `/?oauth=google&error_description=<img onerror=...>`. Seuls des codes connus
+ * sont traduits, en textes fixes.
+ */
+const MESSAGES_ERREUR_GOOGLE = {
+  access_denied: 'Connexion Google annulée.',
+  server_error: 'Google est momentanément indisponible. Réessayez dans un instant.',
+  temporarily_unavailable: 'Google est momentanément indisponible. Réessayez dans un instant.',
+};
+
+/**
+ * Point d'entree des trois boutons Google.
+ *
+ *   'connexion'        ouvrir son espace ;
+ *   'inscription-ceo'  creer son entreprise (nom saisi AVANT de partir) ;
+ *   'rejoindre'        rejoindre l'entreprise dont le code vient d'etre reconnu.
+ *
+ * Si une session existe deja — l'utilisateur est revenu de Google sans
+ * entreprise, puis a saisi un code — on n'y retourne pas : l'action est
+ * executee directement avec la session en place.
+ */
+async function connexionGoogle(parcours) {
+  if (!supabaseClient) {
+    showToast('Service indisponible', 'La connexion est impossible pour le moment.', 'info');
+    return;
+  }
+
+  let intention = null;
+
+  if (parcours === 'inscription-ceo') {
+    const nomEntreprise = (document.getElementById('auth-company-input')?.value || '').trim();
+    if (nomEntreprise.length < 2) {
+      showToast('Nom requis', 'Saisissez le nom de votre entreprise avant de continuer avec Google.', 'info');
+      document.getElementById('auth-company-input')?.focus();
+      return;
+    }
+    intention = {
+      type: 'ceo',
+      companyName: nomEntreprise,
+      fullName: (document.getElementById('auth-fullname-input')?.value || '').trim(),
+      via: OAUTH_GOOGLE_MARQUEUR,
+    };
+  } else if (parcours === 'rejoindre') {
+    const entreprise = state.recognizedCompany;
+    if (!entreprise || !entreprise.company_code) {
+      showToast('Code requis', 'Vérifiez d\'abord le code de votre entreprise.', 'info');
+      return;
+    }
+    const prenom = (document.getElementById('join-firstname-input')?.value || '').trim();
+    const nom = (document.getElementById('join-lastname-input')?.value || '').trim();
+    intention = {
+      type: 'employe',
+      code: entreprise.company_code,
+      companyName: entreprise.name,
+      fullName: [prenom, nom.toUpperCase()].filter(Boolean).join(' '),
+      via: OAUTH_GOOGLE_MARQUEUR,
+    };
+  }
+
+  // Session deja ouverte : inutile de repasser par Google.
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (session && session.user) {
+    if (intention) memoriserInscriptionEnAttente(intention);
+    await ouvrirEspaceApresConnexion(session.user);
+    return;
+  }
+
+  const client = clientOAuthGoogle();
+  if (!client) {
+    showToast('Service indisponible', 'La connexion Google est impossible pour le moment.', 'info');
+    return;
+  }
+
+  // `signInWithOAuth` ne renvoie AUCUNE erreur quand le fournisseur est
+  // desactive : il redirige, et l'utilisateur atterrit sur une page JSON brute
+  // de supabase.co (« Unsupported provider: provider is not enabled »). On
+  // interroge donc d'abord la liste publique des fournisseurs actifs.
+  if (!(await googleActiveCoteSupabase())) {
+    showToast('Connexion Google indisponible',
+      'La connexion avec Google n\'est pas encore activée. Utilisez votre e-mail et votre mot de passe.',
+      'info', 10000);
+    return;
+  }
+
+  if (intention) memoriserInscriptionEnAttente(intention);
+
+  // Adresse de retour construite depuis l'origine du site UNIQUEMENT, jamais
+  // depuis un parametre : aucune redirection ouverte possible. Elle doit
+  // figurer dans la liste blanche des URL de redirection de Supabase.
+  const { error } = await client.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: `${window.location.origin}/?oauth=${OAUTH_GOOGLE_MARQUEUR}`,
+      queryParams: {
+        // Toujours proposer le choix du compte : sur un telephone ou un poste
+        // partage, se connecter en silence avec le compte Google du precedent
+        // utilisateur ouvrirait SON espace.
+        prompt: 'select_account',
+      },
+    },
+  });
+
+  if (error) {
+    console.error('[Google] Démarrage impossible :', error);
+    oublierIntentionGoogle();
+    showToast('Connexion Google indisponible',
+      'Le fournisseur Google n\'est pas encore activé, ou la connexion a échoué. Utilisez votre e-mail et votre mot de passe.',
+      'info', 10000);
+  }
+}
+
+/**
+ * Le fournisseur Google est-il active dans le projet Supabase ?
+ *
+ * Point d'acces public de Supabase (`/auth/v1/settings`), qui ne renvoie que
+ * la liste des modes de connexion actifs. En cas d'echec reseau on repond
+ * « non » : ce meme serveur porte l'authentification, et rediriger vers lui
+ * quand il ne repond pas menerait de toute facon a une page d'erreur.
+ */
+async function googleActiveCoteSupabase() {
+  try {
+    const reponse = await fetch(`${SUPABASE_URL}/auth/v1/settings`, {
+      headers: { apikey: SUPABASE_ANON_KEY },
+    });
+    if (!reponse.ok) return false;
+    const reglages = await reponse.json();
+    return !!(reglages && reglages.external && reglages.external.google === true);
+  } catch (err) {
+    console.error('[Google] Réglages d\'authentification illisibles :', err);
+    return false;
+  }
+}
+
+/** Retire une intention d'inscription, seulement si elle venait d'un passage par Google. */
+function oublierIntentionGoogle() {
+  try {
+    const brut = localStorage.getItem(CLE_INSCRIPTION_ATTENTE);
+    if (brut && JSON.parse(brut).via === OAUTH_GOOGLE_MARQUEUR) oublierInscriptionEnAttente();
+  } catch (err) {
+    oublierInscriptionEnAttente();
+  }
+}
+
+/**
+ * Traite le retour de Google, au demarrage de la page.
+ *
+ * Renvoie l'utilisateur connecte si une connexion Google vient d'aboutir,
+ * `null` sinon. Le routage vers son espace est laisse a l'appelant, APRES la
+ * restauration de session habituelle : sinon celle-ci ecraserait le role
+ * determine par les rattachements.
+ */
+async function traiterRetourGoogle() {
+  let params;
+  try {
+    params = new URLSearchParams(window.location.search);
+  } catch (err) {
+    return null;
+  }
+  if (params.get('oauth') !== OAUTH_GOOGLE_MARQUEUR) return null;
+
+  const code = params.get('code');
+  const codeErreur = params.get('error');
+
+  // Le code est a usage unique, mais il ne doit pas rester dans l'historique
+  // ni partir dans un en-tete Referer : l'URL est nettoyee avant toute chose.
+  try {
+    window.history.replaceState(window.history.state, '', window.location.pathname + window.location.hash);
+  } catch (err) {
+    console.error('[Google] Nettoyage de l\'URL impossible :', err);
+  }
+
+  if (codeErreur || !code) {
+    oublierIntentionGoogle();
+    purgerStockageOAuthGoogle();
+    showToast('Connexion Google',
+      MESSAGES_ERREUR_GOOGLE[codeErreur] || 'La connexion Google n\'a pas abouti. Réessayez.',
+      'info', 8000);
+    return null;
+  }
+
+  const client = clientOAuthGoogle();
+  if (!client || !supabaseClient) return null;
+
+  try {
+    const { data, error } = await client.auth.exchangeCodeForSession(code);
+    if (error || !data || !data.session) {
+      throw error || new Error('Session absente après échange du code.');
+    }
+
+    // La session passe au client principal. Seuls les deux jetons Supabase
+    // sont transmis : le jeton d'acces Google (provider_token), inutile a
+    // l'application, n'est conserve nulle part.
+    const { error: erreurTransfert } = await supabaseClient.auth.setSession({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+    });
+    if (erreurTransfert) throw erreurTransfert;
+
+    return data.session.user;
+  } catch (err) {
+    console.error('[Google] Échange du code impossible :', err);
+    oublierIntentionGoogle();
+    // Code expire, deja utilise, ou verifier absent (lien ouvert dans un
+    // autre navigateur que celui qui a demarre la connexion).
+    showToast('Connexion Google',
+      'La connexion a expiré ou a été ouverte depuis un autre navigateur. Recommencez depuis cette page.',
+      'info', 10000);
+    return null;
+  } finally {
+    purgerStockageOAuthGoogle();
+  }
+}
+
+/**
+ * Ouvre le bon espace apres une connexion, quel qu'en soit le mode.
+ *
+ * Commun au mot de passe et a Google, pour que les deux appliquent exactement
+ * les memes controles. L'acces se prouve par un rattachement ACTIF — c'est la
+ * regle que la base applique depuis la migration 022. L'ancien repli sur
+ * `users.company_id` et `users.role` ouvrait sinon un Cockpit RH dont chaque
+ * requete echouait, pour un compte que la base ne reconnait plus.
+ *
+ * Avec Google, n'importe quel compte peut se connecter : un compte sans
+ * entreprise doit donc etre accueilli, pas laisse devant un ecran vide.
+ */
+async function ouvrirEspaceApresConnexion(utilisateur) {
+  const userId = utilisateur.id;
+  const email = utilisateur.email || '';
+
+  // Une inscription commencee avant le passage par Google (ou avant la
+  // confirmation d'adresse) est rejouee ici, sous l'identite qui vient d'etre
+  // prouvee.
+  try {
+    await reprendreInscriptionTimora();
+  } catch (err) {
+    console.error('[Connexion] Reprise d\'inscription impossible :', err);
+  }
+
+  const { data: rattachements, error } = await supabaseClient
+    .from('company_memberships')
+    .select('*')
+    .eq('user_id', userId);
+
+  if (error) throw error;
+
+  const liste = rattachements || [];
+  const actifs = liste.filter((m) => m.status === 'ACTIVE');
+
+  const metaNom = utilisateur.user_metadata && (utilisateur.user_metadata.full_name || utilisateur.user_metadata.name);
+  state.isAuthenticated = true;
+  state.currentUser = {
+    ...(state.currentUser || {}),
+    id: userId,
+    email: email,
+    fullName: (state.currentUser && state.currentUser.id === userId && state.currentUser.fullName)
+      || metaNom || email.split('@')[0].toUpperCase(),
+  };
+
+  if (actifs.length > 1) {
+    state.userMemberships = actifs;
+    openSelectWorkspaceModal(actifs);
+    showToast('Sélection d\'Espace', 'Veuillez choisir votre espace de travail.', 'info');
+    return;
+  }
+
+  if (actifs.length === 1) {
+    const m = actifs[0];
+    let nomEntreprise = state.company.name;
+    const { data: entreprise } = await supabaseClient
+      .from('companies').select('name').eq('id', m.company_id).maybeSingle();
+    if (entreprise && entreprise.name) nomEntreprise = entreprise.name;
+    selectCompanyWorkspace(m.company_id, m.role, m.attendance_required, nomEntreprise);
+    return;
+  }
+
+  // Aucun rattachement actif : demande en attente, ou compte sans entreprise.
+  closeAuthModal();
+
+  if (liste.some((m) => m.status === 'PENDING_APPROVAL' || m.status === 'INVITED')) {
+    const { data: fiche } = await supabaseClient
+      .from('users').select('registration_number').eq('id', userId).maybeSingle();
+    openPendingApprovalModal((fiche && fiche.registration_number) || '—');
+    return;
+  }
+
+  openAuthModal('login');
+  if (typeof switchAuthTab === 'function') switchAuthTab('join');
+  showToast('Aucune entreprise associée',
+    `Le compte ${escapeHtml(email)} n'est rattaché à aucune entreprise. ` +
+    'Saisissez le code fourni par votre service RH, ou créez votre entreprise.',
+    'info', 12000);
+}
+
+/** Bouton du formulaire partage : connexion, ou creation d'entreprise selon le mode. */
+function connexionGoogleDepuisFormulaire() {
+  return connexionGoogle(authMode === 'register' ? 'inscription-ceo' : 'connexion');
 }
 
 async function appliquerSessionSupabase(utilisateur) {

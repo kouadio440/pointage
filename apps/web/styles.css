@@ -943,3 +943,55 @@ body {
 
 [data-theme="light-warm"] .marque-logo__img--fond-sombre { display: none; }
 [data-theme="light-warm"] .marque-logo__img--fond-clair { display: block; }
+
+/* ==========================================================================
+   BOUTON « CONTINUER AVEC GOOGLE »
+   --------------------------------------------------------------------------
+   Variante sombre des regles de marque Google : fond #131314, texte #E3E3E3,
+   bordure #8E918F, logo « G » en couleurs d'origine. Les modales de connexion
+   ont un fond sombre fixe, quel que soit le theme.
+   ========================================================================== */
+
+.bouton-google {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0 1rem;
+  border: 1px solid #8E918F;
+  border-radius: 0.75rem;
+  background: #131314;
+  color: #E3E3E3;
+  font-family: 'Roboto', var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.bouton-google:hover { background: #1F1F20; border-color: #A8ABA9; }
+.bouton-google:active { background: #262628; }
+.bouton-google:focus-visible { outline: 2px solid var(--color-gold); outline-offset: 2px; }
+.bouton-google:disabled { opacity: 0.6; cursor: wait; }
+
+.bouton-google__logo { width: 18px; height: 18px; flex-shrink: 0; }
+
+.separateur-ou {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #64748B;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.separateur-ou::before,
+.separateur-ou::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #1E293B;
+}
