@@ -6063,43 +6063,31 @@ async function handleAuthSubmit(e) {
           throw authErr;
         }
 
-        if (authData && authData.user) {
-          userId = authData.user.id;
-        } else {
-          userId = crypto.randomUUID();
+        // Aucun identifiant n'est fabrique ici. L'ancienne version retombait
+        // sur `crypto.randomUUID()` quand la session n'etait pas encore
+        // ouverte : la fiche creee ne correspondait alors a aucun compte, et
+        // son proprietaire ne pouvait plus jamais s'y connecter.
+        if (!authData || !authData.user) {
+          throw new Error("La création du compte n'a pas abouti. Réessayez dans un instant.");
+        }
+        userId = authData.user.id;
+
+        // Entreprise, fiche CEO et rattachement sont crees ensemble, cote
+        // serveur, a partir de `auth.uid()`. Le client ne declare plus qui il
+        // est, et une coupure ne peut plus laisser un compte sans entreprise.
+        const creation = await creerEntrepriseTimora(companyVal, fullNameVal);
+
+        if (creation.enAttente) {
+          memoriserInscriptionEnAttente({ type: 'ceo', companyName: companyVal, fullName: fullNameVal });
+          showToast(
+            'Confirmez votre adresse',
+            'Un e-mail vient de vous être envoyé. Votre entreprise sera créée dès votre première connexion.',
+            'info', 12000);
+          closeAuthModal();
+          return;
         }
 
-        // 2. Création de la fiche Company unique
-        const { data: compData, error: compErr } = await supabaseClient
-          .from('companies')
-          .insert({ name: companyVal, plan: 'pro', status: 'active' })
-          .select()
-          .single();
-
-        if (compErr) throw compErr;
-
-        const companyId = compData.id;
-
-        // 3. Création de l'utilisateur CEO dans public.users
-        await supabaseClient.from('users').insert({
-          id: userId,
-          company_id: companyId,
-          email: emailVal,
-          full_name: fullNameVal || emailVal.split('@')[0].toUpperCase(),
-          role: 'CEO',
-          job_title: 'Directeur Général / CEO',
-          attendance_required: false,
-          is_active: true,
-        });
-
-        // 4. Rattachement dans public.company_memberships
-        await supabaseClient.from('company_memberships').insert({
-          user_id: userId,
-          company_id: companyId,
-          role: 'CEO',
-          attendance_required: false,
-          status: 'ACTIVE',
-        });
+        const companyId = creation.companyId;
 
         state.isAuthenticated = true;
         state.currentUser = {
@@ -7250,45 +7238,32 @@ async function verifyCompanyCode(codeOverride = null) {
   }
 
   try {
+    // Une seule source : la base. Les quatre replis precedents acceptaient
+    // n'importe quel code d'au moins six caracteres et fabriquaient une
+    // entreprise fictive avec l'identifiant « demo-co-id » — il suffisait de
+    // taper six lettres au hasard pour franchir cette etape.
+    //
+    // La fonction interrogee ne renvoie que le nom et l'etat de l'entreprise :
+    // ni reglages de reconnaissance faciale, ni secret QR, contrairement au
+    // `select('*')` d'avant.
     let companyMatch = null;
 
-    // 1. Recherche dans la base de données Supabase si active
-    if (supabaseClient) {
-      const { data: comp, error } = await supabaseClient
-        .from('companies')
-        .select('*')
-        .eq('company_code', rawCode)
-        .maybeSingle();
-
-      if (!error && comp) {
-        companyMatch = comp;
-      }
+    if (!supabaseClient) {
+      showToast('Service indisponible', 'Impossible de vérifier le code pour le moment.', 'info');
+      return;
     }
 
-    // 2. Correspondance avec l'entreprise active courante
-    const activeCode = state.currentCompanyCode || 'WD-7K9P-X4M2';
-    if (!companyMatch && (rawCode === activeCode || rawCode === 'WD-7K9P-X4M2')) {
-      companyMatch = {
-        id: state.currentCompanyId || 'demo-co-id',
-        name: state.currentCompanyName || state.company.name || 'Winner Design SARL',
-        company_code: rawCode,
-        status: 'active'
-      };
+    const { data: trouvee, error: erreurCode } =
+      await supabaseClient.rpc('lookup_company_by_code', { p_code: rawCode });
+
+    if (erreurCode) {
+      console.error('[Inscription] Vérification du code impossible :', erreurCode);
+      showToast('Erreur', 'Impossible de vérifier le code entreprise.', 'info');
+      return;
     }
 
-    // 3. Correspondance exacte par code dans la liste des entreprises
-    if (!companyMatch && (state.companies || []).length > 0) {
-      companyMatch = state.companies.find(c => c.company_code && c.company_code.toUpperCase() === rawCode);
-    }
-
-    // 4. Fallback de démonstration pour les codes commençant par WD ou format valide
-    if (!companyMatch && (rawCode.startsWith('WD') || rawCode.length >= 6)) {
-      companyMatch = {
-        id: state.currentCompanyId || 'demo-co-id',
-        name: state.currentCompanyName || state.company.name || 'Winner Design SARL',
-        company_code: rawCode,
-        status: 'active'
-      };
+    if (trouvee) {
+      companyMatch = { id: trouvee.id, name: trouvee.name, company_code: rawCode, status: trouvee.status };
     }
 
     if (!companyMatch) {
@@ -7389,26 +7364,21 @@ async function handleSelfRegistrationSubmit(e) {
 
     const matricule = await generateNextMatricule(state.recognizedCompany.id);
 
+    // Fiche et rattachement sont crees cote serveur a partir de `auth.uid()`.
+    // Le statut PENDING_APPROVAL est impose par la fonction : un candidat ne
+    // peut plus s'inscrire directement comme membre actif.
     if (supabaseClient) {
-      await supabaseClient.from('users').upsert({
-        id: userId,
-        company_id: state.recognizedCompany.id,
-        email: email,
-        full_name: fullName,
-        role: 'EMPLOYEE',
-        job_title: 'Collaborateur',
-        registration_number: matricule,
-        attendance_required: true,
-        is_active: false
-      });
+      const code = state.recognizedCompany.company_code;
+      const rattachement = await rejoindreEntrepriseTimora(code, fullName);
 
-      await supabaseClient.from('company_memberships').insert({
-        user_id: userId,
-        company_id: state.recognizedCompany.id,
-        role: 'EMPLOYEE',
-        attendance_required: true,
-        status: 'PENDING_APPROVAL'
-      });
+      if (rattachement.enAttente) {
+        memoriserInscriptionEnAttente({
+          type: 'employe',
+          code: code,
+          fullName: fullName,
+          companyName: state.recognizedCompany.name,
+        });
+      }
     }
 
     const formStep = document.getElementById('join-step-form');
@@ -7719,6 +7689,139 @@ async function verifyLoginOtp() {
  * nom fabriqué à partir de son adresse et le rôle EMPLOYEE par défaut, même
  * s'il était RH.
  */
+// =============================================================================
+//  INSCRIPTION : CREATION D'ENTREPRISE ET RATTACHEMENT
+// =============================================================================
+//
+//  POURQUOI CES FONCTIONS EXISTENT
+//  -------------------------------
+//  Le navigateur ecrivait directement dans `companies`, `users` et
+//  `company_memberships`. Ces tables etaient ouvertes a tous (politiques
+//  `USING (true)` en role `public`) : n'importe quel visiteur muni de la cle
+//  anonyme — publique par construction — pouvait se promouvoir CEO ou
+//  s'auto-approuver dans une entreprise. Les migrations 020 a 023 ont ferme
+//  ces politiques ; l'ecriture passe maintenant par des fonctions serveur qui
+//  derivent l'identite de `auth.uid()`.
+//
+//  LE CAS DE LA CONFIRMATION D'ADRESSE
+//  -----------------------------------
+//  Quand la confirmation par e-mail est exigee, `signUp` ne renvoie PAS de
+//  session : l'appel serveur echouerait faute d'identite. L'intention est
+//  alors mise de cote et rejouee a la premiere connexion reussie. C'est ce que
+//  fait `reprendreInscriptionTimora()`, appelee depuis `appliquerSessionSupabase`.
+
+const CLE_INSCRIPTION_ATTENTE = 'timora_inscription_attente';
+
+/** Vrai quand l'echec vient d'une session absente plutot que d'un refus reel. */
+function erreurSansSession(erreur) {
+  if (!erreur) return false;
+  return erreur.code === '42501' || /session requise/i.test(erreur.message || '');
+}
+
+function memoriserInscriptionEnAttente(intention) {
+  try {
+    localStorage.setItem(CLE_INSCRIPTION_ATTENTE,
+      JSON.stringify({ ...intention, at: Date.now() }));
+  } catch (err) {
+    console.error('[Inscription] Intention non mémorisée :', err);
+  }
+}
+
+function oublierInscriptionEnAttente() {
+  try { localStorage.removeItem(CLE_INSCRIPTION_ATTENTE); } catch (err) { /* stockage indisponible */ }
+}
+
+/**
+ * Cree l'entreprise, la fiche CEO et le rattachement — en une transaction.
+ *
+ * Renvoie `{ enAttente: true }` lorsque la session n'est pas encore ouverte :
+ * l'appelant memorise alors l'intention au lieu de creer quoi que ce soit.
+ */
+async function creerEntrepriseTimora(nomEntreprise, nomComplet) {
+  const { data, error } = await supabaseClient.rpc('register_company', {
+    p_company_name: nomEntreprise,
+    p_full_name: nomComplet || null,
+  });
+
+  if (error) {
+    if (erreurSansSession(error)) return { enAttente: true };
+    throw error;
+  }
+  return { enAttente: false, companyId: data.company_id, dejaCree: data.deja_cree };
+}
+
+/**
+ * Depose une demande de rattachement.
+ *
+ * Le statut PENDING_APPROVAL est impose par le serveur : il n'est pas transmis
+ * par le client, et ne peut donc pas etre remplace par ACTIVE.
+ */
+async function rejoindreEntrepriseTimora(code, nomComplet, telephone) {
+  const { data, error } = await supabaseClient.rpc('join_company', {
+    p_code: code,
+    p_full_name: nomComplet || null,
+    p_phone: telephone || null,
+    p_job_title: 'Collaborateur',
+  });
+
+  if (error) {
+    if (erreurSansSession(error)) return { enAttente: true };
+    throw error;
+  }
+  return { enAttente: false, companyId: data.company_id, statut: data.statut };
+}
+
+/**
+ * Rejoue une inscription mise de cote, a la premiere session ouverte.
+ *
+ * Sans erreur si rien n'attend : la fonction est appelee a chaque connexion.
+ */
+async function reprendreInscriptionTimora() {
+  if (!supabaseClient) return;
+
+  let intention = null;
+  try {
+    const brut = localStorage.getItem(CLE_INSCRIPTION_ATTENTE);
+    if (brut) intention = JSON.parse(brut);
+  } catch (err) {
+    oublierInscriptionEnAttente();
+    return;
+  }
+
+  // Passe 24 h, une intention n'a plus lieu d'etre rejouee.
+  if (!intention || Date.now() - (intention.at || 0) > 86400000) {
+    if (intention) oublierInscriptionEnAttente();
+    return;
+  }
+
+  try {
+    if (intention.type === 'ceo') {
+      const r = await creerEntrepriseTimora(intention.companyName, intention.fullName);
+      if (r.enAttente) return; // toujours pas de session : on retentera
+      oublierInscriptionEnAttente();
+      if (!r.dejaCree) {
+        showToast('Entreprise créée',
+          `« ${escapeHtml(intention.companyName || '')} » est enregistrée. Bienvenue sur Timora.`,
+          'success', 10000);
+      }
+    } else if (intention.type === 'employe') {
+      const r = await rejoindreEntrepriseTimora(intention.code, intention.fullName, intention.phone);
+      if (r.enAttente) return;
+      oublierInscriptionEnAttente();
+      showToast('Demande transmise',
+        `Votre demande a été transmise à ${escapeHtml(intention.companyName || 'votre entreprise')}. ` +
+        'Elle attend la validation du service RH.',
+        'success', 12000);
+    }
+  } catch (err) {
+    // Un refus reel (code inconnu, entreprise suspendue) ne doit pas etre
+    // retente indefiniment a chaque connexion.
+    console.error('[Inscription] Reprise impossible :', err);
+    oublierInscriptionEnAttente();
+    showToast('Inscription incomplète', err.message || 'Reprise impossible.', 'info', 10000);
+  }
+}
+
 async function appliquerSessionSupabase(utilisateur) {
   let fiche = null;
   try {
@@ -7743,6 +7846,14 @@ async function appliquerSessionSupabase(utilisateur) {
   };
   state.currentUserRole = state.currentUser.role;
   if (fiche && fiche.company_id) state.currentCompanyId = fiche.company_id;
+
+  // Une inscription mise de cote faute de session est rejouee ici, avant le
+  // chargement : le tableau de bord doit trouver une entreprise en place.
+  try {
+    await reprendreInscriptionTimora();
+  } catch (e) {
+    console.error('[Session] Reprise d inscription impossible :', e);
+  }
 
   try {
     await loadSupabaseData();
