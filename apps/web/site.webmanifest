@@ -1,0 +1,21 @@
+{
+  "name": "Timora",
+  "short_name": "Timora",
+  "description": "Pointage géolocalisé et sécurisé pour les entreprises.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#181310",
+  "theme_color": "#181310",
+  "icons": [
+    {
+      "src": "/assets/marque/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/marque/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

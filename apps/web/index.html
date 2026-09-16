@@ -6,6 +6,15 @@
   <title>Timora — SaaS de Pointage Géolocalisé & Sécurisé pour Entreprises</title>
   <meta name="description" content="Plateforme SaaS de pointage géolocalisé, anti-fraude, selfie IA et gestion du temps de travail pour les PME et grandes entreprises." />
 
+  <!-- Icones du navigateur. favicon.ico sert les navigateurs qui le demandent
+       d'office a la racine ; les PNG servent les autres, aux tailles exactes. -->
+  <link rel="icon" href="/favicon.ico" sizes="48x48" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/marque/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/assets/marque/favicon-16.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/marque/apple-touch-icon.png" />
+  <link rel="manifest" href="/site.webmanifest" />
+  <meta name="theme-color" content="#181310" />
+
   <!--
     Décision de vue AVANT le premier rendu.
 
@@ -159,17 +168,16 @@
   <nav class="max-w-7xl mx-auto px-4 sm:px-6 mt-3 sticky top-14 sm:top-12 z-50">
     <div class="glass-pill px-4 py-2 flex items-center justify-between shadow-xl border border-[var(--border-subtle)] relative">
       <!-- Logo & Brand -->
-      <div class="flex items-center space-x-2.5 cursor-pointer" onclick="switchView('hero')">
-        <div class="w-8 h-8 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 glow-amber shrink-0">
-          <i data-lucide="shield-check" class="w-4 h-4"></i>
-        </div>
-        <div>
-          <h1 class="font-bold text-xs sm:text-sm tracking-tight text-[var(--color-offwhite)] flex items-center gap-1.5">
-            Timora
-            <span class="text-[9px] font-mono font-normal text-emerald-400 px-1.5 py-0.2 rounded bg-emerald-500/10 border border-emerald-500/20">v2.4</span>
-          </h1>
-          <p class="text-[9px] text-[var(--color-muted)] font-mono hidden sm:block">Plateforme SaaS Anti-Fraude</p>
-        </div>
+      <div class="flex items-center gap-3 cursor-pointer" onclick="switchView('hero')">
+        <h1 class="marque-logo leading-none m-0">
+          <img src="/assets/marque/timora-logo-fond-sombre.png" width="466" height="120" alt="Timora"
+               class="marque-logo__img marque-logo__img--fond-sombre h-7 sm:h-8 w-auto" />
+          <img src="/assets/marque/timora-logo-fond-clair.png" width="466" height="120" alt="Timora"
+               class="marque-logo__img marque-logo__img--fond-clair h-7 sm:h-8 w-auto" />
+        </h1>
+        <p class="hidden lg:block text-[9px] text-[var(--color-muted)] font-mono border-l border-[var(--border-subtle)] pl-3 leading-tight">
+          Plateforme SaaS<br />Anti-Fraude
+        </p>
       </div>
 
       <!-- DESKTOP NAVIGATION VIEWS (hidden on mobile, visible on md+) -->
@@ -2565,9 +2573,8 @@
 
           <!-- Icon & Header -->
           <div class="text-center space-y-3">
-            <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-500/20 via-orange-500/20 to-amber-400/10 border border-amber-500/40 text-amber-400 shadow-lg glow-amber mb-1">
-              <i data-lucide="shield-check" class="w-8 h-8"></i>
-            </div>
+            <img src="/assets/marque/timora-icone.png" width="256" height="256" alt="Timora"
+                 class="w-16 h-16 mx-auto mb-1 drop-shadow-lg" />
             <h3 class="text-xl font-extrabold text-white tracking-tight">Authentification Super Admin SaaS</h3>
             <p class="text-xs text-slate-400 max-w-md mx-auto">
               Accès hautement sécurisé obligatoire. Connectez-vous avec un compte administrateur de la plateforme pour piloter la solution Timora.
@@ -3392,6 +3399,10 @@
       <button onclick="closeAuthModal()" class="absolute top-4 right-4 p-2 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white transition">
         <i data-lucide="x" class="w-5 h-5"></i>
       </button>
+
+      <div class="flex justify-center pt-1">
+        <img src="/assets/marque/timora-logo-fond-sombre.png" width="466" height="120" alt="Timora" class="h-9 w-auto" />
+      </div>
 
       <!-- Navigation Tabs: Se Connecter vs Rejoindre mon entreprise -->
       <div class="grid grid-cols-2 p-1 bg-slate-900 border border-slate-800 rounded-xl text-xs font-bold gap-1">

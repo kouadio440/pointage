@@ -929,3 +929,17 @@ body {
   .tarifs__carte.is-recommandee,
   .tarifs__carte:hover { transform: none; }
 }
+
+/* ==========================================================================
+   LOGO
+   --------------------------------------------------------------------------
+   Le mot « Timora » est bleu nuit sur le logo d'origine : invisible sur les
+   themes sombres. Deux images coexistent, et le theme decide laquelle montrer.
+   Terracotta et Safari sont sombres ; seul light-warm est clair.
+   ========================================================================== */
+
+.marque-logo__img { display: block; }
+.marque-logo__img--fond-clair { display: none; }
+
+[data-theme="light-warm"] .marque-logo__img--fond-sombre { display: none; }
+[data-theme="light-warm"] .marque-logo__img--fond-clair { display: block; }
