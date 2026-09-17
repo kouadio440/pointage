@@ -894,9 +894,11 @@
         <!-- ROW 3: Actions & Filters Toolbar -->
         <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 pt-1">
           <!-- Primary CTA Button -->
-          <button onclick="openAddEmployeeModal()" class="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-extrabold text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-500/20 glow-green-sm">
-            <i data-lucide="user-plus" class="w-4 h-4"></i>
-            <span>+ Ajouter un Collaborateur</span>
+          <!-- L'ajout manuel d'un collaborateur a été retiré : c'est l'employé qui
+               dépose sa demande avec le code entreprise, et le RH l'accepte. -->
+          <button onclick="switchSection('pending-approvals')" class="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 font-extrabold text-xs flex items-center justify-center gap-2 transition">
+            <i data-lucide="user-check" class="w-4 h-4"></i>
+            <span>Demandes d'accès</span>
           </button>
 
           <!-- Controls Grid -->
@@ -950,7 +952,7 @@
         </button>
         <button onclick="switchSection('pending-approvals')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-amber-400 hover:text-white hover:bg-slate-800 transition flex items-center gap-1.5 border border-amber-500/30" data-section="pending-approvals">
           <i data-lucide="user-check" class="w-3.5 h-3.5 text-amber-400"></i>
-          <span>Demandes d'inscription</span>
+          <span>Demandes d'accès</span>
           <span id="rh-pending-count-badge" class="px-2 py-0.5 rounded-full bg-amber-500 text-black text-[10px] font-extrabold">0</span>
         </button>
         <button onclick="switchSection('reports')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="reports">
@@ -1660,8 +1662,8 @@
                 />
               </div>
 
-              <button onclick="openAddEmployeeModal()" class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs transition flex items-center gap-1.5 shrink-0 shadow-lg shadow-emerald-500/20">
-                <i data-lucide="user-plus" class="w-4 h-4"></i> Ajouter un Employé
+              <button onclick="openCompanyQrModal()" class="px-4 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 font-bold text-xs transition flex items-center gap-2 whitespace-nowrap">
+                <i data-lucide="qr-code" class="w-4 h-4"></i> Inviter avec le code
               </button>
             </div>
           </div>
@@ -1871,9 +1873,9 @@
             <div>
               <h3 class="text-lg font-extrabold text-white flex items-center gap-2">
                 <i data-lucide="user-check" class="w-5 h-5 text-amber-400"></i>
-                Demandes d'Inscription des Employés
+                Demandes d'accès
               </h3>
-              <p class="text-xs text-slate-400">Validez ou refusez les auto-inscriptions d'employés réalisées via votre Code Entreprise public.</p>
+              <p class="text-xs text-slate-400">Vos employés déposent eux-mêmes leur demande avec le code entreprise. Vous acceptez ou refusez ici.</p>
             </div>
             
             <div class="flex items-center gap-2">
@@ -1914,26 +1916,15 @@
             </div>
           </div>
 
-          <!-- Pending Approvals Table -->
-          <div class="overflow-x-auto rounded-xl border border-slate-800">
-            <table class="w-full text-left border-collapse">
-              <thead>
-                <tr class="bg-slate-900/80 border-b border-slate-800 text-[11px] font-mono text-slate-400 uppercase tracking-wider">
-                  <th class="p-3.5 text-center w-10">
-                    <input type="checkbox" id="select-all-pending-chk" onchange="toggleSelectAllPending(this)" class="rounded bg-slate-950 border-slate-700 text-emerald-500 focus:ring-0 cursor-pointer">
-                  </th>
-                  <th class="p-3.5">Employé</th>
-                  <th class="p-3.5">Email Professionnel</th>
-                  <th class="p-3.5">Matricule Généré</th>
-                  <th class="p-3.5">Date Demande</th>
-                  <th class="p-3.5 text-center">Statut</th>
-                  <th class="p-3.5 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody id="rh-pending-requests-body" class="divide-y divide-slate-800/60 text-xs">
-                <!-- Injected via app.js -->
-              </tbody>
-            </table>
+          <!-- Demandes d'accès : une carte par demande (voir renderPendingRegistrationsGrid).
+               Un tableau à sept colonnes débordait sur téléphone. -->
+          <div class="flex items-center gap-2 px-1">
+            <input type="checkbox" id="select-all-pending-chk" onchange="toggleSelectAllPending(this)"
+                   class="w-4 h-4 rounded bg-slate-950 border-slate-700 text-emerald-500" />
+            <label for="select-all-pending-chk" class="text-[11px] text-slate-400 font-semibold">Tout sélectionner</label>
+          </div>
+          <div id="rh-pending-requests-list" class="space-y-2.5">
+            <!-- Injecté par app.js -->
           </div>
         </div>
       </div>
@@ -3819,15 +3810,24 @@
         <p class="text-xs text-amber-300/90 leading-relaxed font-semibold">
           Votre inscription a bien été transmise à votre entreprise. Votre compte est actuellement en attente de validation par votre responsable.
         </p>
-        <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 text-[11px] text-slate-400 font-mono space-y-1 text-left">
-          <div>Matricule Officiel : <strong id="pending-user-matricule" class="text-amber-400">EMP-0001</strong></div>
-          <div>Statut de la Demande : <span class="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold">PENDING_APPROVAL</span></div>
+        <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 text-[11px] text-slate-400 space-y-1 text-left">
+          <div>Entreprise : <strong id="pending-company-name" class="text-white">votre entreprise</strong></div>
+          <div>Demande envoyée le : <strong id="pending-request-date" class="text-white">—</strong></div>
+          <div>Matricule : <strong id="pending-user-matricule" class="text-amber-400 font-mono">—</strong></div>
+          <div>Statut : <span class="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 font-bold">En attente de validation</span></div>
         </div>
       </div>
       <p class="text-[11px] text-slate-400">Le pointage et l'accès au Dashboard seront activés dès que votre CEO ou RH aura validé votre demande.</p>
-      <button onclick="closePendingApprovalModal()" class="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition">
-        Compris / Déconnexion
-      </button>
+      <div class="space-y-2">
+        <button type="button" id="pending-refresh-btn" onclick="actualiserDemandeEnAttente()"
+                class="w-full min-h-[44px] rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 text-black font-extrabold text-xs transition">
+          Actualiser
+        </button>
+        <button type="button" onclick="closePendingApprovalModal()"
+                class="w-full min-h-[44px] rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs transition">
+          Fermer
+        </button>
+      </div>
     </div>
   </div>
 

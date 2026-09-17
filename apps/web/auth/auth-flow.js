@@ -1108,7 +1108,7 @@ function resoudreEtOrienter(options = {}) {
   return resolutionEnCours;
 }
 
-async function executerResolution({ intention = null, silencieux = false, entreprisePreferee = null } = {}) {
+async function executerResolution({ intention = null, silencieux = false, entreprisePreferee = null, forcerVue = false } = {}) {
   if (!supabaseClient) return null;
 
   // Adhesion en cours : la demande est deposee AVANT la resolution, pour que
@@ -1190,7 +1190,7 @@ async function executerResolution({ intention = null, silencieux = false, entrep
   switch (destination) {
     case 'company_dashboard':
     case 'employee_dashboard':
-      await entrerDansEspace(contexte, { silencieux });
+      await entrerDansEspace(contexte, { silencieux, forcerVue });
       break;
 
     case 'company_onboarding':
@@ -1218,7 +1218,7 @@ async function executerResolution({ intention = null, silencieux = false, entrep
       oublierSessionLocale();
       fermerAuthentification({ oublier: true });
       const attente = contexte.pending || {};
-      openPendingApprovalModal(attente.registration_number || '—');
+      openPendingApprovalModal(attente);
       break;
     }
 
@@ -1276,9 +1276,16 @@ function oublierSessionLocale() {
   state.currentUserRole = null;
   state.currentCompanyId = null;
   try { localStorage.removeItem('winner_auth_session'); } catch (err) { /* sans consequence */ }
+
+  // Un espace protege reste parfois affiche derriere la fenetre (memoire
+  // locale d'une session precedente, role retire depuis). On en sort : sans
+  // rattachement actif, aucune donnee de cet ecran n'est chargeable.
+  if (['dashboard', 'employee'].includes(state.activeView) && typeof switchView === 'function') {
+    switchView('hero');
+  }
 }
 
-async function entrerDansEspace(contexte, { silencieux }) {
+async function entrerDansEspace(contexte, { silencieux, forcerVue = false }) {
   const actif = contexte.active;
   const role = roleCanonique(actif.role);
   try { localStorage.setItem(CLE_ENTREPRISE_PREFEREE, actif.company_id); } catch (err) { /* sans consequence */ }
@@ -1306,7 +1313,11 @@ async function entrerDansEspace(contexte, { silencieux }) {
   fermerAuthentification({ oublier: true });
 
   await selectCompanyWorkspace(actif.company_id, role, actif.attendance_required !== false, actif.company_name, {
-    naviguer: !silencieux || !!voulue || !vueCoherente(role),
+    // `forcerVue` : la session vient du serveur alors que ce navigateur n'en
+    // gardait aucune trace (premiere visite sur cet appareil, stockage vide).
+    // Rester sur la page d'accueil laisserait un compte connecte devant la
+    // vitrine, sans son espace.
+    naviguer: !silencieux || !!voulue || forcerVue || !vueCoherente(role),
     silencieux,
     vue,
   });

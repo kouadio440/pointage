@@ -173,6 +173,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         await resoudreEtOrienter({
           intention: intentionParcoursAuth(),
           silencieux: !retourGoogle && !parcoursEnCours,
+          // Session reconnue par le serveur alors que ce navigateur n'en gardait
+          // aucune trace : on ouvre l'espace au lieu de laisser la vitrine.
+          forcerVue: !state.isAuthenticated,
         });
       } else if (!erreurSession) {
         let vueDemandee = null;
@@ -4447,6 +4450,10 @@ async function renderPunchConfig() {
   const migration003Absente =
     schedRes.error && /work_schedules|does not exist|schema cache/i.test(String(schedRes.error.message || ''));
 
+  // Une requete refusee ne doit pas passer pour « aucun employe ».
+  if (memRes.error) console.error('[Pointage] Rattachements illisibles :', memRes.error);
+  if (usersRes.error) console.error('[Pointage] Fiches employés illisibles :', usersRes.error);
+
   punchConfig.sites = sitesRes.data || [];
   punchConfig.schedules = schedRes.data || [];
 
@@ -7354,11 +7361,64 @@ async function traiterRetourGoogle() {
   }
 }
 
-function openPendingApprovalModal(matricule = 'EMP-0001') {
+/**
+ * Ecran d'attente de l'employe : sa demande est deposee, le service RH doit la
+ * valider. Les informations viennent du serveur (resolve_auth_context), et le
+ * bouton « Actualiser » les redemande — sans jamais recreer une demande.
+ */
+function openPendingApprovalModal(attente) {
+  const infos = (attente && typeof attente === 'object') ? attente : { registration_number: attente };
+
   const modal = document.getElementById('modal-pending-approval');
   const matEl = document.getElementById('pending-user-matricule');
-  if (matEl) matEl.innerText = matricule;
+  const nomEl = document.getElementById('pending-company-name');
+  const dateEl = document.getElementById('pending-request-date');
+
+  if (matEl) matEl.innerText = infos.registration_number || '—';
+  if (nomEl) nomEl.innerText = infos.company_name || 'votre entreprise';
+  const dater = (valeur) => (valeur
+    ? new Date(valeur).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
+    : '—');
+  if (dateEl) dateEl.innerText = dater(infos.created_at);
+
   if (modal) modal.classList.remove('hidden');
+
+  // La date de dépôt n'est pas dans la résolution : on la lit sur SA propre
+  // demande (la politique de lecture autorise chacun à voir ses rattachements).
+  if (dateEl && !infos.created_at && supabaseClient && state.currentUser && state.currentUser.id) {
+    supabaseClient
+      .from('company_memberships')
+      .select('created_at')
+      .eq('user_id', state.currentUser.id)
+      .in('status', ['PENDING_APPROVAL', 'INVITED'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .then(({ data }) => {
+        if (data && data[0]) dateEl.innerText = dater(data[0].created_at);
+      }, (e) => console.warn('[Adhésion] Date de la demande indisponible :', e));
+  }
+}
+
+/** « Actualiser » : on redemande au serveur où en est la demande. */
+async function actualiserDemandeEnAttente() {
+  const bouton = document.getElementById('pending-refresh-btn');
+  if (bouton) {
+    bouton.disabled = true;
+    bouton.dataset.libelle = bouton.innerText;
+    bouton.innerText = 'Vérification…';
+  }
+
+  try {
+    const destination = await resoudreEtOrienter({});
+    if (destination === 'pending_approval') {
+      showToast('Toujours en attente', 'Votre service RH n\'a pas encore validé votre demande.', 'info', 6000);
+    }
+  } finally {
+    if (bouton) {
+      bouton.disabled = false;
+      if (bouton.dataset.libelle) bouton.innerText = bouton.dataset.libelle;
+    }
+  }
 }
 
 function closePendingApprovalModal() {
@@ -7371,161 +7431,60 @@ function closePendingApprovalModal() {
 
 
 /**
- * Repare les rattachements « demi-approuves » avant d'afficher les demandes.
+ * Charge les demandes d'acces de l'entreprise.
  *
- * Une ancienne version de approveRegistration() activait le compte
- * (users.is_active = true) SANS passer le rattachement a ACTIVE. Le RH voyait
- * donc revenir indefiniment une demande deja traitee, pour un employe qui
- * figurait pourtant dans l'effectif et pouvait pointer.
+ * UNE SEULE SOURCE : la fonction serveur `list_join_requests()`. Elle verifie
+ * les droits, lit les rattachements en attente et y joint la fiche de chaque
+ * personne. Le navigateur n'assemble plus deux tables lui-meme.
  *
- * La signature est sans ambiguite : une auto-inscription cree TOUJOURS
- * l'utilisateur avec is_active = false (voir le flux de code entreprise).
- * Un compte actif, rattache a cette meme entreprise, mais dont le rattachement
- * reste PENDING_APPROVAL, ne peut donc provenir que de ce defaut.
+ * CE QUI SE PASSAIT AVANT
+ * -----------------------
+ * La requete demandait a PostgREST de joindre `users` a `company_memberships`.
+ * Aucune cle etrangere ne reliait ces deux tables : PostgREST refusait la
+ * requete entiere (400 PGRST200), l'erreur etait ignoree (`if (!memErr)`), et
+ * l'ecran annoncait « Aucune demande » alors que quatre attendaient en base.
  *
- * On termine l'approbation au lieu d'afficher une demande fantome.
- *
- * @returns {Promise<number>} nombre de rattachements repares
- */
-async function reconcilierRattachementsDemiApprouves(lignes) {
-  if (!supabaseClient || !Array.isArray(lignes) || lignes.length === 0) return 0;
-
-  const aReparer = lignes.filter((m) => {
-    const u = m.users || {};
-    return (
-      m.status === 'PENDING_APPROVAL' &&
-      u.is_active === true &&
-      String(u.company_id || '') === String(m.company_id || '')
-    );
-  });
-
-  if (aReparer.length === 0) return 0;
-
-  try {
-    const { error } = await supabaseClient
-      .from('company_memberships')
-      .update({ status: 'ACTIVE', updated_at: new Date().toISOString() })
-      .in(
-        'id',
-        aReparer.map((m) => m.id),
-      );
-
-    if (error) throw error;
-
-    console.info(
-      '[RH] ' + aReparer.length + ' rattachement(s) deja actif(s) ont ete finalises automatiquement.',
-    );
-    return aReparer.length;
-  } catch (e) {
-    console.warn('[RH] Reconciliation des rattachements impossible :', e);
-    return 0;
-  }
-}
-
-/**
- * Charge les demandes d'inscription REELLES depuis company_memberships.
- *
- * Deux choix explicites :
- *
- *  - Seul le statut PENDING_APPROVAL est retenu. Une invitation (INVITED) n'est
- *    pas une demande : c'est le RH qui l'a emise, il n'a rien a valider.
- *
- *  - Aucune fusion avec localStorage. Les entrees locales, ajoutees pour un
- *    retour immediat apres inscription, survivaient a la realite du serveur :
- *    une demande deja traitee pouvait reapparaitre indefiniment. La base est
- *    desormais la seule source de verite de cet ecran.
+ * Desormais, un echec est AFFICHE. Une liste vide veut dire « aucune
+ * demande », jamais « la requete a echoue ».
  */
 async function loadPendingRegistrations() {
   state.pendingRegistrations = [];
+  state.pendingRegistrationsErreur = null;
 
-  const companyId = state.currentCompanyId;
-  // « let » et non « const » : la liste est refiltree apres reconciliation.
-  let foundRegistrations = [];
-
-  if (supabaseClient && companyId) {
-    // Stream A: Appartenances en attente de l'entreprise
-    try {
-      const { data: memData, error: memErr } = await supabaseClient
-        .from('company_memberships')
-        .select(
-          'id, user_id, company_id, role, status, created_at, ' +
-            'users(id, full_name, email, registration_number, job_title, is_active, company_id)'
-        )
-        .eq('company_id', companyId)
-        .in('status', ['PENDING_APPROVAL', 'PENDING', 'pending', 'WAITING_APPROVAL'])
-        .order('created_at', { ascending: false });
-
-      if (!memErr && memData) {
-        memData.forEach(m => {
-          foundRegistrations.push({ ...m, users: m.users || {} });
-        });
-      }
-    } catch (e) {
-      console.warn("[RH] Chargement memberships PENDING :", e);
-    }
-
-    // Stream B: Utilisateurs inactifs pour cette entreprise (repli si la ligne membership est absente ou non jointe)
-    try {
-      const { data: usersData, error: usersErr } = await supabaseClient
-        .from('users')
-        .select('*')
-        .eq('company_id', companyId)
-        .eq('is_active', false);
-
-      if (!usersErr && usersData) {
-        usersData.forEach(u => {
-          const exists = foundRegistrations.some(m => m.user_id === u.id || (m.users && m.users.email === u.email));
-          if (!exists) {
-            foundRegistrations.push({
-              id: 'mem-user-' + u.id,
-              user_id: u.id,
-              company_id: companyId,
-              role: u.role || 'EMPLOYEE',
-              status: 'PENDING_APPROVAL',
-              created_at: u.created_at || new Date().toISOString(),
-              users: u
-            });
-          }
-        });
-      }
-    } catch (e) {
-      console.warn("[RH] Chargement users inactifs :", e);
-    }
+  if (!supabaseClient || !state.currentCompanyId) {
+    renderPendingRegistrationsGrid();
+    return;
   }
 
-  // Aucun repli de demonstration ici. Une version precedente injectait une
-  // fausse demande pour « kouassi jonas KONAN » des que la liste etait vide :
-  // le RH approuvait la demande, la liste se vidait, et la demande fantome
-  // reapparaissait aussitot. Une liste vide doit rester vide.
-
-  // Les rattachements deja actifs sont finalises plutot que presentes comme
-  // des demandes en attente (sequelle d une ancienne approbation incomplete).
-  const repares = await reconcilierRattachementsDemiApprouves(foundRegistrations);
-  if (repares > 0) {
-    foundRegistrations = foundRegistrations.filter((m) => {
-      const u = m.users || {};
-      const demiApprouve =
-        m.status === 'PENDING_APPROVAL' &&
-        u.is_active === true &&
-        String(u.company_id || '') === String(m.company_id || '');
-      return !demiApprouve;
+  try {
+    const { data, error } = await supabaseClient.rpc('list_join_requests', {
+      p_company: state.currentCompanyId,
     });
+    if (error) throw error;
+
+    state.pendingRegistrations = (data && Array.isArray(data.requests)) ? data.requests : [];
+  } catch (e) {
+    console.error('[RH] Demandes d\'accès illisibles :', e);
+    state.pendingRegistrations = [];
+    state.pendingRegistrationsErreur = (e && e.code === '42501')
+      ? 'Seuls le propriétaire et les administrateurs consultent les demandes d\'accès.'
+      : 'Les demandes d\'accès n\'ont pas pu être chargées. Vérifiez votre connexion puis réessayez.';
   }
 
-  state.pendingRegistrations = foundRegistrations;
   renderPendingRegistrationsGrid();
 }
 
 function renderPendingRegistrationsGrid() {
-  const count = state.pendingRegistrations ? state.pendingRegistrations.length : 0;
+  const demandes = state.pendingRegistrations || [];
+  const count = demandes.length;
+  const erreur = state.pendingRegistrationsErreur;
 
   const badgeEl = document.getElementById('rh-pending-count-badge');
-  if (badgeEl) badgeEl.innerText = count;
+  if (badgeEl) badgeEl.innerText = erreur ? '!' : count;
 
-  // Mise à jour de la bannière dans le registre des employés
+  // Bannière du registre des employés
   const staffBanner = document.getElementById('staff-pending-banner');
   const staffCountText = document.getElementById('staff-pending-count-text');
-
   if (staffBanner && staffCountText) {
     if (count > 0) {
       staffCountText.innerText = count;
@@ -7535,58 +7494,83 @@ function renderPendingRegistrationsGrid() {
     }
   }
 
-  const tbody = document.getElementById('rh-pending-requests-body');
-  if (!tbody) return;
+  const liste = document.getElementById('rh-pending-requests-list');
+  if (!liste) return;
+
+  if (erreur) {
+    liste.innerHTML =
+      '<div class="p-5 rounded-xl border border-red-500/40 bg-red-500/10 text-center space-y-3">' +
+        '<p class="text-xs font-bold text-red-300">' + escapeHtml(erreur) + '</p>' +
+        '<button type="button" onclick="loadPendingRegistrations()" class="min-h-[44px] px-4 rounded-xl bg-slate-800 hover:bg-slate-700 ' +
+          'text-slate-200 border border-slate-700 text-xs font-bold transition">Réessayer</button>' +
+      '</div>';
+    return;
+  }
 
   if (count === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="7" class="p-8 text-center text-slate-500 italic">
-          <i data-lucide="user-check" class="w-8 h-8 text-slate-600 mx-auto mb-2"></i>
-          Aucune demande d'inscription en attente de validation.
-        </td>
-      </tr>
-    `;
+    liste.innerHTML =
+      '<div class="p-8 rounded-xl border border-slate-800 bg-slate-900/40 text-center text-slate-500 italic text-xs">' +
+        '<i data-lucide="user-check" class="w-8 h-8 text-slate-600 mx-auto mb-2"></i>' +
+        'Aucune demande d\'accès en attente.<br/>' +
+        '<span class="not-italic">Communiquez votre code entreprise à vos employés : ils déposent eux-mêmes leur demande.</span>' +
+      '</div>';
     if (window.lucide) window.lucide.createIcons();
     return;
   }
 
-  tbody.innerHTML = state.pendingRegistrations.map(m => {
-    const u = m.users || {};
-    const name = u.full_name || u.email || 'Nouveau Collaborateur';
-    const email = u.email || 'N/A';
-    const matricule = u.registration_number || 'EMP-TEMP';
-    const reqDate = m.created_at ? new Date(m.created_at).toLocaleDateString('fr-FR') : 'Aujourd\'hui';
+  // Cartes : lisibles du telephone a l'ordinateur, sans tableau qui deborde.
+  liste.innerHTML = demandes.map((d) => {
+    const nom = d.full_name || d.email || 'Nouveau collaborateur';
+    const initiales = nom.trim().slice(0, 2).toUpperCase();
+    const date = d.created_at
+      ? new Date(d.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
+      : '';
+    const invitation = d.status === 'INVITED';
 
     return `
-      <tr class="border-b border-slate-800/60 hover:bg-slate-800/30 transition text-xs">
-        <td class="p-3.5 text-center">
-          <input type="checkbox" value="${m.id}" onchange="toggleSelectPendingItem('${m.id}', this.checked)" class="pending-item-chk rounded bg-slate-950 border-slate-700 text-emerald-500 focus:ring-0 cursor-pointer">
-        </td>
-        <td class="p-3.5 font-bold text-white flex items-center gap-2">
-          <div class="w-7 h-7 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center font-bold text-xs">
-            ${name.substring(0, 2).toUpperCase()}
+      <div class="p-4 rounded-xl border border-slate-800 bg-slate-900/60 space-y-3">
+        <div class="flex items-start gap-3">
+          <input type="checkbox" value="${escapeHtml(d.id)}" onchange="toggleSelectPendingItem('${escapeHtml(d.id)}', this.checked)"
+                 aria-label="Sélectionner la demande de ${escapeHtml(nom)}"
+                 class="pending-item-chk mt-1 w-4 h-4 rounded bg-slate-950 border-slate-700 text-emerald-500 shrink-0" />
+          <div class="w-9 h-9 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center font-extrabold text-xs shrink-0">
+            ${escapeHtml(initiales)}
           </div>
-          ${escapeHtml(name)}
-        </td>
-        <td class="p-3.5 text-slate-300 font-mono">${escapeHtml(email)}</td>
-        <td class="p-3.5"><span class="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono font-bold text-[11px]">${escapeHtml(matricule)}</span></td>
-        <td class="p-3.5 text-slate-400 font-mono">${escapeHtml(reqDate)}</td>
-        <td class="p-3.5 text-center"><span class="px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-bold">PENDING_APPROVAL</span></td>
-        <td class="p-3.5 text-right space-x-1.5">
-          <button onclick="approveRegistration('${m.id}')" class="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-black text-xs font-bold transition shadow-sm">✅ Accepter</button>
-          <button onclick="rejectRegistration('${m.id}')" class="px-3 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/40 text-red-300 border border-red-500/40 text-xs font-bold transition">❌ Refuser</button>
-        </td>
-      </tr>
-    `;
+          <div class="min-w-0 flex-1">
+            <p class="font-bold text-white text-sm truncate">${escapeHtml(nom)}</p>
+            <p class="text-[11px] text-slate-400 font-mono break-all">${escapeHtml(d.email || '')}</p>
+            ${d.job_title ? `<p class="text-[11px] text-slate-500">${escapeHtml(d.job_title)}</p>` : ''}
+          </div>
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${invitation
+            ? 'bg-cyan-500/10 border border-cyan-500/30 text-cyan-300'
+            : 'bg-amber-500/10 border border-amber-500/30 text-amber-300'}">
+            ${invitation ? 'Invitation' : 'En attente'}
+          </span>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800/80">
+          <p class="text-[11px] text-slate-500">Demande du ${escapeHtml(date)}</p>
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="rejectRegistration('${escapeHtml(d.id)}')"
+                    class="min-h-[44px] px-4 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-500/40 text-xs font-bold transition">
+              Refuser
+            </button>
+            <button type="button" onclick="approveRegistration('${escapeHtml(d.id)}')"
+                    class="min-h-[44px] px-4 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black text-xs font-extrabold transition">
+              Accepter
+            </button>
+          </div>
+        </div>
+      </div>`;
   }).join('');
 
   if (window.lucide) window.lucide.createIcons();
 }
 
 function toggleSelectAllPending(masterChk) {
-  const chks = document.querySelectorAll('.pending-item-chk');
-  chks.forEach(c => c.checked = masterChk.checked);
+  const cases = document.querySelectorAll('.pending-item-chk');
+  state.selectedPendingIds = masterChk.checked ? Array.from(cases).map((c) => c.value) : [];
+  cases.forEach((c) => { c.checked = masterChk.checked; });
 }
 
 function toggleSelectPendingItem(id, isChecked) {
@@ -7600,165 +7584,135 @@ function toggleSelectPendingItem(id, isChecked) {
 
 
 /**
- * Approuve une demande d'inscription et lie automatiquement l'employé
- * au site géolocalisé (ex: Siege azito) et à l'horaire issus de la configuration du pointage.
+ * Accepte une demande d'acces.
+ *
+ * Tout se passe cote serveur, en UNE transaction (approve_join_request) :
+ * rattachement actif, fiche activee et rattachee a la meme entreprise,
+ * matricule attribue. Le message de reussite n'est affiche que si le serveur
+ * a confirme ; en cas d'echec, la liste reste telle qu'elle est.
  */
-async function approveRegistration(membershipId) {
+async function approveRegistration(membershipId, options = {}) {
+  const { recharger = true } = options;
+  if (!supabaseClient) return false;
+
+  const demande = (state.pendingRegistrations || []).find((d) => d.id === membershipId) || {};
+  const nom = demande.full_name || demande.email || 'Le collaborateur';
+
+  // Site et horaire proposes par la configuration du pointage, verifies par le
+  // serveur : ils doivent appartenir a cette entreprise.
+  const sites = (punchConfig.sites && punchConfig.sites.length ? punchConfig.sites : state.sites) || [];
+  const horaires = (punchConfig.schedules && punchConfig.schedules.length ? punchConfig.schedules : state.schedules) || [];
+
   try {
-    const item = (state.pendingRegistrations || []).find((m) => m.id === membershipId);
-    const userId = item ? (item.user_id || (item.users ? item.users.id : null) || item.id) : membershipId;
-    const companyId = (item && item.company_id) || state.currentCompanyId;
-    const userObj = item ? (item.users || item) : {};
-    const userName = userObj.full_name || userObj.name || 'Employé';
-    const userEmail = userObj.email || null;
+    const { data, error } = await supabaseClient.rpc('approve_join_request', {
+      p_membership: membershipId,
+      p_site: sites.length === 1 ? sites[0].id : null,
+      p_schedule: horaires.length === 1 ? horaires[0].id : null,
+    });
+    if (error) throw error;
+    if (!data || !data.ok) throw new Error('Réponse inattendue du serveur.');
 
-    // 1. Site principal reellement configure dans le Cockpit. Aucun repli
-    //    invente : si l entreprise n a pas de site, l employe sera approuve
-    //    sans affectation, et le Cockpit le signalera comme « configuration
-    //    incomplete » plutot que de le rattacher a un site imaginaire.
-    const sitesDisponibles = (punchConfig.sites && punchConfig.sites.length ? punchConfig.sites : state.sites) || [];
-    const defaultSite = sitesDisponibles[0] || null;
-
-    // 2. Détermination de l'horaire de travail principal créé dans la configuration du pointage
-    const defaultSchedule = (punchConfig.schedules && punchConfig.schedules.length > 0)
-      ? punchConfig.schedules[0]
-      : (state.schedules && state.schedules.length > 0 ? state.schedules[0] : null);
-
-    // 3. Mise à jour Supabase si client actif
-    if (supabaseClient) {
-      if (!membershipId.startsWith('mem-demo-')) {
-        const { error: mErr } = await supabaseClient
-          .from('company_memberships')
-          .update({
-            status: 'ACTIVE'
-          })
-          .eq('id', membershipId);
-        if (mErr) console.warn('[RH] Mise à jour appartenance :', mErr);
-      }
-
-      const { error: uErr } = await supabaseClient
-        .from('users')
-        .update({
-          is_active: true,
-          company_id: companyId,
-          // Site affecte seulement s il en existe un reellement configure.
-          ...(defaultSite ? { site_id: defaultSite.id } : {}),
-        })
-        .eq('id', userId);
-      if (uErr) console.warn('[RH] Activation du compte :', uErr);
-    }
-
-    // 4. Rattachement et liaison directe dans l'effectif local avec site & horaire configurés
-    const prefix = state.currentCompanyPrefix || 'EMP';
-    const matricule = userObj.registration_number || `${prefix}-0004`;
-
-    if (!state.employees) state.employees = [];
-    const existingIndex = state.employees.findIndex(e => e.id === userId || e.email === userEmail);
-
-    const approvedEmployee = {
-      id: userId,
-      name: userName,
-      email: userEmail,
-      role: userObj.job_title || 'Collaborateur',
-      site: defaultSite ? defaultSite.name : 'Aucun site affecté',
-      site_id: defaultSite ? defaultSite.id : null,
-      schedule_id: defaultSchedule ? defaultSchedule.id : null,
-      status: 'Présent',
-      matricule: matricule,
-      arriveTime: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
-      method: 'Code Entreprise',
-      distance: '0m',
-      confidence: 99.0,
-      attendance_required: true,
-      avatar: 'https://images.unsplash.com/photo-1507152832244-10d45c7eda57?w=150&auto=format&fit=crop&q=80'
-    };
-
-    if (existingIndex >= 0) {
-      state.employees[existingIndex] = { ...state.employees[existingIndex], ...approvedEmployee };
+    if (data.deja_traitee) {
+      showToast('Déjà validée', `${escapeHtml(nom)} fait déjà partie de votre équipe.`, 'info', 6000);
     } else {
-      state.employees.unshift(approvedEmployee);
+      showToast('Demande acceptée ✓',
+        `<strong>${escapeHtml(nom)}</strong> rejoint votre équipe. Matricule : <strong>${escapeHtml(data.registration_number || '—')}</strong>.`,
+        'success', 7000);
     }
 
-    state.pendingRegistrations = (state.pendingRegistrations || []).filter((m) => m.id !== membershipId && m.user_id !== userId);
-
-    showToast(
-      'Demande Approuvée 🎉',
-      defaultSite
-        ? `<strong>${escapeHtml(userName)}</strong> a été validé(e) et rattaché(e) au site <strong>${escapeHtml(defaultSite.name)}</strong>.`
-        : `<strong>${escapeHtml(userName)}</strong> a été validé(e). Aucun site n'étant configuré, affectez-lui un lieu de travail pour qu'il puisse pointer.`,
-      'success',
-      8000
-    );
-
-    renderPendingRegistrationsGrid();
-    renderStaffGrid();
-    if (typeof renderPunchConfig === 'function') await renderPunchConfig();
-    renderDashboard();
+    if (recharger) await rafraichirApresDecision();
+    return true;
   } catch (e) {
     console.error('[RH] Approbation impossible :', e);
-    showToast(
-      'Approbation impossible',
-      e.message || 'Erreur serveur.',
-      'info',
-      8000
-    );
+    showToast('Approbation impossible', messageDecisionDemande(e), 'warning', 10000);
+    if (recharger) await loadPendingRegistrations();
+    return false;
   }
 }
 
+/** Refuse une demande. La ligne est conservée : le refus reste tracé. */
 async function rejectRegistration(membershipId) {
+  if (!supabaseClient) return false;
+
+  const demande = (state.pendingRegistrations || []).find((d) => d.id === membershipId) || {};
+  const nom = demande.full_name || demande.email || 'Cette personne';
+
+  if (!confirm(`Refuser la demande de ${nom} ?\n\nElle pourra en déposer une nouvelle avec le code entreprise.`)) return false;
+
   try {
-    if (supabaseClient) {
-      // membershipId est bien l'identifiant du RATTACHEMENT depuis que le
-      // chargement lit company_memberships : le refus cible donc la bonne ligne.
-      const { error } = await supabaseClient
-        .from('company_memberships')
-        .update({ status: 'REJECTED' })
-        .eq('id', membershipId);
-      if (error) throw error;
-    }
+    const { data, error } = await supabaseClient.rpc('reject_join_request', { p_membership: membershipId });
+    if (error) throw error;
+    if (!data || !data.ok) throw new Error('Réponse inattendue du serveur.');
 
-    state.pendingRegistrations = (state.pendingRegistrations || []).filter((m) => m.id !== membershipId);
-
-    showToast('Demande refusée', "La demande d'inscription a été refusée.", 'info');
-    renderPendingRegistrationsGrid();
+    showToast('Demande refusée', `La demande de ${escapeHtml(nom)} a été refusée.`, 'info', 6000);
+    await rafraichirApresDecision();
+    return true;
   } catch (e) {
     console.error('[RH] Refus impossible :', e);
-    showToast(
-      'Refus impossible',
-      typeof traduireErreurEcriture === 'function'
-        ? traduireErreurEcriture(e, 'ce refus')
-        : e.message || 'Erreur serveur.',
-      'info',
-      12000
-    );
+    showToast('Refus impossible', messageDecisionDemande(e), 'warning', 10000);
+    await loadPendingRegistrations();
+    return false;
   }
 }
 
-async function approveSelectedRegistrations() {
-  const chks = Array.from(document.querySelectorAll('.pending-item-chk:checked')).map(c => c.value);
-  if (chks.length === 0) {
-    showToast('Sélection Vide', 'Veuillez cocher au moins une demande à approuver.', 'info');
-    return;
+/** Message clair a partir du refus renvoye par le serveur, jamais son texte brut. */
+function messageDecisionDemande(e) {
+  const code = (e && (e.code || e.status)) || '';
+  if (code === '42501') return 'Seuls le propriétaire et les administrateurs traitent les demandes d\'accès.';
+  if (code === 'TM404') return 'Cette demande n\'existe plus. La liste vient d\'être actualisée.';
+  if (code === 'TM409') return 'Cette demande a déjà été traitée. La liste vient d\'être actualisée.';
+  if (code === 'TM422') return 'Le site ou l\'horaire proposé n\'appartient pas à votre entreprise.';
+  if (typeof estErreurReseau === 'function' && estErreurReseau(e)) {
+    return 'Connexion interrompue : le serveur n\'a pas confirmé. Actualisez la liste avant de réessayer.';
   }
+  return 'Le serveur a refusé l\'opération. Réessayez dans un instant.';
+}
 
-  for (const id of chks) {
-    await approveRegistration(id);
-  }
-
+/** Après une décision, tout est relu depuis la base : aucune liste locale bricolée. */
+async function rafraichirApresDecision() {
   state.selectedPendingIds = [];
   const masterChk = document.getElementById('select-all-pending-chk');
   if (masterChk) masterChk.checked = false;
+
+  await loadSupabaseData();
+  renderStaffGrid();
+  renderDashboard();
+  if (typeof renderPunchConfig === 'function') await renderPunchConfig();
+}
+
+async function approveSelectedRegistrations() {
+  const choisies = Array.from(document.querySelectorAll('.pending-item-chk:checked')).map((c) => c.value);
+  if (choisies.length === 0) {
+    showToast('Aucune sélection', 'Cochez au moins une demande à accepter.', 'info');
+    return;
+  }
+  await approuverPlusieurs(choisies);
 }
 
 async function approveAllRegistrations() {
-  if (!state.pendingRegistrations || state.pendingRegistrations.length === 0) {
-    showToast('Aucune Demande', 'Il n\'y a aucune demande en attente.', 'info');
+  const toutes = (state.pendingRegistrations || []).map((d) => d.id);
+  if (toutes.length === 0) {
+    showToast('Aucune demande', 'Il n\'y a aucune demande en attente.', 'info');
     return;
   }
+  if (!confirm(`Accepter les ${toutes.length} demande(s) en attente ?`)) return;
+  await approuverPlusieurs(toutes);
+}
 
-  const allIds = state.pendingRegistrations.map(m => m.id);
-  for (const id of allIds) {
-    await approveRegistration(id);
+/** Traite les demandes une par une, puis relit la liste UNE fois, et dit ce qui a échoué. */
+async function approuverPlusieurs(identifiants) {
+  let reussies = 0;
+  for (const id of identifiants) {
+    const ok = await approveRegistration(id, { recharger: false });
+    if (ok) reussies += 1;
+  }
+
+  await rafraichirApresDecision();
+
+  if (reussies < identifiants.length) {
+    showToast('Traitement partiel',
+      `${reussies} demande(s) acceptée(s) sur ${identifiants.length}. Les autres sont toujours dans la liste.`,
+      'warning', 10000);
   }
 }
 
