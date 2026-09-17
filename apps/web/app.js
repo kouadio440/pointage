@@ -220,15 +220,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     checkUrlInvitation();
   }
 
-  // Fermer le menu mobile lors d'un clic en dehors
+  // Fermer le menu mobile lors d'un clic en dehors.
+  //
+  // On lit le CHEMIN de l'événement, pas seulement sa cible : ouvrir le menu
+  // redessine l'icône du bouton (hamburger -> croix), si bien que l'élément
+  // cliqué n'appartient plus au document quand ce gestionnaire s'exécute.
+  // Le test « le bouton contient-il la cible ? » échouait alors, et le menu se
+  // refermait dans la foulée de son ouverture — sur téléphone, il paraissait
+  // ne pas répondre.
   document.addEventListener('click', (e) => {
     const menu = document.getElementById('mobile-menu');
     const btn = document.getElementById('mobile-menu-btn');
-    if (menu && !menu.classList.contains('hidden')) {
-      if (!menu.contains(e.target) && !btn.contains(e.target)) {
-        closeMobileMenu();
-      }
-    }
+    if (!menu || menu.classList.contains('hidden')) return;
+
+    const chemin = typeof e.composedPath === 'function' ? e.composedPath() : [];
+    const dedans = chemin.includes(menu) || (btn && chemin.includes(btn))
+      || menu.contains(e.target) || (btn && btn.contains(e.target));
+
+    if (!dedans) closeMobileMenu();
   });
 });
 
@@ -2183,74 +2192,30 @@ function submitPunch(type) {
     }
   }, 1800);
 
-  // Step 4: 2500ms -> Registration & Toast Notification
+  // Etape 4 : resultat de la DEMONSTRATION.
+  //
+  // Cette vitrine ne pointe personne : rien n'est envoye au serveur, rien n'est
+  // ecrit en base ni en memoire locale, et aucun indicateur d'employe n'est
+  // modifie. Un pointage reel passe par « Pointer maintenant » dans l'espace
+  // employe, et seul le serveur (record_attendance) peut le confirmer.
   setTimeout(() => {
-    const nowStr = new Date().toLocaleTimeString('fr-FR', { 
-      timeZone: 'Africa/Abidjan', 
-      hour: '2-digit', 
-      minute: '2-digit', 
-      second: '2-digit' 
+    const heure = new Date().toLocaleTimeString('fr-FR', {
+      timeZone: 'Africa/Abidjan',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
     });
 
     showToast(
-      `Pointage d'${type} Réussi`,
-      `<strong class="text-white">${empName}</strong><br/>` +
-      `<span class="text-emerald-400 font-semibold">✓ Reconnaissance Faciale :</span> Match 99.4% (Visage Identifié)<br/>` +
-      `<span class="text-emerald-400 font-semibold">✓ Géolocalisation GPS :</span> Validé (14m du Siège)<br/>` +
-      `<span class="text-emerald-400 font-semibold">✓ Horodateur Certifié :</span> ${nowStr} GMT`,
-      'success',
-      6500
+      'Démonstration terminée',
+      `<strong class="text-white">${escapeHtml(empName)}</strong> — simulation d'${escapeHtml(String(type).toLowerCase())} à ${escapeHtml(heure)} GMT.<br/>` +
+      '<span class="text-slate-300">Aucun pointage n\'a été enregistré : cette démonstration montre le déroulé ' +
+      '(selfie, position, horodatage). Un pointage réel est vérifié et confirmé par le serveur depuis l\'espace employé.</span>',
+      'info',
+      8000
     );
 
-    // Persister le pointage dans la table public.attendances sur Supabase
-    if (supabaseClient) {
-      supabaseClient.from('attendances').insert({
-        method: 'face_id',
-        status: 'on_time',
-        latitude: 5.359942,
-        longitude: -4.008311,
-        gps_accuracy_meters: 14.0,
-        is_fake_gps_detected: false,
-        face_confidence_score: 99.4,
-      }).then(res => {
-        if (!res.error) console.log('[Supabase] Pointage enregistré dans public.attendances !');
-      }).catch(err => console.warn('[Supabase] Erreur pointage:', err));
-    }
-
     closePunchModal();
-
-    // Update employee status & arrival time in GMT Abidjan
-    const nowAbidjanGmt = new Date().toLocaleTimeString('fr-FR', {
-      timeZone: 'Africa/Abidjan',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-    const nowGmtFull = `${nowAbidjanGmt} GMT`;
-
-    if (type === 'ENTRÉE') {
-      const arriveEl = document.getElementById('emp-kpi-arrive-time');
-      if (arriveEl) arriveEl.innerText = nowGmtFull;
-
-      const arriveSubEl = document.getElementById('emp-kpi-arrive-sub');
-      if (arriveSubEl) arriveSubEl.innerText = 'Validé en direct par Selfie/GPS';
-
-      const userId = state.currentUser ? state.currentUser.id : 'usr-local';
-      const todayStr = new Date().toISOString().split('T')[0];
-      try {
-        localStorage.setItem(`winner_user_clock_in_${userId}_${todayStr}`, nowGmtFull);
-      } catch (e) {}
-    }
-
-    const empObj = state.employees ? state.employees.find(e => empName.includes(e.name) || e.name.includes(empName)) : null;
-    if (empObj) {
-      empObj.status = type === 'ENTRÉE' ? 'Présent' : 'Sorti';
-      empObj.arriveTime = nowAbidjanGmt;
-      empObj.confidence = 99.4;
-    }
-
-    renderDashboard();
-    renderStaffGrid();
-    renderEmployeeDashboard();
   }, 2500);
 }
 
