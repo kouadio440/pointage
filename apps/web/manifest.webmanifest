@@ -1,0 +1,41 @@
+{
+  "id": "/",
+  "name": "Timora",
+  "short_name": "Timora",
+  "description": "Pointage intelligent par reconnaissance faciale et géolocalisation.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#181310",
+  "theme_color": "#181310",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/assets/marque/pwa-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/marque/pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/marque/pwa-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/assets/marque/pwa-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

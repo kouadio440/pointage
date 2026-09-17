@@ -81,15 +81,19 @@ function restoreSessionFromStorage() {
     const raw = localStorage.getItem('winner_auth_session');
     if (raw) {
       const data = JSON.parse(raw);
-      if (data && data.isAuthenticated && data.currentUser) {
+      // Sans role reconnu, rien n'est restaure : le serveur dira ou envoyer ce
+      // compte des que la session aura ete relue. L'ancien repli sur EMPLOYEE
+      // ouvrait l'espace employe a un createur d'entreprise.
+      const role = data ? roleCanonique(data.currentUserRole) : null;
+      if (data && data.isAuthenticated && data.currentUser && role) {
         state.isAuthenticated = true;
         state.currentUser = data.currentUser;
-        state.currentUserRole = data.currentUserRole || 'EMPLOYEE';
+        state.currentUserRole = role;
         state.currentCompanyId = data.currentCompanyId || null;
-        state.currentCompanyName = data.currentCompanyName || 'Winner Design SARL';
+        state.currentCompanyName = data.currentCompanyName || '';
         state.currentCompanyPrefix = data.currentCompanyPrefix || 'EMP';
         state.currentCompanyCode = data.currentCompanyCode || '';
-        
+
         const savedAvatar = state.currentUser.avatar ||
                             resolveStoredAvatar(data.currentUser.id, data.currentUser.email);
         if (savedAvatar) {
@@ -112,10 +116,24 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 1. Restaurer la session locale immédiatement de manière synchrone
   restoreSessionFromStorage();
 
+  // Anciennes cles du parcours d'inscription (adresse, nom d'entreprise) : le
+  // parcours actuel n'en a plus besoin, elles ne restent pas sur l'appareil.
+  try {
+    ['timora_inscription_attente', 'winner_inscription_en_cours'].forEach((cle) => localStorage.removeItem(cle));
+  } catch (e) {}
+
   const initialHash = window.location.hash.replace('#', '');
-  const activeView = (['hero', 'saas', 'dashboard', 'employee'].includes(initialHash))
+  let activeView = (['hero', 'saas', 'dashboard', 'employee'].includes(initialHash))
     ? initialHash
-    : (state.isAuthenticated ? (state.currentUserRole === 'EMPLOYEE' ? 'employee' : 'dashboard') : 'hero');
+    : (state.isAuthenticated ? (estRoleEntreprise(state.currentUserRole) ? 'dashboard' : 'employee') : 'hero');
+
+  // Espace protege demande sans session locale : la session Supabase est
+  // peut-etre encore valide. On l'attend avant de reclamer une connexion, et
+  // la vue demandee est rouverte ensuite si le role l'autorise.
+  if ((activeView === 'dashboard' || activeView === 'employee') && !state.isAuthenticated) {
+    try { sessionStorage.setItem(CLE_RETOUR_AUTH, activeView); } catch (e) {}
+    activeView = 'hero';
+  }
 
   switchView(activeView);
 
@@ -132,10 +150,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadSupabaseData().catch(e => console.warn('[Init Data] Exception chargement Supabase :', e));
   }
 
-  // Restaurer la session Supabase en arrière-plan sans réémettre de toast ni rediriger si déjà sur la bonne vue
   if (supabaseClient) {
     // Un retour de Google est traite en premier : la session qu'il ouvre doit
-    // etre en place quand la restauration ci-dessous interroge le serveur.
+    // etre en place quand l'orientation ci-dessous interroge le serveur.
     let retourGoogle = null;
     try {
       retourGoogle = await traiterRetourGoogle();
@@ -143,74 +160,41 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.error('[Google] Traitement du retour impossible :', e);
     }
 
+    // Orientation : c'est le serveur qui decide (resolve_auth_context), jamais
+    // une valeur memorisee dans le navigateur. Au simple rechargement d'une
+    // page deja coherente, rien ne bouge et aucun message ne s'affiche.
     try {
-      const { data: { session } } = await supabaseClient.auth.getSession();
+      const { data: lecture, error: erreurSession } = await supabaseClient.auth.getSession();
+      const session = lecture && lecture.session;
+      const parcoursRepris = reprendreParcoursAuth({ sessionPresente: !!(session && session.user) });
+
       if (session && session.user) {
-        const userId = session.user.id;
-        const email = session.user.email;
+        const parcoursEnCours = !!relireFlux();
+        await resoudreEtOrienter({
+          intention: intentionParcoursAuth(),
+          silencieux: !retourGoogle && !parcoursEnCours,
+        });
+      } else if (!erreurSession) {
+        let vueDemandee = null;
+        try { vueDemandee = sessionStorage.getItem(CLE_RETOUR_AUTH); } catch (e) {}
 
-        const { data: dbUser } = await supabaseClient
-          .from('users')
-          .select('*')
-          .or(`id.eq.${userId},email.eq.${email}`)
-          .maybeSingle();
-
-        const realFullName = (dbUser && dbUser.full_name) ? dbUser.full_name : ((session.user && session.user.user_metadata && session.user.user_metadata.full_name) ? session.user.user_metadata.full_name : email.split('@')[0]);
-
-        const savedAvatar = (dbUser && dbUser.avatar_url) ? dbUser.avatar_url :
-                            (state.currentUser && state.currentUser.avatar) ? state.currentUser.avatar :
-                            resolveStoredAvatar(userId, email);
-
-        state.isAuthenticated = true;
-        state.currentUser = {
-          id: userId,
-          email: email,
-          fullName: realFullName,
-          registrationNumber: dbUser ? dbUser.registration_number : (state.currentUser ? state.currentUser.registrationNumber : null),
-          jobTitle: dbUser ? dbUser.job_title : (state.currentUser ? state.currentUser.jobTitle : null),
-          avatar: savedAvatar,
-          role: dbUser ? dbUser.role : (state.currentUserRole || 'EMPLOYEE')
-        };
-
-        saveSessionToStorage();
-
-        const avatarImg = document.getElementById('emp-dash-avatar');
-        if (avatarImg && savedAvatar) {
-          avatarImg.src = savedAvatar;
+        if (state.isAuthenticated) {
+          // L'interface se croyait connectee (memoire locale) alors que le
+          // serveur ne reconnait plus personne : jeton expire apres plusieurs
+          // jours, ou deconnexion depuis un autre onglet. Rester dans l'espace
+          // ferait refuser chaque enregistrement : on le dit et on en sort.
+          const etaitEntreprise = estRoleEntreprise(state.currentUserRole);
+          const etaitDansEspace = ['dashboard', 'employee'].includes(state.activeView);
+          reinitialiserInterfaceDeconnectee();
+          switchView('hero');
+          showToast('Session expirée', 'Reconnectez-vous pour retrouver votre espace.', 'info', 8000);
+          if (etaitDansEspace && !parcoursRepris) openAuthModal(etaitEntreprise ? 'company' : 'employee');
+        } else if (vueDemandee && !parcoursRepris) {
+          openAuthModal(vueDemandee === 'employee' ? 'employee' : 'company');
         }
-
-        console.log('[Supabase Auth] Session synchronisée en arrière-plan pour :', realFullName, '(', email, ')');
-      } else if (state.isAuthenticated) {
-        // L'interface se croit connectée (session restaurée depuis localStorage)
-        // alors que le serveur ne reconnaît plus personne. C'est exactement ce
-        // qui se produit après plusieurs jours : le jeton de rafraîchissement
-        // a expiré, ou le projet Supabase a été mis en pause.
-        //
-        // Sans cet avertissement, l'utilisateur découvre le problème seulement
-        // au moment d'enregistrer, sous la forme d'une erreur PostgreSQL brute.
-        console.warn('[Supabase Auth] Session serveur absente alors que l\'interface affiche un compte connecté.');
-        showToast(
-          'Reconnexion nécessaire',
-          "Votre session de sécurité a expiré pendant votre absence. Vous pouvez consulter vos données, " +
-            'mais toute modification sera refusée par le serveur. Déconnectez-vous puis reconnectez-vous.',
-          'info',
-          14000
-        );
       }
     } catch (e) {
       console.warn('[Supabase Auth] Erreur vérification session :', e);
-    }
-
-    // Le routage d'une connexion Google vient en dernier : la restauration
-    // ci-dessus reecrit `state.currentUser` a partir de la fiche `users`, et
-    // aurait sinon ecrase le role etabli par les rattachements.
-    if (retourGoogle) {
-      try {
-        await ouvrirEspaceApresConnexion(retourGoogle);
-      } catch (e) {
-        console.error('[Google] Ouverture de l espace impossible :', e);
-        showToast('Connexion', 'Votre compte est connecté, mais votre espace n\'a pas pu être chargé. Rechargez la page.', 'info', 10000);
-      }
     }
 
     // Garde l'état de l'application aligné sur la session réelle : une
@@ -221,6 +205,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (event === 'SIGNED_OUT') {
           state.isAuthenticated = false;
           state.currentUser = null;
+          state.currentUserRole = null;
           try { localStorage.removeItem('winner_auth_session'); } catch (err) {}
           showToast('Session terminée', 'Vous avez été déconnecté. Reconnectez-vous pour continuer.', 'info', 10000);
         }
@@ -233,10 +218,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     checkUrlJoinCode();
     checkUrlPunchToken();
     checkUrlInvitation();
-
-    // Retour depuis le lien reçu par courriel : la demande d'inscription
-    // reprend toute seule, sans que l'employé ait à ressaisir quoi que ce soit.
-    reprendreInscriptionApresLien();
   }
 
   // Fermer le menu mobile lors d'un clic en dehors
@@ -261,7 +242,19 @@ function showToast(title, message, type = 'success', duration = 5000) {
     document.body.appendChild(container);
   }
 
+  // Une notification identique deja affichee n'est pas empilee une seconde
+  // fois : on prolonge simplement sa duree. Sans cela, cliquer cinq fois sur un
+  // bouton qui echoue remplissait l'ecran de cinq messages identiques.
+  const cle = String(title) + '\u0000' + String(message);
+  const existante = Array.from(container.children).find((t) => t.dataset && t.dataset.cle === cle);
+  if (existante) {
+    clearTimeout(existante._minuteurFermeture);
+    existante._minuteurFermeture = programmerFermetureToast(existante, duration);
+    return;
+  }
+
   const toast = document.createElement('div');
+  toast.dataset.cle = cle;
   const isSuccess = type === 'success';
   const isInfo = type === 'info';
   
@@ -301,13 +294,18 @@ function showToast(title, message, type = 'success', duration = 5000) {
     toast.classList.add('translate-y-0', 'opacity-100');
   });
 
-  setTimeout(() => {
+  toast._minuteurFermeture = programmerFermetureToast(toast, duration);
+}
+
+/** Fait disparaitre une notification apres `duree` ms ; renvoie le minuteur pour pouvoir le relancer. */
+function programmerFermetureToast(toast, duree) {
+  return setTimeout(() => {
     if (toast.parentElement) {
       toast.classList.remove('translate-y-0', 'opacity-100');
       toast.classList.add('-translate-y-2', 'opacity-0');
       setTimeout(() => toast.remove(), 300);
     }
-  }, duration);
+  }, duree);
 }
 
 // Dynamic Theme Switcher (Chaleur d'Afrique)
@@ -370,22 +368,33 @@ function startLiveClock() {
 
 // View Switcher (Landing vs Dashboard vs Employee vs Manager)
 function switchView(viewName) {
-  const userRole = (state.currentUserRole || '').toUpperCase();
-  const isEmployee = userRole === 'EMPLOYEE';
+  const role = roleCanonique(state.currentUserRole);
+  const espaceProtege = viewName === 'dashboard' || viewName === 'employee';
 
-  // Security Gatekeeper 1: Require authenticated session for RH Cockpit & Employee Dashboard (CWE-306 / CWE-602)
-  if ((viewName === 'dashboard' || viewName === 'employee') && !state.isAuthenticated) {
-    showToast('Accès Sécurisé', `Veuillez vous connecter à votre compte ${viewName === 'employee' ? 'Employé' : 'RH/CEO'} pour accéder à cet espace.`, 'info');
-    openAuthModal('login');
-    if (viewName === 'employee') setAuthRole('employee');
+  // Garde 1 : le cockpit et l'espace employe exigent une session (CWE-306).
+  // La vue demandee est retenue, puis rouverte apres connexion si le role
+  // l'autorise.
+  if (espaceProtege && !state.isAuthenticated) {
+    try { sessionStorage.setItem(CLE_RETOUR_AUTH, viewName); } catch (e) {}
+    openAuthModal(viewName === 'employee' ? 'employee' : 'company');
     return;
   }
 
-  // Security Gatekeeper 2: Cockpit Client RH (dashboard) est STRICTEMENT réservé aux CEO / RH / Managers
-  if (viewName === 'dashboard' && state.isAuthenticated && isEmployee) {
+  // Garde 2 : session ouverte mais role inconnu. On ne devine pas — l'ancien
+  // repli sur EMPLOYEE envoyait un createur d'entreprise dans l'espace
+  // employe : on demande au serveur.
+  if (espaceProtege && !role) {
+    resoudreEtOrienter({});
+    return;
+  }
+
+  // Garde 3 : le cockpit RH est reserve au proprietaire, aux administrateurs
+  // et aux managers. Ce n'est qu'un aiguillage d'interface : les donnees sont
+  // protegees par les politiques de la base.
+  if (viewName === 'dashboard' && !estRoleEntreprise(role)) {
     showToast(
-      'Accès Restreint ⛔',
-      'Le Cockpit Client RH est exclusivement réservé aux Dirigeants (CEO) et Responsables RH. Vous avez été réorienté vers votre Espace Employé.',
+      'Accès réservé',
+      'Le cockpit RH est réservé aux responsables de l\'entreprise. Voici votre espace employé.',
       'warning',
       6000
     );
@@ -393,21 +402,19 @@ function switchView(viewName) {
     return;
   }
 
-  // Security Gatekeeper 3: Espace Employé (employee) est STRICTEMENT réservé aux Employés
-  // Les CEO / RH / Managers doivent IMPÉRATIVEMENT utiliser le Cockpit Client RH (#dashboard)
-  if (viewName === 'employee' && state.isAuthenticated && !isEmployee) {
-    showToast(
-      'Espace Dirigeant 👑',
-      'En tant que CEO / Responsable RH, votre espace de travail principal est le Cockpit Client RH (#dashboard).',
-      'info',
-      6000
-    );
+  // Garde 4 : un responsable travaille depuis le cockpit RH.
+  if (viewName === 'employee' && estRoleEntreprise(role)) {
+    showToast('Espace entreprise', 'Votre espace de travail est le cockpit RH.', 'info', 6000);
     switchView('dashboard');
     return;
   }
 
   state.activeView = viewName;
-  if (window.location.hash !== `#${viewName}`) {
+  // Un lien entrant (#join?code=, #invite?code=, #pointer?t=) est lu apres le
+  // chargement des donnees : l'affichage de la premiere vue ne doit pas
+  // l'effacer. Chaque lecteur nettoie l'adresse une fois le lien traite.
+  const lienEntrant = /^#(join|invite|pointer)\b/.test(window.location.hash);
+  if (!lienEntrant && window.location.hash !== `#${viewName}`) {
     window.history.replaceState(null, '', `#${viewName}`);
   }
 
@@ -2272,6 +2279,44 @@ const GPS_BUDGET_MS = 20000;
 /** Durée maximale d'une tentative unitaire. */
 const GPS_SINGLE_TIMEOUT_MS = 8000;
 
+/**
+ * Etat d'un pointage du point de vue de l'employe.
+ *
+ *   PENDING    envoye, la reponse du serveur est attendue
+ *   CONFIRMED  enregistre : seule une reponse du serveur permet de le dire
+ *   FAILED     rien n'a ete enregistre, ou le serveur n'a pas pu le confirmer
+ *
+ * Il n'existe volontairement AUCUNE file d'attente hors ligne : un pointage
+ * n'a de valeur que si le serveur verifie la position et le visage au moment
+ * meme. Sans reseau, le pointage echoue et l'employe le sait ; il n'est jamais
+ * annonce comme enregistre.
+ */
+const STATUT_POINTAGE = Object.freeze({ PENDING: 'pending', CONFIRMED: 'confirmed', FAILED: 'failed' });
+
+/** Le navigateur se sait hors ligne : inutile d'ouvrir la camera ou d'attendre le GPS. */
+function horsConnexion() {
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
+}
+
+/** Echec du transport (reseau coupe, requete interrompue), par opposition a un refus du serveur. */
+function estErreurReseau(err) {
+  if (horsConnexion()) return true;
+  const message = String((err && err.message) || '');
+  return !!err && (err.name === 'TypeError' || err.name === 'AuthRetryableFetchError'
+    || /failed to fetch|networkerror|load failed|network request failed|fetch failed/i.test(message));
+}
+
+const MESSAGE_HORS_CONNEXION =
+  "Aucun pointage n'a été enregistré. Reconnectez-vous à Internet, puis réessayez.";
+
+/**
+ * La requete a pu partir avant la coupure : le serveur l'a peut-etre enregistree.
+ * On ne l'affirme pas, et on ne le nie pas non plus.
+ */
+const MESSAGE_CONNEXION_INTERROMPUE =
+  "La connexion a été interrompue : le serveur n'a pas pu confirmer votre pointage. " +
+  "Une fois reconnecté, vérifiez votre historique ; s'il n'y figure pas, pointez à nouveau.";
+
 const empPunch = {
   type: null,
   stream: null,
@@ -2291,6 +2336,8 @@ const empPunch = {
   // Une seule escalade par pointage : sans ce verrou, un refus répété
   // relancerait la demande de geste en boucle.
   escalade: false,
+  /** STATUT_POINTAGE du dernier envoi, ou null avant tout envoi. */
+  statut: null,
 };
 
 /**
@@ -2401,7 +2448,13 @@ function openEmployeePunch(type) {
 
   if (!state.isAuthenticated || !state.currentUser) {
     showToast('Connexion requise', 'Reconnectez-vous pour pouvoir pointer.', 'info');
-    openAuthModal('login');
+    openAuthModal('employee');
+    return;
+  }
+
+  // Sans reseau, on le dit AVANT d'ouvrir la camera et d'attendre le GPS.
+  if (horsConnexion()) {
+    showToast('Connexion indisponible', MESSAGE_HORS_CONNEXION, 'info', 9000);
     return;
   }
 
@@ -2959,6 +3012,11 @@ async function submitEmployeePunch() {
     );
   }
 
+  // Reseau perdu pendant la capture : rien n'est encore parti, on le dit.
+  if (horsConnexion()) {
+    return renderEmployeePunchFailure('Connexion indisponible', MESSAGE_HORS_CONNEXION);
+  }
+
   // --- Envoi du selfie dans le bucket privé -----------------------------------
   let selfiePath = null;
   try {
@@ -2980,6 +3038,7 @@ async function submitEmployeePunch() {
   // --- Appel de la fonction serveur : c'est ELLE qui décide -------------------
   steps[2] = { label: 'Envoi sécurisé au serveur…', state: 'pending' };
   renderEmployeePunchSteps(steps);
+  empPunch.statut = STATUT_POINTAGE.PENDING;
 
   let verdict = null;
   try {
@@ -3008,6 +3067,12 @@ async function submitEmployeePunch() {
     // réelle et fait perdre un temps considérable. On distingue donc les cas,
     // et on affiche à l'employé une consigne exploitable par son service RH.
     console.error('[Pointage] Erreur RPC record_attendance :', err);
+
+    // Coupure pendant l'envoi : ce n'est pas un refus du serveur, et le
+    // pointage a pu etre enregistre. On ne pretend ni l'un ni l'autre.
+    if (estErreurReseau(err)) {
+      return renderEmployeePunchFailure('Connexion interrompue', MESSAGE_CONNEXION_INTERROMPUE);
+    }
 
     const code = (err && (err.code || err.status)) || '';
     const msg = String((err && err.message) || '');
@@ -3284,6 +3349,7 @@ function fermerEtEnregistrerVisage() {
  */
 function renderEmployeePunchEnRevue(verdict, steps) {
   stopEmployeePunchCamera();
+  empPunch.statut = STATUT_POINTAGE.CONFIRMED;
   empPunch.submitting = false;
   empPunch.finished = true;
   empPunch.gpsAbort = true;
@@ -3331,6 +3397,8 @@ function renderEmployeePunchEnRevue(verdict, steps) {
 
 function renderEmployeePunchSuccess(title, detail) {
   stopEmployeePunchCamera();
+  // Appelee uniquement sur une reponse du serveur acceptant le pointage.
+  empPunch.statut = STATUT_POINTAGE.CONFIRMED;
   const box = document.getElementById('emp-punch-result');
   if (box) {
     setNodeHidden('emp-punch-result', false);
@@ -3363,6 +3431,7 @@ function renderEmployeePunchSuccess(title, detail) {
  */
 function renderEmployeePunchFailure(title, body, technique, action) {
   stopEmployeePunchCamera();
+  empPunch.statut = STATUT_POINTAGE.FAILED;
   empPunch.submitting = false;
   empPunch.finished = true;
   empPunch.gpsAbort = true;
@@ -3608,6 +3677,11 @@ async function checkUrlPunchToken() {
  * d'une arrivee ou d'un depart : l'employe devant la borne n'a pas a choisir.
  */
 async function pointerAvecJetonQr(token) {
+  if (horsConnexion()) {
+    showToast('Connexion indisponible', MESSAGE_HORS_CONNEXION, 'info', 9000);
+    return;
+  }
+
   showToast('QR reconnu', 'Recherche de votre position…', 'info', 6000);
 
   // Le geofencing reste applique : on a besoin de la position.
@@ -3718,9 +3792,13 @@ async function pointerAvecJetonQr(token) {
     if (state.currentUserRole === 'EMPLOYEE') switchView('employee');
   } catch (e) {
     console.error('[QR] Pointage impossible :', e);
+    if (estErreurReseau(e)) {
+      showToast('Connexion interrompue', MESSAGE_CONNEXION_INTERROMPUE, 'info', 12000);
+      return;
+    }
     showToast(
       'Pointage impossible',
-      'Le serveur a refusé la demande. Vérifiez votre connexion puis réessayez.',
+      'Le serveur a refusé la demande. Réessayez dans un instant.',
       'info',
       10000,
     );
@@ -4130,6 +4208,11 @@ async function ouvrirScanQr() {
     return;
   }
 
+  if (horsConnexion()) {
+    showToast('Connexion indisponible', MESSAGE_HORS_CONNEXION, 'info', 9000);
+    return;
+  }
+
   // Le QR mène au même enregistrement que le selfie : une arrivée et un départ
   // par jour, pas davantage. On le dit avant d'ouvrir la caméra.
   const journee = etatJourneeEmploye();
@@ -4314,7 +4397,7 @@ async function envoyerPointageQr(token) {
     await loadSupabaseData();
   } catch (e) {
     console.error('[Scan QR] Erreur :', e);
-    majStatutScan('Le serveur a refusé la demande. Réessayez.', 'erreur');
+    majStatutScan(estErreurReseau(e) ? MESSAGE_CONNEXION_INTERROMPUE : 'Le serveur a refusé la demande. Réessayez.', 'erreur');
   }
 }
 
@@ -4374,8 +4457,7 @@ function heureVersMinutes(v) {
 
 /** Le rôle courant peut-il configurer le pointage ? */
 function peutConfigurerPointage() {
-  const r = String(state.currentUserRole || '').toUpperCase();
-  return ['CEO', 'HR', 'COMPANY_ADMIN', 'SUPER_ADMIN'].includes(r);
+  return estRoleConfigurateur(state.currentUserRole);
 }
 
 async function renderPunchConfig() {
@@ -4966,8 +5048,7 @@ async function assignEmployeeConfig(userId, champ, valeur) {
 
 /** Le rôle courant a-t-il le droit de consulter les preuves d'un pointage ? */
 function canViewPunchEvidence() {
-  const r = String(state.currentUserRole || '').toUpperCase();
-  return ['CEO', 'HR', 'MANAGER', 'COMPANY_ADMIN', 'SUPER_ADMIN'].includes(r);
+  return estRoleEntreprise(state.currentUserRole);
 }
 
 function ligneDetail(label, valeur, ton) {
@@ -5890,13 +5971,10 @@ function initialiserTarifs() {
 // Extra state parameters for Multi-Tenant RBAC
 state.currentCompanyId = null;
 state.currentCompanyName = '';
-state.currentUserRole = 'EMPLOYEE';
+state.currentUserRole = null;
 state.currentUserAttendanceRequired = true;
 state.userMemberships = [];
 state.pendingInvitation = null;
-
-let authMode = 'login';
-let selectedAuthRole = 'company_admin';
 
 function togglePasswordVisibility(inputId, btnId) {
   const input = document.getElementById(inputId);
@@ -5919,56 +5997,38 @@ function togglePasswordVisibility(inputId, btnId) {
   }
 }
 
-function setAuthRole(role) {
-  selectedAuthRole = role;
-  const adminBtn = document.getElementById('auth-role-admin-btn');
-  const empBtn = document.getElementById('auth-role-emp-btn');
-  const companyBox = document.getElementById('auth-company-container');
-
-  if (role === 'employee') {
-    if (adminBtn) adminBtn.className = 'py-2 rounded-lg text-slate-400 hover:text-white transition';
-    if (empBtn) empBtn.className = 'py-2 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold transition';
-    if (companyBox) companyBox.classList.add('hidden');
-  } else {
-    if (adminBtn) adminBtn.className = 'py-2 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold transition';
-    if (empBtn) empBtn.className = 'py-2 rounded-lg text-slate-400 hover:text-white transition';
-    if (authMode === 'register' && companyBox) companyBox.classList.remove('hidden');
-  }
-}
-
+/**
+ * Ouvre le parcours de connexion (auth/auth-flow.js).
+ *
+ *   'login'     choix du profil : entreprise ou employe
+ *   'register'  creation d'entreprise : Google ou e-mail, puis le formulaire
+ *   'company'   connexion a l'espace d'une entreprise
+ *   'employee'  connexion a un espace employe
+ *
+ * Un compte deja connecte n'est pas reidentifie : le serveur l'oriente. Un
+ * proprietaire qui clique « Creer mon entreprise » retrouve donc la sienne au
+ * lieu d'en creer une seconde.
+ */
 function openAuthModal(mode = 'login') {
-  authMode = mode;
-  const modal = document.getElementById('modal-auth');
-  const title = document.getElementById('auth-modal-title');
-  const subtitle = document.getElementById('auth-modal-subtitle');
-  const submitBtn = document.getElementById('auth-submit-btn');
-  const toggleBtn = document.getElementById('auth-toggle-mode-btn');
-  const companyBox = document.getElementById('auth-company-container');
-  const fullnameBox = document.getElementById('auth-fullname-container');
-  const confirmPassBox = document.getElementById('auth-confirm-password-container');
-  const employeeNotice = document.getElementById('auth-employee-notice');
+  const entrees = {
+    register: [INTENTIONS_AUTH.CREATION_ENTREPRISE, [ETATS_AUTH.SELECT_PROFILE, ETATS_AUTH.COMPANY_AUTH]],
+    company: [INTENTIONS_AUTH.CONNEXION_ENTREPRISE, [ETATS_AUTH.SELECT_PROFILE, ETATS_AUTH.COMPANY_AUTH]],
+    employee: [INTENTIONS_AUTH.CONNEXION_EMPLOYE, [ETATS_AUTH.SELECT_PROFILE, ETATS_AUTH.EMPLOYEE_COMPANY_CODE]],
+  };
+  const [intention, pile] = entrees[mode] || [null, []];
+  if (mode === 'register') suivreAuth('company_signup_started');
 
-  if (modal) modal.classList.remove('hidden');
-
-  if (mode === 'register') {
-    if (title) title.innerText = 'Inscription Entreprise (Compte CEO / Admin)';
-    if (subtitle) subtitle.innerText = 'La création de compte entreprise initialise votre fiche Company unique et vous attribue le rôle de CEO.';
-    if (submitBtn) submitBtn.innerText = 'Créer l\'Entreprise & Valider (Compte CEO)';
-    if (toggleBtn) toggleBtn.innerText = 'Déjà un compte ? Se connecter';
-    if (companyBox) companyBox.classList.remove('hidden');
-    if (fullnameBox) fullnameBox.classList.remove('hidden');
-    if (confirmPassBox) confirmPassBox.classList.remove('hidden');
-    if (employeeNotice) employeeNotice.classList.remove('hidden');
-  } else {
-    if (title) title.innerText = 'Connexion Sécurisée Supabase';
-    if (subtitle) subtitle.innerText = 'Accédez à votre espace d\'entreprise (Cockpit Client RH) ou collaborateur (Dashboard Employé).';
-    if (submitBtn) submitBtn.innerText = 'Se Connecter à Mon Espace';
-    if (toggleBtn) toggleBtn.innerText = 'Créer un Compte Entreprise (CEO)';
-    if (companyBox) companyBox.classList.add('hidden');
-    if (fullnameBox) fullnameBox.classList.add('hidden');
-    if (confirmPassBox) confirmPassBox.classList.add('hidden');
-    if (employeeNotice) employeeNotice.classList.add('hidden');
+  if (state.isAuthenticated && state.currentUser && state.currentUser.id) {
+    ouvrirAuthentification({ etat: ETATS_AUTH.AUTH_RESOLVING, intention, reprendre: false });
+    resoudreEtOrienter({ intention });
+    return;
   }
+
+  if (!intention) {
+    ouvrirAuthentification({ etat: ETATS_AUTH.SELECT_PROFILE });
+    return;
+  }
+  ouvrirAuthentification({ etat: ETATS_AUTH.AUTH_METHOD, intention, pile });
 }
 
 function openInviteCodePrompt() {
@@ -6013,210 +6073,86 @@ async function verifyActivationCodeManual() {
   }
 }
 
-function toggleAuthMode() {
-  openAuthModal(authMode === 'login' ? 'register' : 'login');
-}
-
+/** Ferme la fenetre de connexion ; le parcours en cours reste memorise. */
 function closeAuthModal() {
-  const modal = document.getElementById('modal-auth');
-  if (modal) modal.classList.add('hidden');
+  fermerAuthentification();
 }
 
-async function handleAuthSubmit(e) {
-  if (e) e.preventDefault();
-  const emailInput = document.getElementById('auth-email-input');
-  const passwordInput = document.getElementById('auth-password-input');
-  const confirmPasswordInput = document.getElementById('auth-confirm-password-input');
-  const companyInput = document.getElementById('auth-company-input');
-  
-  const fullNameInput = document.getElementById('auth-fullname-input');
-  const fullNameVal = fullNameInput ? fullNameInput.value.trim() : '';
-  const emailVal = emailInput ? emailInput.value.trim() : '';
-  const passwordVal = passwordInput ? passwordInput.value : '';
-  const confirmPasswordVal = confirmPasswordInput ? confirmPasswordInput.value : '';
-  const companyVal = companyInput ? companyInput.value.trim() : '';
+/**
+ * Ouvre l'espace d'une entreprise pour le compte connecte.
+ *
+ * Appelee par entrerDansEspace() avec le role renvoye par
+ * resolve_auth_context() : le role n'est jamais devine ici. Sans entreprise
+ * ou sans role reconnu, rien n'est ouvert et le serveur reprend la main.
+ *
+ *   options.naviguer    changer de vue (faux au rechargement d'une page deja coherente)
+ *   options.silencieux  pas de message de bienvenue
+ *   options.vue         vue a ouvrir ; par defaut, celle du role
+ */
+async function selectCompanyWorkspace(companyId, role, attendanceRequired, companyName, options = {}) {
+  const { naviguer = true, silencieux = false, vue = null } = options;
+  const roleRetenu = roleCanonique(role);
 
-  if (!emailVal || !passwordVal) {
-    showToast('Champs Requis', 'Veuillez saisir votre adresse e-mail et votre mot de passe.', 'info');
+  if (!companyId || !roleRetenu || !state.currentUser) {
+    closeSelectWorkspaceModal();
+    await resoudreEtOrienter({ entreprisePreferee: companyId || null });
     return;
   }
 
-  if (authMode === 'register') {
-    if (!companyVal || !fullNameVal) {
-      showToast('Champs Requis', 'Veuillez indiquer le nom de votre entreprise et votre nom complet.', 'info');
-      return;
-    }
-    if (passwordVal !== confirmPasswordVal) {
-      showToast('Erreur Mot de Passe', 'La confirmation du mot de passe ne correspond pas au mot de passe saisi.', 'info');
-      return;
-    }
-    if (passwordVal.length < 6) {
-      showToast('Mot de Passe Trop Court', 'Le mot de passe doit comporter au moins 6 caractères.', 'info');
-      return;
-    }
-  }
-
-  const submitBtn = document.getElementById('auth-submit-btn');
-  if (submitBtn) {
-    submitBtn.disabled = true;
-    submitBtn.innerText = 'Traitement Supabase...';
-  }
-
-  try {
-    if (supabaseClient) {
-      if (authMode === 'register') {
-        let userId = null;
-        const { data: authData, error: authErr } = await supabaseClient.auth.signUp({
-          email: emailVal,
-          password: passwordVal,
-        });
-
-        if (authErr) {
-          if (authErr.message && authErr.message.toLowerCase().includes('rate limit')) {
-            showToast(
-              'Limite d\'Emails Supabase ⚠️',
-              'Le quota d\'envoi d\'e-mails de Supabase Cloud a été atteint temporairement (sécurité anti-spam). Veuillez réessayer dans quelques minutes ou utiliser une autre adresse email.',
-              'warning',
-              12000
-            );
-            return;
-          }
-          throw authErr;
-        }
-
-        // Aucun identifiant n'est fabrique ici. L'ancienne version retombait
-        // sur `crypto.randomUUID()` quand la session n'etait pas encore
-        // ouverte : la fiche creee ne correspondait alors a aucun compte, et
-        // son proprietaire ne pouvait plus jamais s'y connecter.
-        if (!authData || !authData.user) {
-          throw new Error("La création du compte n'a pas abouti. Réessayez dans un instant.");
-        }
-        userId = authData.user.id;
-
-        // Entreprise, fiche CEO et rattachement sont crees ensemble, cote
-        // serveur, a partir de `auth.uid()`. Le client ne declare plus qui il
-        // est, et une coupure ne peut plus laisser un compte sans entreprise.
-        const creation = await creerEntrepriseTimora(companyVal, fullNameVal);
-
-        if (creation.enAttente) {
-          memoriserInscriptionEnAttente({ type: 'ceo', companyName: companyVal, fullName: fullNameVal });
-          showToast(
-            'Confirmez votre adresse',
-            'Un e-mail vient de vous être envoyé. Votre entreprise sera créée dès votre première connexion.',
-            'info', 12000);
-          closeAuthModal();
-          return;
-        }
-
-        const companyId = creation.companyId;
-
-        state.isAuthenticated = true;
-        state.currentUser = {
-          id: userId,
-          email: emailVal,
-          fullName: fullNameVal || emailVal.split('@')[0].toUpperCase(),
-          role: 'CEO',
-        };
-
-        selectCompanyWorkspace(companyId, 'CEO', false, companyVal);
-        showToast(
-          'Compte CEO Activé 🎉',
-          `Entreprise <strong>${escapeHtml(companyVal)}</strong> et compte CEO créés avec succès ! Bienvenue sur votre Dashboard Employeur.`,
-          'success',
-          10000
-        );
-        return;
-      } else {
-        // Mode Connexion
-        const { data: authData, error } = await supabaseClient.auth.signInWithPassword({
-          email: emailVal,
-          password: passwordVal,
-        });
-
-        if (error) throw error;
-
-        // Meme routage que la connexion Google : l'acces se prouve par un
-        // rattachement ACTIF. L'ancien repli sur `users.company_id` et
-        // `users.role` ouvrait un Cockpit RH a un compte que la base ne
-        // reconnait plus comme membre depuis la migration 022.
-        await ouvrirEspaceApresConnexion(authData.user);
-      }
-    } else {
-      // Plus de « mode hors ligne ». Quand la bibliotheque d'authentification
-      // ne se chargeait pas, ce repli connectait N'IMPORTE QUEL couple
-      // e-mail / mot de passe en tant que CEO. Depuis que le script est charge
-      // avec une empreinte d'integrite, un fichier altere sur le CDN mene
-      // precisement ici : ce repli serait devenu la voie d'entree.
-      showToast('Service indisponible',
-        'Le service de connexion n\'a pas pu être chargé. Vérifiez votre connexion internet, puis rechargez la page.',
-        'info', 10000);
-    }
-  } catch (err) {
-    console.error('Erreur Supabase Auth:', err);
-    showToast('Erreur Authentification', err.message || 'Communication Supabase échouée.', 'info');
-  } finally {
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.innerText = authMode === 'register' ? 'Créer l\'Entreprise & Valider' : 'Se Connecter via Supabase';
-    }
-  }
-}
-
-async function selectCompanyWorkspace(companyId, role, attendanceRequired, companyName) {
   state.currentCompanyId = companyId;
-  state.currentUserRole = role || 'EMPLOYEE';
+  state.currentUserRole = roleRetenu;
   state.currentUserAttendanceRequired = attendanceRequired !== false;
-  state.currentCompanyName = companyName || state.company.name;
+  state.currentCompanyName = companyName || '';
 
-  state.currentUser.role = state.currentUserRole;
+  state.currentUser.role = roleRetenu;
   state.currentUser.companyId = companyId;
 
-  closeAuthModal();
+  fermerAuthentification();
   closeSelectWorkspaceModal();
-  updateUiAfterLogin(state.currentUser.email, state.currentUserRole);
+  updateUiAfterLogin(state.currentUser.email, roleRetenu);
 
   saveSessionToStorage();
 
-  // Récupération automatique et immédiate du Nom Réel (full_name) et Avatar (avatar_url) depuis public.users
-  if (supabaseClient && state.currentUser && state.currentUser.email) {
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(state.currentUser.id);
-    const userQuery = isUuid
-      ? supabaseClient.from('users').select('*').or(`id.eq.${state.currentUser.id},email.eq.${state.currentUser.email}`).maybeSingle()
-      : supabaseClient.from('users').select('*').eq('email', state.currentUser.email).maybeSingle();
-
-    userQuery.then(({ data: dbUser }) => {
-      if (dbUser) {
-        if (dbUser.full_name) state.currentUser.fullName = dbUser.full_name;
-        if (dbUser.registration_number) state.currentUser.registrationNumber = dbUser.registration_number;
-        if (dbUser.job_title) state.currentUser.jobTitle = dbUser.job_title;
-        if (dbUser.avatar_url) {
-          state.currentUser.avatar = dbUser.avatar_url;
-          // On ecrit aussi les cles nominatives : ce sont elles qui sont lues au
-          // rechargement de page et hors ligne. N'ecrire que la cle globale
-          // laissait la photo introuvable des le premier rafraichissement.
-          try {
-            for (const key of avatarStorageKeys(state.currentUser.id, state.currentUser.email)) {
-              localStorage.setItem(key, dbUser.avatar_url);
-            }
-          } catch (e) {}
+  // Nom, matricule, poste et photo : la fiche du compte connecte, lue par son
+  // identifiant. La recherche par adresse e-mail pouvait ramener la fiche
+  // d'un autre compte portant la meme adresse.
+  if (supabaseClient && state.currentUser.id) {
+    supabaseClient.from('users').select('*').eq('id', state.currentUser.id).maybeSingle()
+      .then(({ data: dbUser }) => {
+        if (dbUser) {
+          if (dbUser.full_name) state.currentUser.fullName = dbUser.full_name;
+          if (dbUser.registration_number) state.currentUser.registrationNumber = dbUser.registration_number;
+          if (dbUser.job_title) state.currentUser.jobTitle = dbUser.job_title;
+          if (dbUser.avatar_url) {
+            state.currentUser.avatar = dbUser.avatar_url;
+            // On ecrit aussi les cles nominatives : ce sont elles qui sont lues au
+            // rechargement de page et hors ligne. N'ecrire que la cle globale
+            // laissait la photo introuvable des le premier rafraichissement.
+            try {
+              for (const key of avatarStorageKeys(state.currentUser.id, state.currentUser.email)) {
+                localStorage.setItem(key, dbUser.avatar_url);
+              }
+            } catch (e) {}
+          }
+          saveSessionToStorage();
+          renderEmployeeDashboard();
+          adaptCockpitRhPermissions();
         }
-        saveSessionToStorage();
-        renderEmployeeDashboard();
-        adaptCockpitRhPermissions();
-      }
-    }).catch(err => console.warn('[Supabase DB] Notice chargement dbUser:', err));
+      })
+      .catch(err => console.warn('[Supabase DB] Notice chargement dbUser:', err));
   }
 
-  // Redirection post-connexion basée sur le Rôle :
-  // - CEO, HR, MANAGER -> Dashboard Employeur (Vue 2 - Cockpit de Présence)
-  // - EMPLOYEE -> Dashboard Employé (Vue 4)
-  if (state.currentUserRole === 'EMPLOYEE') {
-    switchView('employee');
-    showToast('Espace Collaborateur', `Bienvenue sur votre Dashboard Employé (${escapeHtml(state.currentCompanyName)}).`, 'success');
-  } else {
-    // CEO, HR ou MANAGER
-    switchView('dashboard');
-    showToast('Espace Employeur', `Bienvenue sur votre Dashboard Employeur (${escapeHtml(state.currentCompanyName)} - Rôle: ${state.currentUserRole}).`, 'success');
+  // Proprietaire, administrateur, manager : cockpit RH. Employe : son espace.
+  if (naviguer) {
+    switchView(vue || (estRoleEntreprise(roleRetenu) ? 'dashboard' : 'employee'));
+    if (!silencieux) {
+      const nom = escapeHtml(state.currentCompanyName || 'votre entreprise');
+      if (estRoleEntreprise(roleRetenu)) {
+        showToast('Cockpit RH', `Bienvenue dans l'espace de ${nom} (${escapeHtml(libelleRole(roleRetenu))}).`, 'success');
+      } else {
+        showToast('Espace employé', `Bienvenue dans votre espace ${nom}.`, 'success');
+      }
+    }
   }
 
   adaptCockpitRhPermissions();
@@ -6248,30 +6184,25 @@ function adaptCockpitRhPermissions() {
   }
 
   if (roleBadge) {
-    let badgeHtml = '';
-    const role = (state.currentUserRole || 'CEO').toUpperCase();
-    if (role === 'CEO') {
-      badgeHtml = '<span class="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-xs font-mono font-bold border border-amber-500/30 flex items-center gap-1">👑 CEO / Dirigeant</span>';
-    } else if (role === 'HR') {
-      badgeHtml = '<span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-xs font-mono font-bold border border-emerald-500/30 flex items-center gap-1">🏢 Responsable RH</span>';
-    } else if (role === 'MANAGER') {
-      badgeHtml = '<span class="px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 text-xs font-mono font-bold border border-cyan-500/30 flex items-center gap-1">👔 Manager</span>';
-    } else {
-      badgeHtml = `<span class="px-2.5 py-0.5 rounded-full bg-slate-700 text-slate-300 text-xs font-mono font-bold border border-slate-600">${role}</span>`;
-    }
-    roleBadge.innerHTML = badgeHtml;
+    const role = roleCanonique(state.currentUserRole);
+    const apparences = {
+      OWNER: ['bg-amber-500/20 text-amber-400 border-amber-500/30', '👑'],
+      ADMIN: ['bg-emerald-500/20 text-emerald-400 border-emerald-500/30', '🏢'],
+      MANAGER: ['bg-cyan-500/20 text-cyan-400 border-cyan-500/30', '👔'],
+    };
+    const [classes, icone] = apparences[role] || ['bg-slate-700 text-slate-300 border-slate-600', ''];
+    roleBadge.innerHTML = `<span class="px-2.5 py-0.5 rounded-full ${classes} text-xs font-mono font-bold border flex items-center gap-1">${icone} ${escapeHtml(libelleRole(role))}</span>`;
   }
   initIcons();
 }
 
-function updateUiAfterLogin(emailVal, role = 'company_admin') {
+function updateUiAfterLogin(emailVal, role) {
   const loginBtn = document.getElementById('nav-login-btn');
   const registerBtn = document.getElementById('nav-register-btn');
   const mobileLoginBtn = document.getElementById('mobile-nav-login-btn');
   const mobileRegisterBtn = document.getElementById('mobile-nav-register-btn');
 
-  const normalizedRole = (role || '').toUpperCase();
-  const isEmp = normalizedRole === 'EMPLOYEE';
+  const isEmp = !estRoleEntreprise(role);
   const roleText = isEmp ? 'Déconnexion Employé' : 'Déconnexion RH';
 
   if (loginBtn) {
@@ -6295,7 +6226,7 @@ function updateUiAfterLogin(emailVal, role = 'company_admin') {
     if (dashBtn) dashBtn.classList.add('hidden');
     if (empBtn) empBtn.classList.remove('hidden');
   } else {
-    // CEO / HR / MANAGER
+    // OWNER / ADMIN / MANAGER
     if (dashBtn) dashBtn.classList.remove('hidden');
     if (empBtn) empBtn.classList.add('hidden');
   }
@@ -6305,12 +6236,27 @@ async function handleLogout() {
   if (supabaseClient) {
     try { await supabaseClient.auth.signOut(); } catch (e) {}
   }
-  
+
+  // Deconnexion volontaire : le parcours de connexion en cours, la vue
+  // demandee et l'entreprise preferee n'ont plus lieu d'etre sur cet appareil.
+  effacerFlux();
+  try {
+    sessionStorage.removeItem(CLE_RETOUR_AUTH);
+    localStorage.removeItem(CLE_ENTREPRISE_PREFEREE);
+  } catch (e) {}
+
+  reinitialiserInterfaceDeconnectee();
+  switchView('hero');
+}
+
+/** Remet l'etat et la barre de navigation dans leur forme « personne n'est connecte ». */
+function reinitialiserInterfaceDeconnectee() {
   state.isAuthenticated = false;
   state.currentUser = null;
   state.currentUserRole = null;
+  state.currentCompanyId = null;
   try { localStorage.removeItem('winner_auth_session'); } catch (e) {}
-  
+
   const loginBtn = document.getElementById('nav-login-btn');
   const registerBtn = document.getElementById('nav-register-btn');
   const mobileLoginBtn = document.getElementById('mobile-nav-login-btn');
@@ -6334,8 +6280,6 @@ async function handleLogout() {
     mobileLoginBtn.className = 'w-full py-2.5 rounded-xl bg-slate-800/90 text-slate-200 text-xs font-semibold border border-slate-700 text-center block';
   }
   if (mobileRegisterBtn) mobileRegisterBtn.classList.remove('hidden');
-
-  switchView('hero');
 }
 
 /* ==================== LOGIQUE DU DASHBOARD EMPLOYÉ ==================== */
@@ -7153,656 +7097,6 @@ function copyInviteLink() {
   }
 }
 
-/* ==================== GESTION DU CODE ENTREPRISE & AUTO-INSCRIPTION ==================== */
-
-function generateCompanyCodeString(name = '') {
-  const cleanName = (name || '').replace(/[^a-zA-Z]/g, '').substring(0, 2).toUpperCase() || 'WD';
-  const part1 = Math.random().toString(36).substring(2, 6).toUpperCase();
-  const part2 = Math.random().toString(36).substring(2, 6).toUpperCase();
-  return `${cleanName}-${part1}-${part2}`;
-}
-
-function switchAuthTab(tab) {
-  const loginView = document.getElementById('auth-login-view');
-  const joinView = document.getElementById('auth-join-view');
-  const loginTab = document.getElementById('tab-auth-login');
-  const joinTab = document.getElementById('tab-auth-join');
-  const titleEl = document.getElementById('auth-modal-title');
-  const subEl = document.getElementById('auth-modal-subtitle');
-
-  if (tab === 'join') {
-    if (loginView) loginView.classList.add('hidden');
-    if (joinView) joinView.classList.remove('hidden');
-
-    if (loginTab) {
-      loginTab.classList.remove('text-white', 'bg-amber-500/20', 'border', 'border-amber-500/30', 'shadow');
-      loginTab.classList.add('text-slate-400');
-    }
-    if (joinTab) {
-      joinTab.classList.add('text-white', 'bg-emerald-500/20', 'border', 'border-emerald-500/30', 'shadow');
-      joinTab.classList.remove('text-slate-400');
-    }
-
-    if (titleEl) titleEl.innerText = "Rejoindre mon Entreprise";
-    if (subEl) subEl.innerText = "Entrez le Code Entreprise transmis par votre responsable RH.";
-  } else {
-    if (loginView) loginView.classList.remove('hidden');
-    if (joinView) joinView.classList.add('hidden');
-
-    if (joinTab) {
-      joinTab.classList.remove('text-white', 'bg-emerald-500/20', 'border', 'border-emerald-500/30', 'shadow');
-      joinTab.classList.add('text-slate-400');
-    }
-    if (loginTab) {
-      loginTab.classList.add('text-white', 'bg-amber-500/20', 'border', 'border-amber-500/30', 'shadow');
-      loginTab.classList.remove('text-slate-400');
-    }
-
-    if (titleEl) titleEl.innerText = "Connexion Utilisateur";
-    if (subEl) subEl.innerText = "Accédez à votre espace d'entreprise ou collaborateur.";
-  }
-}
-
-async function verifyCompanyCode(codeOverride = null) {
-  const codeInput = document.getElementById('join-company-code-input');
-  const rawCode = (codeOverride || (codeInput ? codeInput.value : '')).trim().toUpperCase();
-
-  if (!rawCode) {
-    showToast('Code Requis', 'Veuillez saisir le code entreprise (ex: WD-7K9P-X4M2).', 'info');
-    return;
-  }
-
-  const btn = document.getElementById('btn-verify-company-code');
-  if (btn) {
-    btn.disabled = true;
-    btn.innerText = 'Vérification...';
-  }
-
-  try {
-    // Une seule source : la base. Les quatre replis precedents acceptaient
-    // n'importe quel code d'au moins six caracteres et fabriquaient une
-    // entreprise fictive avec l'identifiant « demo-co-id » — il suffisait de
-    // taper six lettres au hasard pour franchir cette etape.
-    //
-    // La fonction interrogee ne renvoie que le nom et l'etat de l'entreprise :
-    // ni reglages de reconnaissance faciale, ni secret QR, contrairement au
-    // `select('*')` d'avant.
-    let companyMatch = null;
-
-    if (!supabaseClient) {
-      showToast('Service indisponible', 'Impossible de vérifier le code pour le moment.', 'info');
-      return;
-    }
-
-    const { data: trouvee, error: erreurCode } =
-      await supabaseClient.rpc('lookup_company_by_code', { p_code: rawCode });
-
-    if (erreurCode) {
-      console.error('[Inscription] Vérification du code impossible :', erreurCode);
-      showToast('Erreur', 'Impossible de vérifier le code entreprise.', 'info');
-      return;
-    }
-
-    if (trouvee) {
-      companyMatch = { id: trouvee.id, name: trouvee.name, company_code: rawCode, status: trouvee.status };
-    }
-
-    if (!companyMatch) {
-      showToast('Code Invalide', 'Aucune entreprise active ne correspond à ce code. Vérifiez avec votre RH.', 'info');
-      return;
-    }
-
-    if (companyMatch.status && ['suspended', 'expired'].includes(companyMatch.status.toLowerCase())) {
-      showToast('Entreprise Inaccessible', 'L\'abonnement de cette entreprise est temporairement suspendu ou expiré.', 'info');
-      return;
-    }
-
-    state.recognizedCompany = companyMatch;
-
-    const nameEl = document.getElementById('join-recognized-company-name');
-    const recBox = document.getElementById('join-step-recognition');
-    if (nameEl) nameEl.innerText = companyMatch.name || 'Votre Entreprise';
-    if (recBox) recBox.classList.remove('hidden');
-
-    showToast('Code Reconnu ! 🏢', `Entreprise "${escapeHtml(companyMatch.name)}" identifiée avec succès.`, 'success');
-  } catch (err) {
-    console.error('Erreur vérification code entreprise:', err);
-    showToast('Erreur', 'Impossible de vérifier le code entreprise.', 'info');
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.innerHTML = '<i data-lucide="search" class="w-3.5 h-3.5"></i> Vérifier';
-      initIcons();
-    }
-  }
-}
-
-function confirmCompanyJoin() {
-  if (!state.recognizedCompany) return;
-
-  const stepCode = document.getElementById('join-step-code');
-  const stepRec = document.getElementById('join-step-recognition');
-  const stepForm = document.getElementById('join-step-form');
-
-  if (stepCode) stepCode.classList.add('hidden');
-  if (stepRec) stepRec.classList.add('hidden');
-  if (stepForm) stepForm.classList.remove('hidden');
-
-  generateNextMatricule(state.recognizedCompany.id).then(m => {
-    const prevEl = document.getElementById('join-auto-matricule-preview');
-    if (prevEl) prevEl.innerText = m;
-  });
-}
-
-async function handleSelfRegistrationSubmit(e) {
-  if (e) e.preventDefault();
-
-  if (!state.recognizedCompany) {
-    showToast('Erreur', 'Aucune entreprise sélectionnée.', 'info');
-    return;
-  }
-
-  const lastName = document.getElementById('join-lastname-input')?.value.trim();
-  const firstName = document.getElementById('join-firstname-input')?.value.trim();
-  const email = document.getElementById('join-email-input')?.value.trim();
-  const pass = document.getElementById('join-password-input')?.value;
-  const confirmPass = document.getElementById('join-confirm-password-input')?.value;
-
-  if (!lastName || !firstName || !email || !pass) {
-    showToast('Champs Requis', 'Veuillez remplir tous les champs.', 'info');
-    return;
-  }
-
-  if (pass !== confirmPass) {
-    showToast('Erreur Mot de Passe', 'Les mots de passe ne correspondent pas.', 'info');
-    return;
-  }
-
-  const fullName = `${firstName} ${lastName.toUpperCase()}`;
-  const btn = document.getElementById('join-submit-btn');
-  if (btn) {
-    btn.disabled = true;
-    btn.innerText = 'Inscription en cours...';
-  }
-
-  try {
-    let userId = 'user-auto-' + Date.now();
-
-    if (supabaseClient) {
-      const { data: authData, error: authErr } = await supabaseClient.auth.signUp({
-        email: email,
-        password: pass,
-        options: {
-          data: { full_name: fullName, role: 'EMPLOYEE' }
-        }
-      });
-
-      if (authErr && !authErr.message.includes('already registered')) {
-        throw authErr;
-      }
-      if (authData && authData.user) userId = authData.user.id;
-    }
-
-    const matricule = await generateNextMatricule(state.recognizedCompany.id);
-
-    // Fiche et rattachement sont crees cote serveur a partir de `auth.uid()`.
-    // Le statut PENDING_APPROVAL est impose par la fonction : un candidat ne
-    // peut plus s'inscrire directement comme membre actif.
-    if (supabaseClient) {
-      const code = state.recognizedCompany.company_code;
-      const rattachement = await rejoindreEntrepriseTimora(code, fullName);
-
-      if (rattachement.enAttente) {
-        memoriserInscriptionEnAttente({
-          type: 'employe',
-          code: code,
-          fullName: fullName,
-          companyName: state.recognizedCompany.name,
-        });
-      }
-    }
-
-    const formStep = document.getElementById('join-step-form');
-    const otpStep = document.getElementById('join-step-otp');
-    const emailNoticeEl = document.getElementById('join-otp-email-target');
-    const rateLimitNoticeEl = document.getElementById('join-otp-rate-limit-notice');
-    const fallbackCodeEl = document.getElementById('join-otp-fallback-code');
-
-    // AUCUN code n'est fabriqué ici.
-    //
-    // La version précédente tirait un nombre à 6 chiffres DANS LE NAVIGATEUR,
-    // le gardait en mémoire, puis acceptait l'utilisateur qui le saisissait.
-    // Ce code n'était jamais parti nulle part : il ne prouvait rien. Seul le
-    // serveur peut émettre un code et le vérifier.
-    state.pendingUserRegistration = {
-      userId: userId,
-      fullName: fullName,
-      email: email,
-      matricule: matricule,
-      companyName: state.recognizedCompany ? state.recognizedCompany.name : 'Winner Design SARL',
-    };
-
-    // La demande survit à une navigation : l'employé qui clique le lien reçu
-    // par courriel quitte la page, et doit retrouver sa demande au retour.
-    try {
-      localStorage.setItem('winner_inscription_en_cours',
-        JSON.stringify({ ...state.pendingUserRegistration, at: Date.now() }));
-    } catch (e) { /* stockage indisponible : on continue sans */ }
-
-    // UN SEUL courriel est envoyé, celui de signUp() juste au-dessus.
-    //
-    // La version précédente enchaînait signUp() PUIS signInWithOtp() : deux
-    // courriels pour une inscription. Le quota de l'envoi Supabase étant de
-    // deux par heure, le second partait rarement — d'où des employés qui
-    // n'ont jamais rien reçu.
-    const isRateLimited = false;
-
-    if (formStep) formStep.classList.add('hidden');
-    if (otpStep) otpStep.classList.remove('hidden');
-    if (emailNoticeEl) emailNoticeEl.innerText = email;
-
-    if (isRateLimited) {
-      if (rateLimitNoticeEl) rateLimitNoticeEl.classList.remove('hidden');
-      if (fallbackCodeEl) fallbackCodeEl.innerText = generatedOtp;
-      showToast('Quota E-mail Supabase (429) ⚠️', `Supabase Cloud a atteint sa limite d'e-mails gratuits (3/heure). Pour débloquer votre inscription : saisissez le code <strong>${generatedOtp}</strong>.`, 'warning', 15000);
-    } else {
-      if (rateLimitNoticeEl) rateLimitNoticeEl.classList.add('hidden');
-      showToast('Code OTP Envoyé par Email 📩', `Un code de sécurité à 6 chiffres a été transmis à ${escapeHtml(email)}. Consultez votre boîte de réception (et dossier Spam).`, 'success', 10000);
-    }
-  } catch (err) {
-    console.error('Erreur auto-inscription:', err);
-    showToast('Erreur Inscription', err.message || 'Impossible de créer le compte.', 'info');
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.innerHTML = '<i data-lucide="send" class="w-4 h-4"></i> Envoyer mon Inscription & Recevoir mon Code OTP';
-      initIcons();
-    }
-  }
-}
-
-async function confirmEmailOtp() {
-  const otpInput = document.getElementById('join-otp-input');
-  const enteredOtp = otpInput ? otpInput.value.trim() : '';
-
-  if (!state.pendingUserRegistration) {
-    showToast('Erreur', 'Aucune inscription en cours.', 'info');
-    return;
-  }
-
-  const reg = state.pendingUserRegistration;
-
-  if (!enteredOtp || enteredOtp.length !== 6) {
-    showToast('Code OTP Requis ⚠️', 'Veuillez ouvrir votre boîte e-mail et saisir le code à 6 chiffres reçu.', 'warning');
-    return;
-  }
-
-  const btn = document.getElementById('btn-confirm-email-otp');
-  if (btn) {
-    btn.disabled = true;
-    btn.innerText = 'Vérification du code...';
-  }
-
-  try {
-    let isValid = false;
-
-    // 1. Tenter la vérification officielle Supabase OTP
-    if (supabaseClient) {
-      try {
-        const { data: verifyData, error: otpErr } = await supabaseClient.auth.verifyOtp({
-          email: reg.email,
-          token: enteredOtp,
-          type: 'email'
-        });
-        if (!otpErr && verifyData) isValid = true;
-        else {
-          const { data: verifyData2, error: otpErr2 } = await supabaseClient.auth.verifyOtp({
-            email: reg.email,
-            token: enteredOtp,
-            type: 'signup'
-          });
-          if (!otpErr2 && verifyData2) isValid = true;
-        }
-      } catch (e) {
-        console.warn('Vérification Supabase OTP:', e);
-      }
-    }
-
-    // 2. Une session déjà ouverte pour cette adresse vaut vérification.
-    //
-    // Les gabarits envoient désormais un code à 6 chiffres. Ce second chemin
-    // couvre les courriels partis AVANT ce changement, qui contenaient un
-    // lien : celui qui l'a suivi ne doit pas rester bloqué.
-    if (!isValid) isValid = await adresseDejaConfirmee(reg.email);
-
-    // Il n'y a PLUS de code de secours.
-    //
-    // La version précédente acceptait « 123456 », ainsi qu'un code tiré par le
-    // navigateur lui-même. N'importe qui pouvait donc rejoindre n'importe
-    // quelle entreprise en tapant six chiffres connus de tous. Un contrôle qui
-    // laisse tout passer est pire qu'une absence de contrôle : il fait croire
-    // à une vérification qui n'existe pas.
-    if (!isValid) {
-      showToast(
-        'Code incorrect',
-        "Ce code à 6 chiffres ne correspond pas.\n\nVérifiez votre boîte mail, y compris le " +
-        "dossier des courriers indésirables. Le code expire au bout d'une heure : passé ce " +
-        'délai, demandez-en un nouveau.',
-        'danger', 12000);
-      return;
-    }
-
-    // Code OTP valide -> Demande transmise à la Direction RH
-    // La demande est deja enregistree cote serveur dans company_memberships.
-    // On n'ajoute plus d'entree locale : elle portait un identifiant factice
-    // (mem-pending-...) et un company_id de repli, et pouvait survivre au
-    // traitement reel de la demande.
-
-    showToast('Code OTP Validé ! 🎉', `Demande transmise au RH avec succès pour ${escapeHtml(reg.companyName)}.`, 'success', 8000);
-    closeAuthModal();
-    openPendingApprovalModal(reg.matricule);
-  } catch (err) {
-    showToast('Erreur Vérification', err.message || 'Impossible de vérifier le code OTP.', 'error');
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.innerText = 'Valider mon Code OTP & Envoyer au RH';
-    }
-  }
-}
-
-async function resendOtpCode() {
-  if (!state.pendingUserRegistration) return;
-  const reg = state.pendingUserRegistration;
-  // Aucun code n'est fabriqué ici non plus : c'est le serveur qui en émet un.
-  let isRateLimited = false;
-
-  if (supabaseClient) {
-    try {
-      const { error: otpErr } = await supabaseClient.auth.signInWithOtp({ email: reg.email });
-      if (otpErr && (otpErr.status === 429 || (otpErr.message && otpErr.message.toLowerCase().includes('rate limit')))) {
-        isRateLimited = true;
-      }
-    } catch (e) {
-      console.warn('Renvoyer OTP Supabase :', e);
-    }
-  }
-
-  const rateLimitNoticeEl = document.getElementById('join-otp-rate-limit-notice');
-  const fallbackCodeEl = document.getElementById('join-otp-fallback-code');
-
-  if (isRateLimited) {
-    if (rateLimitNoticeEl) rateLimitNoticeEl.classList.remove('hidden');
-    if (fallbackCodeEl) fallbackCodeEl.innerText = '—';
-    showToast(
-      "Quota d'e-mails atteint",
-      "Le serveur d'envoi a atteint sa limite horaire. Patientez une heure puis réessayez, " +
-      'ou signalez-le à votre service RH : votre demande lui est déjà parvenue.',
-      'warning', 15000);
-  } else {
-    if (rateLimitNoticeEl) rateLimitNoticeEl.classList.add('hidden');
-    showToast('Nouveau Code OTP Envoyé 📩', `Un nouveau code à 6 chiffres a été transmis à ${escapeHtml(reg.email)}. Veuillez consulter votre boîte de réception.`, 'success', 10000);
-  }
-}
-
-/* ==================== CONNEXION EMPLOYÉ PAR CODE OTP ==================== */
-
-let currentLoginOtpState = null;
-
-function toggleOtpLoginMode() {
-  const loginView = document.getElementById('auth-login-view');
-  const otpLoginView = document.getElementById('auth-otp-login-view');
-  const joinView = document.getElementById('auth-join-view');
-
-  if (loginView) loginView.classList.add('hidden');
-  if (joinView) joinView.classList.add('hidden');
-  if (otpLoginView) otpLoginView.classList.remove('hidden');
-}
-
-async function requestLoginOtp() {
-  const emailInput = document.getElementById('login-otp-email-input');
-  const email = emailInput ? emailInput.value.trim() : '';
-
-  if (!email) {
-    showToast('Email Requis', 'Veuillez saisir votre adresse e-mail professionnel.', 'info');
-    return;
-  }
-
-  // Aucun code n'est fabriqué ici : seul le serveur peut en émettre un, et
-  // lui seul peut le vérifier. Un code tiré par le navigateur, gardé par le
-  // navigateur puis validé par le navigateur ne prouve rien.
-  currentLoginOtpState = { email };
-  let isRateLimited = false;
-
-  if (supabaseClient) {
-    try {
-      const { error: otpErr } = await supabaseClient.auth.signInWithOtp({ email });
-      if (otpErr && (otpErr.status === 429 || (otpErr.message && otpErr.message.toLowerCase().includes('rate limit')))) {
-        isRateLimited = true;
-      }
-    } catch (e) {
-      console.warn('Supabase signInWithOtp:', e);
-    }
-  }
-
-  const stepReq = document.getElementById('login-otp-step-request');
-  const stepVer = document.getElementById('login-otp-step-verify');
-  const rateLimitNoticeEl = document.getElementById('login-otp-rate-limit-notice');
-  const fallbackCodeEl = document.getElementById('login-otp-fallback-code');
-
-  if (stepReq) stepReq.classList.add('hidden');
-  if (stepVer) stepVer.classList.remove('hidden');
-
-  if (isRateLimited) {
-    if (rateLimitNoticeEl) rateLimitNoticeEl.classList.remove('hidden');
-    if (fallbackCodeEl) fallbackCodeEl.innerText = '—';
-    showToast(
-      'Quota d\'e-mails atteint',
-      "Le serveur d'envoi a atteint sa limite horaire. Patientez puis redemandez un code, " +
-      'ou connectez-vous avec votre mot de passe.',
-      'warning', 15000);
-  } else {
-    if (rateLimitNoticeEl) rateLimitNoticeEl.classList.add('hidden');
-    showToast('Code OTP Envoyé 📩', `Un code OTP à 6 chiffres a été transmis à ${escapeHtml(email)}. Ouvrez votre boîte mail pour le recopier.`, 'success', 12000);
-  }
-}
-
-async function verifyLoginOtp() {
-  const codeInput = document.getElementById('login-otp-code-input');
-  const code = codeInput ? codeInput.value.trim() : '';
-
-  if (!currentLoginOtpState) {
-    showToast('Erreur', 'Veuillez d\'abord demander un code OTP.', 'info');
-    return;
-  }
-
-  if (!code || code.length !== 6) {
-    showToast('Code OTP Requis ⚠️', 'Veuillez saisir le code à 6 chiffres.', 'warning');
-    return;
-  }
-
-  // LE SERVEUR SEUL DÉCIDE.
-  //
-  // La version précédente testait d'abord `code === '123456'` : n'importe qui
-  // pouvait se connecter avec n'importe quelle adresse en tapant six chiffres
-  // connus de tous. Elle fabriquait ensuite une identité de toutes pièces
-  // (« user-otp-<horodatage> »), sans session Supabase — l'interface donnait
-  // donc accès à un tableau de bord au nom de quelqu'un d'autre.
-  if (!supabaseClient) {
-    showToast('Service indisponible',
-      "La connexion au serveur n'est pas disponible. Réessayez dans un instant.", 'danger');
-    return;
-  }
-
-  let utilisateur = null;
-  try {
-    const { data, error } = await supabaseClient.auth.verifyOtp({
-      email: currentLoginOtpState.email,
-      token: code,
-      type: 'email',
-    });
-    if (!error && data && data.user) utilisateur = data.user;
-  } catch (e) {
-    console.warn('Vérification du code de connexion :', e);
-  }
-
-  if (!utilisateur) {
-    showToast('Code invalide',
-      "Ce code à 6 chiffres ne correspond pas.\n\nVérifiez votre boîte mail, y compris le " +
-      "dossier des courriers indésirables. Le code expire au bout d'une heure.",
-      'danger', 12000);
-    return;
-  }
-
-  // L'identité vient de la session RÉELLE, jamais de ce qui a été saisi.
-  await appliquerSessionSupabase(utilisateur);
-  showToast('Connexion réussie',
-    `Bienvenue ${escapeHtml(state.currentUser.fullName || utilisateur.email)}.`, 'success');
-  closeAuthModal();
-  switchView(state.currentUserRole === 'EMPLOYEE' ? 'employee' : 'dashboard');
-}
-
-/**
- * Installe dans l'application l'identité issue d'une session Supabase réelle.
- *
- * On relit la fiche employé en base : le rôle et le nom ne se déduisent pas
- * d'une adresse e-mail. Sans cette lecture, un employé se retrouvait avec un
- * nom fabriqué à partir de son adresse et le rôle EMPLOYEE par défaut, même
- * s'il était RH.
- */
-// =============================================================================
-//  INSCRIPTION : CREATION D'ENTREPRISE ET RATTACHEMENT
-// =============================================================================
-//
-//  POURQUOI CES FONCTIONS EXISTENT
-//  -------------------------------
-//  Le navigateur ecrivait directement dans `companies`, `users` et
-//  `company_memberships`. Ces tables etaient ouvertes a tous (politiques
-//  `USING (true)` en role `public`) : n'importe quel visiteur muni de la cle
-//  anonyme — publique par construction — pouvait se promouvoir CEO ou
-//  s'auto-approuver dans une entreprise. Les migrations 020 a 023 ont ferme
-//  ces politiques ; l'ecriture passe maintenant par des fonctions serveur qui
-//  derivent l'identite de `auth.uid()`.
-//
-//  LE CAS DE LA CONFIRMATION D'ADRESSE
-//  -----------------------------------
-//  Quand la confirmation par e-mail est exigee, `signUp` ne renvoie PAS de
-//  session : l'appel serveur echouerait faute d'identite. L'intention est
-//  alors mise de cote et rejouee a la premiere connexion reussie. C'est ce que
-//  fait `reprendreInscriptionTimora()`, appelee depuis `appliquerSessionSupabase`.
-
-const CLE_INSCRIPTION_ATTENTE = 'timora_inscription_attente';
-
-/** Vrai quand l'echec vient d'une session absente plutot que d'un refus reel. */
-function erreurSansSession(erreur) {
-  if (!erreur) return false;
-  return erreur.code === '42501' || /session requise/i.test(erreur.message || '');
-}
-
-function memoriserInscriptionEnAttente(intention) {
-  try {
-    localStorage.setItem(CLE_INSCRIPTION_ATTENTE,
-      JSON.stringify({ ...intention, at: Date.now() }));
-  } catch (err) {
-    console.error('[Inscription] Intention non mémorisée :', err);
-  }
-}
-
-function oublierInscriptionEnAttente() {
-  try { localStorage.removeItem(CLE_INSCRIPTION_ATTENTE); } catch (err) { /* stockage indisponible */ }
-}
-
-/**
- * Cree l'entreprise, la fiche CEO et le rattachement — en une transaction.
- *
- * Renvoie `{ enAttente: true }` lorsque la session n'est pas encore ouverte :
- * l'appelant memorise alors l'intention au lieu de creer quoi que ce soit.
- */
-async function creerEntrepriseTimora(nomEntreprise, nomComplet) {
-  const { data, error } = await supabaseClient.rpc('register_company', {
-    p_company_name: nomEntreprise,
-    p_full_name: nomComplet || null,
-  });
-
-  if (error) {
-    if (erreurSansSession(error)) return { enAttente: true };
-    throw error;
-  }
-  return { enAttente: false, companyId: data.company_id, dejaCree: data.deja_cree };
-}
-
-/**
- * Depose une demande de rattachement.
- *
- * Le statut PENDING_APPROVAL est impose par le serveur : il n'est pas transmis
- * par le client, et ne peut donc pas etre remplace par ACTIVE.
- */
-async function rejoindreEntrepriseTimora(code, nomComplet, telephone) {
-  const { data, error } = await supabaseClient.rpc('join_company', {
-    p_code: code,
-    p_full_name: nomComplet || null,
-    p_phone: telephone || null,
-    p_job_title: 'Collaborateur',
-  });
-
-  if (error) {
-    if (erreurSansSession(error)) return { enAttente: true };
-    throw error;
-  }
-  return { enAttente: false, companyId: data.company_id, statut: data.statut };
-}
-
-/**
- * Rejoue une inscription mise de cote, a la premiere session ouverte.
- *
- * Sans erreur si rien n'attend : la fonction est appelee a chaque connexion.
- */
-async function reprendreInscriptionTimora() {
-  if (!supabaseClient) return;
-
-  let intention = null;
-  try {
-    const brut = localStorage.getItem(CLE_INSCRIPTION_ATTENTE);
-    if (brut) intention = JSON.parse(brut);
-  } catch (err) {
-    oublierInscriptionEnAttente();
-    return;
-  }
-
-  // Passe 24 h, une intention n'a plus lieu d'etre rejouee.
-  if (!intention || Date.now() - (intention.at || 0) > 86400000) {
-    if (intention) oublierInscriptionEnAttente();
-    return;
-  }
-
-  try {
-    if (intention.type === 'ceo') {
-      const r = await creerEntrepriseTimora(intention.companyName, intention.fullName);
-      if (r.enAttente) return; // toujours pas de session : on retentera
-      oublierInscriptionEnAttente();
-      if (!r.dejaCree) {
-        showToast('Entreprise créée',
-          `« ${escapeHtml(intention.companyName || '')} » est enregistrée. Bienvenue sur Timora.`,
-          'success', 10000);
-      }
-    } else if (intention.type === 'employe') {
-      const r = await rejoindreEntrepriseTimora(intention.code, intention.fullName, intention.phone);
-      if (r.enAttente) return;
-      oublierInscriptionEnAttente();
-      showToast('Demande transmise',
-        `Votre demande a été transmise à ${escapeHtml(intention.companyName || 'votre entreprise')}. ` +
-        'Elle attend la validation du service RH.',
-        'success', 12000);
-    }
-  } catch (err) {
-    // Un refus reel (code inconnu, entreprise suspendue) ne doit pas etre
-    // retente indefiniment a chaque connexion.
-    console.error('[Inscription] Reprise impossible :', err);
-    oublierInscriptionEnAttente();
-    showToast('Inscription incomplète', err.message || 'Reprise impossible.', 'info', 10000);
-  }
-}
-
 // =============================================================================
 //  CONNEXION AVEC GOOGLE
 // =============================================================================
@@ -7880,80 +7174,95 @@ const MESSAGES_ERREUR_GOOGLE = {
 };
 
 /**
- * Point d'entree des trois boutons Google.
+ * Point d'entree du bouton « Continuer avec Google » du parcours de connexion.
  *
- *   'connexion'        ouvrir son espace ;
- *   'inscription-ceo'  creer son entreprise (nom saisi AVANT de partir) ;
- *   'rejoindre'        rejoindre l'entreprise dont le code vient d'etre reconnu.
- *
- * Si une session existe deja — l'utilisateur est revenu de Google sans
- * entreprise, puis a saisi un code — on n'y retourne pas : l'action est
- * executee directement avec la session en place.
+ * L'intention (se connecter, creer son entreprise, rejoindre la sienne) et le
+ * code entreprise restent dans le parcours, en sessionStorage, et sont relus
+ * au retour : rien de tout cela ne transite par Google. Au retour, c'est le
+ * serveur qui decide de la destination.
  */
-async function connexionGoogle(parcours) {
-  if (!supabaseClient) {
-    showToast('Service indisponible', 'La connexion est impossible pour le moment.', 'info');
-    return;
+async function connexionGoogle() {
+  // Un seul essai a la fois : sans ce verrou, chaque clic lancait sa propre
+  // verification et affichait son propre message.
+  if (connexionGoogleEnCours) return;
+  connexionGoogleEnCours = true;
+  basculerBoutonsGoogle(true);
+  let redirige = false;
+  try {
+    redirige = (await executerConnexionGoogle()) === 'redirection';
+  } catch (err) {
+    console.error('[Google] Démarrage impossible :', err);
+    afficherErreur(classerErreurAuth(err));
+  } finally {
+    // Depart vers Google reussi : la page va etre quittee, le verrou reste
+    // pose pour qu'un clic pendant le chargement ne relance rien.
+    if (!redirige) {
+      connexionGoogleEnCours = false;
+      basculerBoutonsGoogle(false);
+    }
   }
+}
 
-  let intention = null;
+let connexionGoogleEnCours = false;
 
-  if (parcours === 'inscription-ceo') {
-    const nomEntreprise = (document.getElementById('auth-company-input')?.value || '').trim();
-    if (nomEntreprise.length < 2) {
-      showToast('Nom requis', 'Saisissez le nom de votre entreprise avant de continuer avec Google.', 'info');
-      document.getElementById('auth-company-input')?.focus();
-      return;
+// Retour arriere depuis la page Google : le navigateur peut restaurer CETTE
+// page depuis son cache, verrou compris. On le leve dans ce cas.
+window.addEventListener('pageshow', (evenement) => {
+  if (evenement.persisted) {
+    connexionGoogleEnCours = false;
+    basculerBoutonsGoogle(false);
+  }
+});
+
+/**
+ * Desactive les boutons Google pendant un essai et l'indique.
+ *
+ * L'etat « occupe » est retabli a la fin d'un essai qui n'a pas quitte la
+ * page (fournisseur inactif, champ manquant, erreur), mais pas apres un
+ * depart reussi vers Google : voir connexionGoogle().
+ */
+function basculerBoutonsGoogle(occupe) {
+  document.querySelectorAll('.bouton-google').forEach((bouton) => {
+    bouton.disabled = occupe;
+    bouton.setAttribute('aria-busy', String(occupe));
+    const libelle = bouton.querySelector('span');
+    if (!libelle) return;
+    if (occupe) {
+      if (!bouton.dataset.libelle) bouton.dataset.libelle = libelle.textContent;
+      libelle.textContent = 'Connexion à Google…';
+    } else if (bouton.dataset.libelle) {
+      libelle.textContent = bouton.dataset.libelle;
     }
-    intention = {
-      type: 'ceo',
-      companyName: nomEntreprise,
-      fullName: (document.getElementById('auth-fullname-input')?.value || '').trim(),
-      via: OAUTH_GOOGLE_MARQUEUR,
-    };
-  } else if (parcours === 'rejoindre') {
-    const entreprise = state.recognizedCompany;
-    if (!entreprise || !entreprise.company_code) {
-      showToast('Code requis', 'Vérifiez d\'abord le code de votre entreprise.', 'info');
-      return;
-    }
-    const prenom = (document.getElementById('join-firstname-input')?.value || '').trim();
-    const nom = (document.getElementById('join-lastname-input')?.value || '').trim();
-    intention = {
-      type: 'employe',
-      code: entreprise.company_code,
-      companyName: entreprise.name,
-      fullName: [prenom, nom.toUpperCase()].filter(Boolean).join(' '),
-      via: OAUTH_GOOGLE_MARQUEUR,
-    };
+  });
+}
+
+async function executerConnexionGoogle() {
+  if (!supabaseClient) {
+    afficherErreur('NETWORK_ERROR');
+    return 'echec';
   }
 
   // Session deja ouverte : inutile de repasser par Google.
   const { data: { session } } = await supabaseClient.auth.getSession();
   if (session && session.user) {
-    if (intention) memoriserInscriptionEnAttente(intention);
-    await ouvrirEspaceApresConnexion(session.user);
-    return;
+    allerA(ETATS_AUTH.AUTH_RESOLVING);
+    await resoudreEtOrienter({ intention: flux.intention });
+    return 'session';
   }
 
   const client = clientOAuthGoogle();
-  if (!client) {
-    showToast('Service indisponible', 'La connexion Google est impossible pour le moment.', 'info');
-    return;
-  }
 
   // `signInWithOAuth` ne renvoie AUCUNE erreur quand le fournisseur est
   // desactive : il redirige, et l'utilisateur atterrit sur une page JSON brute
   // de supabase.co (« Unsupported provider: provider is not enabled »). On
   // interroge donc d'abord la liste publique des fournisseurs actifs.
-  if (!(await googleActiveCoteSupabase())) {
+  if (!client || !(await googleActiveCoteSupabase())) {
+    journaliserAuth('GOOGLE_FAILED', { email: null, codeErreur: 'provider_unavailable' });
     showToast('Connexion Google indisponible',
-      'La connexion avec Google n\'est pas encore activée. Utilisez votre e-mail et votre mot de passe.',
+      'La connexion avec Google n\'est pas disponible pour le moment. Continuez avec votre email.',
       'info', 10000);
-    return;
+    return 'echec';
   }
-
-  if (intention) memoriserInscriptionEnAttente(intention);
 
   // Adresse de retour construite depuis l'origine du site UNIQUEMENT, jamais
   // depuis un parametre : aucune redirection ouverte possible. Elle doit
@@ -7973,11 +7282,14 @@ async function connexionGoogle(parcours) {
 
   if (error) {
     console.error('[Google] Démarrage impossible :', error);
-    oublierIntentionGoogle();
+    journaliserAuth('GOOGLE_FAILED', { email: null, codeErreur: error.code || 'oauth_start' });
     showToast('Connexion Google indisponible',
-      'Le fournisseur Google n\'est pas encore activé, ou la connexion a échoué. Utilisez votre e-mail et votre mot de passe.',
+      'La connexion avec Google a échoué. Réessayez, ou continuez avec votre email.',
       'info', 10000);
+    return 'echec';
   }
+
+  return 'redirection';
 }
 
 /**
@@ -8002,23 +7314,18 @@ async function googleActiveCoteSupabase() {
   }
 }
 
-/** Retire une intention d'inscription, seulement si elle venait d'un passage par Google. */
-function oublierIntentionGoogle() {
-  try {
-    const brut = localStorage.getItem(CLE_INSCRIPTION_ATTENTE);
-    if (brut && JSON.parse(brut).via === OAUTH_GOOGLE_MARQUEUR) oublierInscriptionEnAttente();
-  } catch (err) {
-    oublierInscriptionEnAttente();
-  }
+/** Echec au retour de Google : journal serveur (sans adresse), avec l'intention du parcours. */
+function journaliserEchecGoogle(raison) {
+  intentionParcoursAuth();
+  journaliserAuth('GOOGLE_FAILED', { email: null, codeErreur: raison });
 }
 
 /**
  * Traite le retour de Google, au demarrage de la page.
  *
  * Renvoie l'utilisateur connecte si une connexion Google vient d'aboutir,
- * `null` sinon. Le routage vers son espace est laisse a l'appelant, APRES la
- * restauration de session habituelle : sinon celle-ci ecraserait le role
- * determine par les rattachements.
+ * `null` sinon. L'orientation vers son espace est faite ensuite par le
+ * demarrage, via resoudreEtOrienter() : c'est le serveur qui decide.
  */
 async function traiterRetourGoogle() {
   let params;
@@ -8041,7 +7348,7 @@ async function traiterRetourGoogle() {
   }
 
   if (codeErreur || !code) {
-    oublierIntentionGoogle();
+    journaliserEchecGoogle(codeErreur || 'no_code');
     purgerStockageOAuthGoogle();
     showToast('Connexion Google',
       MESSAGES_ERREUR_GOOGLE[codeErreur] || 'La connexion Google n\'a pas abouti. Réessayez.',
@@ -8070,7 +7377,7 @@ async function traiterRetourGoogle() {
     return data.session.user;
   } catch (err) {
     console.error('[Google] Échange du code impossible :', err);
-    oublierIntentionGoogle();
+    journaliserEchecGoogle('exchange_failed');
     // Code expire, deja utilise, ou verifier absent (lien ouvert dans un
     // autre navigateur que celui qui a demarre la connexion).
     showToast('Connexion Google',
@@ -8079,133 +7386,6 @@ async function traiterRetourGoogle() {
     return null;
   } finally {
     purgerStockageOAuthGoogle();
-  }
-}
-
-/**
- * Ouvre le bon espace apres une connexion, quel qu'en soit le mode.
- *
- * Commun au mot de passe et a Google, pour que les deux appliquent exactement
- * les memes controles. L'acces se prouve par un rattachement ACTIF — c'est la
- * regle que la base applique depuis la migration 022. L'ancien repli sur
- * `users.company_id` et `users.role` ouvrait sinon un Cockpit RH dont chaque
- * requete echouait, pour un compte que la base ne reconnait plus.
- *
- * Avec Google, n'importe quel compte peut se connecter : un compte sans
- * entreprise doit donc etre accueilli, pas laisse devant un ecran vide.
- */
-async function ouvrirEspaceApresConnexion(utilisateur) {
-  const userId = utilisateur.id;
-  const email = utilisateur.email || '';
-
-  // Une inscription commencee avant le passage par Google (ou avant la
-  // confirmation d'adresse) est rejouee ici, sous l'identite qui vient d'etre
-  // prouvee.
-  try {
-    await reprendreInscriptionTimora();
-  } catch (err) {
-    console.error('[Connexion] Reprise d\'inscription impossible :', err);
-  }
-
-  const { data: rattachements, error } = await supabaseClient
-    .from('company_memberships')
-    .select('*')
-    .eq('user_id', userId);
-
-  if (error) throw error;
-
-  const liste = rattachements || [];
-  const actifs = liste.filter((m) => m.status === 'ACTIVE');
-
-  const metaNom = utilisateur.user_metadata && (utilisateur.user_metadata.full_name || utilisateur.user_metadata.name);
-  state.isAuthenticated = true;
-  state.currentUser = {
-    ...(state.currentUser || {}),
-    id: userId,
-    email: email,
-    fullName: (state.currentUser && state.currentUser.id === userId && state.currentUser.fullName)
-      || metaNom || email.split('@')[0].toUpperCase(),
-  };
-
-  if (actifs.length > 1) {
-    state.userMemberships = actifs;
-    openSelectWorkspaceModal(actifs);
-    showToast('Sélection d\'Espace', 'Veuillez choisir votre espace de travail.', 'info');
-    return;
-  }
-
-  if (actifs.length === 1) {
-    const m = actifs[0];
-    let nomEntreprise = state.company.name;
-    const { data: entreprise } = await supabaseClient
-      .from('companies').select('name').eq('id', m.company_id).maybeSingle();
-    if (entreprise && entreprise.name) nomEntreprise = entreprise.name;
-    selectCompanyWorkspace(m.company_id, m.role, m.attendance_required, nomEntreprise);
-    return;
-  }
-
-  // Aucun rattachement actif : demande en attente, ou compte sans entreprise.
-  closeAuthModal();
-
-  if (liste.some((m) => m.status === 'PENDING_APPROVAL' || m.status === 'INVITED')) {
-    const { data: fiche } = await supabaseClient
-      .from('users').select('registration_number').eq('id', userId).maybeSingle();
-    openPendingApprovalModal((fiche && fiche.registration_number) || '—');
-    return;
-  }
-
-  openAuthModal('login');
-  if (typeof switchAuthTab === 'function') switchAuthTab('join');
-  showToast('Aucune entreprise associée',
-    `Le compte ${escapeHtml(email)} n'est rattaché à aucune entreprise. ` +
-    'Saisissez le code fourni par votre service RH, ou créez votre entreprise.',
-    'info', 12000);
-}
-
-/** Bouton du formulaire partage : connexion, ou creation d'entreprise selon le mode. */
-function connexionGoogleDepuisFormulaire() {
-  return connexionGoogle(authMode === 'register' ? 'inscription-ceo' : 'connexion');
-}
-
-async function appliquerSessionSupabase(utilisateur) {
-  let fiche = null;
-  try {
-    const { data } = await supabaseClient
-      .from('users')
-      .select('id, full_name, email, role, job_title, registration_number, company_id, is_active')
-      .eq('id', utilisateur.id)
-      .maybeSingle();
-    fiche = data || null;
-  } catch (e) {
-    console.warn('[Session] Fiche employé illisible :', e);
-  }
-
-  state.isAuthenticated = true;
-  state.currentUser = {
-    id: utilisateur.id,
-    email: (fiche && fiche.email) || utilisateur.email,
-    fullName: (fiche && fiche.full_name) || utilisateur.email,
-    role: (fiche && fiche.role) || 'EMPLOYEE',
-    jobTitle: (fiche && fiche.job_title) || 'Collaborateur',
-    registrationNumber: fiche ? fiche.registration_number : null,
-  };
-  state.currentUserRole = state.currentUser.role;
-  if (fiche && fiche.company_id) state.currentCompanyId = fiche.company_id;
-
-  // Une inscription mise de cote faute de session est rejouee ici, avant le
-  // chargement : le tableau de bord doit trouver une entreprise en place.
-  try {
-    await reprendreInscriptionTimora();
-  } catch (e) {
-    console.error('[Session] Reprise d inscription impossible :', e);
-  }
-
-  try {
-    await loadSupabaseData();
-    renderEmployeeDashboard();
-    renderDashboard();
-  } catch (e) {
-    console.warn('[Session] Chargement partiel :', e);
   }
 }
 
@@ -8620,7 +7800,7 @@ async function approveAllRegistrations() {
 /* ==================== CODE ENTREPRISE, QR CODE & PARTAGE ==================== */
 
 function updateCompanyCodeDisplays(customCode = null) {
-  const code = customCode || state.currentCompanyCode || 'WD-7K9P-X4M2';
+  const code = customCode || state.currentCompanyCode || '';
   state.currentCompanyCode = code;
 
   const targetIds = [
@@ -8633,18 +7813,26 @@ function updateCompanyCodeDisplays(customCode = null) {
 
   targetIds.forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.innerText = code;
+    if (el) el.innerText = code || '—';
   });
 }
 
 function copyCompanyCode() {
-  const code = state.currentCompanyCode || 'WD-7K9P-X4M2';
+  const code = state.currentCompanyCode;
+  if (!code) {
+    showToast('Code indisponible', 'Le code de votre entreprise n\'est pas encore chargé. Réessayez dans un instant.', 'info');
+    return;
+  }
   navigator.clipboard.writeText(code);
   showToast('Code Copié ! 📋', `Code entreprise ${code} copié dans le presse-papier.`, 'success');
 }
 
 function copyCompanyJoinLink() {
-  const code = state.currentCompanyCode || 'WD-7K9P-X4M2';
+  const code = state.currentCompanyCode;
+  if (!code) {
+    showToast('Code indisponible', 'Le code de votre entreprise n\'est pas encore chargé. Réessayez dans un instant.', 'info');
+    return;
+  }
   const joinUrl = `${window.location.origin}${window.location.pathname}#join?code=${code}`;
   navigator.clipboard.writeText(joinUrl);
   showToast('Lien Copié ! 🔗', 'Lien d\'auto-inscription direct copié dans le presse-papier.', 'success');
@@ -8652,7 +7840,11 @@ function copyCompanyJoinLink() {
 
 function openCompanyQrModal() {
   const modal = document.getElementById('modal-company-qrcode');
-  const code = state.currentCompanyCode || 'WD-7K9P-X4M2';
+  const code = state.currentCompanyCode;
+  if (!code) {
+    showToast('Code indisponible', 'Le code de votre entreprise n\'est pas encore chargé. Réessayez dans un instant.', 'info');
+    return;
+  }
   const joinUrl = `${window.location.origin}${window.location.pathname}#join?code=${code}`;
   
   const imgEl = document.getElementById('company-qr-code-img');
@@ -8672,17 +7864,28 @@ function closeCompanyQrModal() {
   if (modal) modal.classList.add('hidden');
 }
 
+/**
+ * Nouveau code entreprise, tire par la base (regenerate_company_code, reserve
+ * au proprietaire). L'ancien code cesse aussitot d'identifier l'entreprise.
+ */
 async function regenerateCompanyCode() {
+  if (!supabaseClient || !state.currentCompanyId) return;
   if (!confirm("Voulez-vous vraiment régénérer le code entreprise ? L'ancien code deviendra immédiatement invalide pour les nouvelles inscriptions.")) return;
 
-  const newCode = generateCompanyCodeString(state.currentCompanyName);
-  updateCompanyCodeDisplays(newCode);
-
-  if (supabaseClient && state.currentCompanyId) {
-    await supabaseClient.from('companies').update({ company_code: newCode }).eq('id', state.currentCompanyId);
+  try {
+    const { data, error } = await supabaseClient.rpc('regenerate_company_code', { p_company: state.currentCompanyId });
+    if (error) throw error;
+    updateCompanyCodeDisplays(data.company_code);
+    saveSessionToStorage();
+    showToast('Code régénéré 🔄', `Le nouveau code entreprise est ${escapeHtml(data.company_code)}.`, 'success');
+  } catch (err) {
+    console.error('[Code entreprise] Régénération impossible :', err);
+    showToast('Code non régénéré',
+      err && err.code === '42501'
+        ? 'Seul le propriétaire de l\'entreprise peut régénérer le code.'
+        : 'La régénération a échoué. Réessayez dans un instant.',
+      'warning');
   }
-
-  showToast('Code Régénéré 🔄', `Le nouveau code d'entreprise est ${newCode}.`, 'success');
 }
 
 /* ==================== PARAMÈTRES ENTREPRISE MODAL ==================== */
@@ -8726,19 +7929,33 @@ async function handleSaveCompanySettings(e) {
   renderStaffGrid();
 }
 
+/**
+ * Lien d'adhesion partage par le service RH (#join?code=TIM-XXXX-XXXX) :
+ * ouvre le parcours employe sur l'entreprise correspondante, sans ressaisie.
+ */
 async function checkUrlJoinCode() {
-  const hash = window.location.hash;
-  if (hash.includes('join') && hash.includes('code=')) {
-    const params = new URLSearchParams(hash.replace('#join?', '').replace('#', ''));
-    const code = params.get('code');
-    if (code) {
-      openAuthModal('login');
-      switchAuthTab('join');
-      const codeInput = document.getElementById('join-company-code-input');
-      if (codeInput) codeInput.value = code;
-      await verifyCompanyCode(code);
-    }
-  }
+  const hash = window.location.hash || '';
+  if (!/^#join\b/.test(hash) || !hash.includes('code=')) return;
+
+  const params = new URLSearchParams(hash.replace(/^#join\??/, ''));
+  const code = String(params.get('code') || '').trim().toUpperCase();
+
+  // Le code ne reste pas dans la barre d'adresse une fois lu.
+  try {
+    window.history.replaceState(null, '', `${window.location.pathname}#${state.activeView || 'hero'}`);
+  } catch (e) {}
+
+  if (!/^[A-Z0-9-]{4,32}$/.test(code)) return;
+
+  ouvrirAuthentification({
+    etat: ETATS_AUTH.EMPLOYEE_COMPANY_CODE,
+    intention: INTENTIONS_AUTH.ADHESION_EMPLOYE,
+    entreprise: { code },
+    reprendre: false,
+    pile: [ETATS_AUTH.SELECT_PROFILE],
+  });
+  const formulaire = document.querySelector('#auth-ecran [data-auth-form="code-entreprise"]');
+  if (formulaire) await verifierCodeEntreprise(formulaire);
 }
 
 async function checkUrlInvitation() {
@@ -8746,6 +7963,9 @@ async function checkUrlInvitation() {
   if (hash.includes('invite') || hash.includes('code=')) {
     const params = new URLSearchParams(hash.replace('#invite?', '').replace('#', ''));
     const code = params.get('code');
+    try {
+      window.history.replaceState(null, '', `${window.location.pathname}#${state.activeView || 'hero'}`);
+    } catch (e) {}
 
     if (code && supabaseClient) {
       try {
@@ -8863,24 +8083,50 @@ async function handleInviteActivationSubmit(e) {
 
 /* ==================== SÉLECTEUR MULTI-ENTREPRISES ==================== */
 
+/**
+ * Choix de l'entreprise quand le compte est rattache a plusieurs.
+ *
+ * Les rattachements viennent de resolve_auth_context(). Le clic ne transmet
+ * que l'identifiant de l'entreprise : le role est redemande au serveur, qui
+ * verifie le rattachement. Aucun nom n'est plus injecte dans un attribut
+ * onclick, ou une apostrophe dans un nom d'entreprise pouvait executer du code.
+ */
 function openSelectWorkspaceModal(memberships) {
   const modal = document.getElementById('modal-select-workspace');
   const container = document.getElementById('workspace-cards-container');
 
-  if (container && memberships) {
-    container.innerHTML = memberships.map(m => `
-      <div onclick="selectCompanyWorkspace('${m.company_id}', '${m.role}', ${m.attendance_required}, '${escapeHtml(m.companies ? m.companies.name : 'Entreprise')}')" class="p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-amber-500/50 hover:bg-slate-800/80 cursor-pointer transition flex items-center justify-between group">
-        <div class="space-y-1">
-          <div class="font-bold text-white group-hover:text-amber-400 transition">${escapeHtml(m.companies ? m.companies.name : 'Entreprise')}</div>
-          <div class="text-xs text-slate-400 font-mono">Rôle: <strong class="text-emerald-400">${m.role}</strong></div>
-        </div>
-        <i data-lucide="chevron-right" class="w-5 h-5 text-slate-500 group-hover:text-amber-400 transition"></i>
-      </div>
-    `).join('');
+  if (container && Array.isArray(memberships)) {
+    container.innerHTML = memberships.map((m) => {
+      const nom = m.company_name || (m.companies && m.companies.name) || 'Entreprise';
+      return `
+      <button type="button" data-entreprise="${escapeHtml(m.company_id)}" class="w-full text-left min-h-[44px] p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-amber-500/50 hover:bg-slate-800/80 cursor-pointer transition flex items-center justify-between group">
+        <span class="space-y-1">
+          <span class="block font-bold text-white group-hover:text-amber-400 transition">${escapeHtml(nom)}</span>
+          <span class="block text-xs text-slate-400">Rôle : <strong class="text-emerald-400">${escapeHtml(libelleRole(m.role))}</strong></span>
+        </span>
+        <i data-lucide="chevron-right" class="w-5 h-5 text-slate-500 group-hover:text-amber-400 transition" aria-hidden="true"></i>
+      </button>`;
+    }).join('');
+
+    if (container.dataset.branche !== '1') {
+      container.dataset.branche = '1';
+      container.addEventListener('click', (evenement) => {
+        const carte = evenement.target.closest('[data-entreprise]');
+        if (carte) choisirEspaceEntreprise(carte.dataset.entreprise);
+      });
+    }
     if (window.lucide) window.lucide.createIcons();
   }
 
   if (modal) modal.classList.remove('hidden');
+}
+
+/** Entreprise choisie dans la liste : le serveur confirme le rattachement et le role. */
+async function choisirEspaceEntreprise(companyId) {
+  if (!/^[0-9a-f-]{36}$/i.test(String(companyId || ''))) return;
+  try { localStorage.setItem(CLE_ENTREPRISE_PREFEREE, companyId); } catch (e) {}
+  closeSelectWorkspaceModal();
+  await resoudreEtOrienter({ entreprisePreferee: companyId });
 }
 
 function closeSelectWorkspaceModal() {
@@ -8902,17 +8148,13 @@ async function loadSupabaseData() {
 
       if (currentComp) {
         if (currentComp.employee_prefix) state.currentCompanyPrefix = currentComp.employee_prefix;
-        if (!currentComp.company_code) {
-          const generatedCode = generateCompanyCodeString(currentComp.name || state.currentCompanyName);
-          await supabaseClient.from('companies').update({ company_code: generatedCode }).eq('id', state.currentCompanyId);
-          state.currentCompanyCode = generatedCode;
-        } else {
-          state.currentCompanyCode = currentComp.company_code;
-        }
+        // Le code est attribue par la base a la creation de l'entreprise
+        // (declencheur aa_code_entreprise) : le navigateur n'en fabrique jamais.
+        state.currentCompanyCode = currentComp.company_code || '';
       }
 
       const codeEl = document.getElementById('dash-company-code-display');
-      if (codeEl) codeEl.innerText = state.currentCompanyCode || 'WD-7K9P-X4M2';
+      if (codeEl) codeEl.innerText = state.currentCompanyCode || '—';
 
       await loadPendingRegistrations();
     }
@@ -10474,6 +9716,9 @@ function chargerScriptUnique(url) {
     el.addEventListener('load', () => { el.dataset.loaded = '1'; resolve(); });
     el.addEventListener('error', () => reject(new Error('Téléchargement impossible : ' + url)));
     if (!existant) {
+      // Requete CORS : le service worker ne peut conserver qu'une reponse
+      // lisible, et ce moteur public pese plusieurs centaines de Ko.
+      el.crossOrigin = 'anonymous';
       el.src = url;
       el.async = true;
       document.head.appendChild(el);
@@ -13083,9 +12328,41 @@ async function verifierMiseAJour() {
   }
 
   if (actuelle !== veilleMaj.empreinte) {
-    veilleMaj.annonce = true;
-    afficherBandeauMiseAJour();
+    annoncerMiseAJourDisponible('site');
   }
+}
+
+/**
+ * Point d'entree unique des deux sources de mise a jour : la veille ci-dessus
+ * (nouveau app.js) et le service worker (pwa/sw-registration.js). Un seul
+ * bandeau, quelle que soit la source.
+ */
+function annoncerMiseAJourDisponible(source) {
+  if (veilleMaj.annonce && document.getElementById('maj-bandeau')) return;
+  veilleMaj.annonce = true;
+  suivreTarifs('pwa_update_available', { source });
+  afficherBandeauMiseAJour();
+}
+
+/**
+ * Une action qu'un rechargement ferait perdre est-elle en cours ?
+ * Renvoie sa description, ou null.
+ */
+function activiteEnCours() {
+  if (empPunch.submitting || empPunch.stream) return 'Un pointage est en cours.';
+  if (scanQr.actif || scanQr.stream) return 'Un scan de QR code est en cours.';
+  if (faceEnrol.occupe || faceEnrol.stream) return 'L\'enregistrement de votre visage est en cours.';
+  if (justifRetard.envoi) return 'Votre justification est en cours d\'envoi.';
+
+  const auth = document.getElementById('modal-auth');
+  if (auth && !auth.hidden) return 'Une connexion est en cours.';
+
+  // Toute fenetre ouverte contenant un champ : un formulaire peut etre en cours.
+  const formulaireOuvert = Array.from(document.querySelectorAll('[id^="modal-"]')).some((m) =>
+    !m.hidden && !m.classList.contains('hidden') && m.querySelector('input:not([type="hidden"]), textarea, select'));
+  if (formulaireOuvert) return 'Un formulaire est ouvert.';
+
+  return null;
 }
 
 function afficherBandeauMiseAJour() {
@@ -13105,18 +12382,18 @@ function afficherBandeauMiseAJour() {
   el.innerHTML =
     '<i data-lucide="sparkles" class="w-5 h-5 text-cyan-400 shrink-0 mt-0.5"></i>' +
     '<div class="min-w-0 flex-1">' +
-      '<p class="text-xs font-extrabold text-cyan-300">Une nouvelle version est disponible</p>' +
+      '<p class="text-xs font-extrabold text-cyan-300">Une nouvelle version de Timora est disponible.</p>' +
       '<p class="text-[11px] text-slate-400 leading-relaxed mt-0.5">' +
-        'Rechargez la page pour en profiter. Si vous êtes en train de pointer, ' +
-        'terminez d\'abord : le rechargement effacerait votre selfie et votre position.' +
+        'Si vous êtes en train de pointer ou de remplir un formulaire, terminez d\'abord : ' +
+        'la mise à jour recharge l\'application.' +
       '</p>' +
       '<div class="flex items-center gap-2 mt-2.5">' +
-        '<button onclick="rechargerPourMiseAJour()" ' +
-          'class="min-h-tap px-3.5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 ' +
-          'text-black font-extrabold text-[11px] tracking-wider transition">RECHARGER</button>' +
-        '<button onclick="reporterMiseAJour()" ' +
-          'class="min-h-tap px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 ' +
-          'border border-slate-700 font-bold text-[11px] transition">Plus tard</button>' +
+        '<button type="button" onclick="rechargerPourMiseAJour()" ' +
+          'class="min-h-[44px] px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 ' +
+          'text-black font-extrabold text-xs transition">Mettre à jour</button>' +
+        '<button type="button" onclick="reporterMiseAJour()" ' +
+          'class="min-h-[44px] px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 ' +
+          'border border-slate-700 font-bold text-xs transition">Plus tard</button>' +
       '</div>' +
     '</div>';
 
@@ -13125,6 +12402,21 @@ function afficherBandeauMiseAJour() {
 }
 
 function rechargerPourMiseAJour() {
+  // Le clic ne suffit pas : un pointage lance dans un autre ecran, une camera
+  // ouverte ou un formulaire rempli seraient perdus. On le dit et on attend.
+  const occupation = activiteEnCours();
+  if (occupation) {
+    showToast('Mise à jour reportée',
+      `${occupation} Terminez d'abord, puis appuyez de nouveau sur « Mettre à jour ».`, 'info', 8000);
+    return;
+  }
+
+  try { sessionStorage.setItem('timora_pwa_maj_demandee', '1'); } catch (e) {}
+
+  // Nouveau service worker en attente : il est active, et c'est son
+  // changement de controleur qui recharge la page (pwa/sw-registration.js).
+  if (window.timoraPwa && window.timoraPwa.appliquerMiseAJour()) return;
+
   // `reload(true)` n'est plus honore par les navigateurs. On ajoute donc un
   // parametre jetable : il change l'URL, ce qui force une requete reseau
   // plutot qu'une relecture du cache.
@@ -13404,81 +12696,6 @@ async function deciderRetard(id, accepter) {
   }
 }
 
-
-// =============================================================================
-//  CONFIRMATION D'ADRESSE
-//
-//  Le courriel transporte un CODE a 6 chiffres : les gabarits Supabase ont ete
-//  regles sur `{{ .Token }}`. La verification passe donc par verifyOtp().
-//
-//  Ce chemin-ci reste en second recours, pour les courriels partis AVANT ce
-//  reglage : ils contenaient un LIEN, et le suivre ouvre une session pour
-//  l'adresse — ce qui prouve la meme chose. Personne ne reste bloque a cause
-//  d'un message recu la veille.
-//
-//  Dans les deux cas, c'est le SERVEUR qui atteste, jamais la page.
-// =============================================================================
-
-/**
- * L'adresse a-t-elle ete confirmee par le lien recu ?
- *
- * @param {string} email l'adresse annoncee lors de l'inscription
- * @returns {Promise<boolean>}
- */
-async function adresseDejaConfirmee(email) {
-  if (!supabaseClient || !email) return false;
-
-  try {
-    const { data, error } = await supabaseClient.auth.getUser();
-    if (error || !data || !data.user) return false;
-
-    // La session doit porter EXACTEMENT l'adresse annoncee : sans cette
-    // comparaison, une session ouverte pour quelqu'un d'autre validerait
-    // l'inscription en cours.
-    const meme = String(data.user.email || '').toLowerCase() === String(email).toLowerCase();
-    if (!meme) return false;
-
-    // Supabase n'horodate `email_confirmed_at` qu'une fois le lien suivi.
-    return !!(data.user.email_confirmed_at || data.user.confirmed_at);
-  } catch (e) {
-    console.warn('[Inscription] Vérification de l’adresse impossible :', e);
-    return false;
-  }
-}
-
-/**
- * Reprend une inscription interrompue par le clic sur le lien du courriel.
- *
- * L'employe quitte la page pour ouvrir sa boite mail : au retour, la demande
- * doit se retrouver seule, sans qu'il ait a tout ressaisir.
- */
-async function reprendreInscriptionApresLien() {
-  if (!supabaseClient) return;
-
-  let enCours = null;
-  try {
-    const brut = localStorage.getItem('winner_inscription_en_cours');
-    if (brut) enCours = JSON.parse(brut);
-  } catch (e) { return; }
-
-  // Une demande vieille de plus de 24 h n'a plus lieu d'etre reprise.
-  if (!enCours || !enCours.email || Date.now() - (enCours.at || 0) > 86400000) {
-    try { localStorage.removeItem('winner_inscription_en_cours'); } catch (e) {}
-    return;
-  }
-
-  if (!(await adresseDejaConfirmee(enCours.email))) return;
-
-  try { localStorage.removeItem('winner_inscription_en_cours'); } catch (e) {}
-
-  showToast(
-    'Adresse confirmée',
-    `Votre demande d'inscription a été transmise à ${escapeHtml(enCours.companyName || 'votre entreprise')}. ` +
-    'Elle attend la validation du service RH.',
-    'success', 12000);
-
-  openPendingApprovalModal(enCours.matricule || 'EMP-0001');
-}
 
 
 // =============================================================================

@@ -995,3 +995,749 @@ body {
   height: 1px;
   background: #1E293B;
 }
+
+
+/* ==========================================================================
+   AUTHENTIFICATION
+   --------------------------------------------------------------------------
+   Carte centree sur ordinateur ; presque plein ecran sur telephone, ou le
+   clavier virtuel reduit la hauteur utile. Fond sombre fixe, comme les autres
+   modales de connexion : le logo « fond sombre » et le bouton Google sombre
+   restent lisibles quel que soit le theme.
+   ========================================================================== */
+
+.auth-modale {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(3, 5, 10, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.auth-modale[hidden] { display: none !important; }
+
+html.auth-ouverte { overflow: hidden; }
+
+.auth-carte {
+  position: relative;
+  width: 100%;
+  max-width: 26.5rem;
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.25rem 1.5rem 1.5rem;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  background: #0f1117;
+  color: #F1F5F9;
+  box-shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.8);
+  animation: auth-entree 200ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@keyframes auth-entree {
+  from { opacity: 0; transform: translateY(8px) scale(0.99); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (max-width: 480px) {
+  .auth-modale { align-items: flex-end; padding: 0; }
+  .auth-carte {
+    max-width: none;
+    max-height: 100dvh;
+    min-height: min(100dvh, 38rem);
+    border-radius: 1.5rem 1.5rem 0 0;
+    padding: 1rem 1.125rem calc(1.25rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+.auth-barre {
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+}
+
+.auth-logo {
+  justify-self: center;
+  height: 1.75rem;
+  width: auto;
+}
+
+.auth-icone-bouton {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  color: #94A3B8;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.auth-icone-bouton:hover { background: rgba(148, 163, 184, 0.12); color: #F8FAFC; }
+.auth-icone-bouton[hidden] { visibility: hidden; display: inline-flex !important; }
+
+.auth-ecran {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  animation: auth-ecran 180ms ease-out;
+}
+
+@keyframes auth-ecran {
+  from { opacity: 0; transform: translateX(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.auth-tete { display: flex; flex-direction: column; gap: 0.375rem; text-align: center; }
+
+.auth-titre {
+  margin: 0;
+  font-size: clamp(1.25rem, 5vw, 1.5rem);
+  font-weight: 800;
+  line-height: 1.2;
+  color: #F8FAFC;
+  outline: none;
+  text-wrap: balance;
+}
+
+.auth-sous-titre {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #94A3B8;
+  text-wrap: pretty;
+}
+
+.auth-sous-titre strong,
+/* Adresse sur sa propre ligne : elle ne se coupe qu'en dernier recours. */
+.auth-email-cible { display: block; color: #F8FAFC; font-weight: 700; overflow-wrap: anywhere; }
+
+.auth-pile { display: flex; flex-direction: column; gap: 0.75rem; }
+
+/* ---------- Cartes de choix ---------- */
+
+.auth-choix {
+  width: 100%;
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid #1E293B;
+  border-radius: 1rem;
+  background: #141824;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease, transform 150ms ease;
+}
+
+.auth-choix:hover { border-color: rgba(245, 158, 11, 0.55); background: #181d2b; }
+.auth-choix:active { transform: scale(0.99); }
+
+.auth-choix__icone {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  background: rgba(245, 158, 11, 0.12);
+  color: #F59E0B;
+}
+
+.auth-choix__texte { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.125rem; }
+.auth-choix__texte strong { font-size: 0.9375rem; color: #F8FAFC; }
+.auth-choix__texte span { font-size: 0.8125rem; color: #94A3B8; }
+.auth-choix__fleche { flex-shrink: 0; color: #64748B; }
+
+/* ---------- Boutons ---------- */
+
+.auth-bouton {
+  width: 100%;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0 1rem;
+  border-radius: 0.875rem;
+  border: 1px solid transparent;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 150ms ease, transform 150ms ease, opacity 150ms ease;
+}
+
+.auth-bouton--principal {
+  background: linear-gradient(90deg, #F59E0B, #EA580C);
+  color: #1a1207;
+}
+
+.auth-bouton--principal:hover:not(:disabled) { filter: brightness(1.06); }
+
+.auth-bouton--secondaire {
+  background: #141824;
+  border-color: #334155;
+  color: #F1F5F9;
+}
+
+.auth-bouton--secondaire:hover:not(:disabled) { border-color: #475569; }
+.auth-bouton:active:not(:disabled) { transform: scale(0.99); }
+.auth-bouton:disabled { opacity: 0.65; cursor: wait; }
+
+/* Le bouton Google du parcours reprend le style valide par les regles de marque. */
+.auth-carte .bouton-google { min-height: 48px; font-size: 0.9375rem; border-radius: 0.875rem; }
+.auth-carte .separateur-ou::before,
+.auth-carte .separateur-ou::after { background: #1E293B; }
+
+.auth-lien-secondaire { margin: 0; text-align: center; }
+
+.auth-lien-secondaire button,
+.auth-lien {
+  min-height: 44px;
+  padding: 0 0.5rem;
+  border: none;
+  background: none;
+  color: #FBBF24;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.auth-lien:disabled { color: #64748B; text-decoration: none; cursor: default; }
+
+/* ---------- Champs ---------- */
+
+.auth-champ { display: flex; flex-direction: column; gap: 0.375rem; border: none; margin: 0; padding: 0; min-width: 0; }
+
+.auth-champ label,
+.auth-champ legend {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #CBD5E1;
+  padding: 0;
+}
+
+.auth-champ input[type="text"],
+.auth-champ input[type="email"],
+.auth-champ input[type="password"],
+.auth-champ select {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 0.875rem;
+  border: 1px solid #334155;
+  border-radius: 0.75rem;
+  background: #0b0d13;
+  color: #F8FAFC;
+  font-size: 1rem; /* 16 px : evite le zoom automatique de Safari iOS */
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.auth-champ input::placeholder { color: #475569; }
+
+.auth-champ input:focus,
+.auth-champ select:focus {
+  outline: none;
+  border-color: #F59E0B;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2);
+}
+
+.auth-champ [aria-invalid="true"] { border-color: #F43F5E; }
+
+#auth-code-entreprise { text-transform: uppercase; letter-spacing: 0.08em; font-family: var(--font-mono), monospace; }
+
+.auth-grille-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+@media (max-width: 360px) { .auth-grille-2 { grid-template-columns: 1fr; } }
+
+.auth-puces { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; }
+@media (max-width: 400px) { .auth-puces { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.auth-puce { position: relative; display: block; }
+.auth-puce input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+
+.auth-puce span {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.25rem;
+  border: 1px solid #334155;
+  border-radius: 0.75rem;
+  background: #0b0d13;
+  color: #CBD5E1;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: center;
+  transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
+}
+
+.auth-puce input:checked + span { border-color: #F59E0B; background: rgba(245, 158, 11, 0.12); color: #FBBF24; }
+.auth-puce input:focus-visible + span { box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.35); }
+
+/* ---------- Erreurs ---------- */
+
+.auth-erreur {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(244, 63, 94, 0.35);
+  background: rgba(244, 63, 94, 0.1);
+  color: #FDA4AF;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.auth-erreur[hidden] { display: none !important; }
+.auth-erreur i { flex-shrink: 0; margin-top: 0.1rem; }
+
+/* ---------- Entreprise trouvee ---------- */
+
+.auth-entreprise {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.auth-entreprise__icone {
+  flex-shrink: 0;
+  width: 52px;
+  height: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.875rem;
+  background: rgba(16, 185, 129, 0.15);
+  color: #34D399;
+}
+
+.auth-entreprise__texte { min-width: 0; display: flex; flex-direction: column; }
+.auth-entreprise__texte strong { font-size: 1.0625rem; color: #F8FAFC; overflow-wrap: anywhere; }
+.auth-entreprise__texte span { font-size: 0.8125rem; color: #94A3B8; }
+
+/* ---------- Code a 6 chiffres ---------- */
+
+.auth-otp {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: clamp(0.3rem, 2vw, 0.625rem);
+}
+
+.auth-otp__case {
+  width: 100%;
+  min-width: 0;
+  height: clamp(48px, 13vw, 58px);
+  border: 1px solid #334155;
+  border-radius: 0.75rem;
+  background: #0b0d13;
+  color: #F8FAFC;
+  font-family: var(--font-mono), monospace;
+  font-size: clamp(1.25rem, 6vw, 1.625rem);
+  font-weight: 800;
+  text-align: center;
+  caret-color: #F59E0B;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.auth-otp__case:focus { outline: none; border-color: #F59E0B; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.22); }
+.auth-otp__case[aria-invalid="true"] { border-color: #F43F5E; }
+.auth-otp__case:disabled { opacity: 0.7; }
+
+.auth-otp__etat {
+  margin: 0;
+  min-height: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: #94A3B8;
+}
+
+.auth-otp__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  margin-top: -0.5rem;
+}
+
+.auth-astuce { margin: 0; text-align: center; font-size: 0.75rem; color: #64748B; }
+
+/* ---------- Attente et succes ---------- */
+
+.auth-attente {
+  min-height: 12rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  text-align: center;
+}
+
+.auth-roue {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9999px;
+  border: 3px solid rgba(245, 158, 11, 0.2);
+  border-top-color: #F59E0B;
+  animation: auth-rotation 700ms linear infinite;
+}
+
+.auth-roue--petite { width: 1rem; height: 1rem; border-width: 2px; }
+
+@keyframes auth-rotation { to { transform: rotate(360deg); } }
+
+.auth-succes {
+  width: 3.25rem;
+  height: 3.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #34D399;
+}
+
+.auth-pied {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  font-size: 0.6875rem;
+  color: #475569;
+}
+
+/* ---------- Focus et mouvement reduit ---------- */
+
+.auth-carte :is(button, input, select):focus-visible {
+  outline: 2px solid #F59E0B;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-carte,
+  .auth-ecran { animation: none; }
+  .auth-roue { animation-duration: 1.6s; }
+  .auth-choix,
+  .auth-bouton,
+  .auth-otp__case { transition: none; }
+}
+
+/* ==========================================================================
+   APPLICATION INSTALLABLE (PWA)
+   --------------------------------------------------------------------------
+   Boutons « Installer Timora » : action SECONDAIRE. Ils ne rivalisent pas avec
+   l'inscription (degrade orange-vert) : fond discret, liseré vert de la marque.
+   Masques par l'attribut `hidden` tant qu'aucun parcours d'installation
+   n'existe (voir pwa/install-manager.js).
+   ========================================================================== */
+
+/* Les utilitaires Tailwind qui fixent `display` l'emporteraient sinon sur `hidden`. */
+[data-pwa-install][hidden],
+.pwa-feuille[hidden] { display: none !important; }
+
+.pwa-installer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--color-offwhite);
+  /* Repli pour les navigateurs sans color-mix() (Safari < 16.2). */
+  background: rgba(16, 185, 129, 0.09);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  background: color-mix(in srgb, var(--color-green) 9%, transparent);
+  border-color: color-mix(in srgb, var(--color-green) 40%, transparent);
+  cursor: pointer;
+  transition: background-color 200ms ease, border-color 200ms ease, transform 200ms ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pwa-installer:hover {
+  background: rgba(16, 185, 129, 0.17);
+  border-color: rgba(16, 185, 129, 0.65);
+  background: color-mix(in srgb, var(--color-green) 17%, transparent);
+  border-color: color-mix(in srgb, var(--color-green) 65%, transparent);
+  transform: translateY(-1px);
+}
+
+.pwa-installer:active { transform: translateY(0); }
+
+.pwa-installer:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+}
+
+.pwa-installer__icone {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  color: var(--color-green);
+}
+
+/* En-tete (ordinateur) : meme gabarit que « Se connecter ». */
+.pwa-installer--en-tete {
+  padding: 0.375rem 0.875rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+}
+
+/* Entre 768 et 1099 px, la barre est deja chargee : icone seule, nom conserve
+   pour les lecteurs d'ecran (le texte reste dans le bouton, hors de la vue). */
+@media (min-width: 768px) and (max-width: 1099px) {
+  .pwa-installer--en-tete { padding: 0.375rem 0.5rem; }
+  .pwa-installer--en-tete .pwa-installer__libelle {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+}
+
+.pwa-installer--menu {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.625rem 1rem;
+  border-radius: 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.pwa-installer--hero {
+  min-height: 44px;
+  padding: 0.75rem 1.125rem;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+}
+
+/* ---------- Instructions iPhone / iPad : feuille venue du bas ---------- */
+
+html.pwa-sheet-ouverte { overflow: hidden; }
+
+.pwa-feuille {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(3, 5, 10, 0);
+  transition: background-color 220ms ease;
+}
+
+.pwa-feuille.est-ouverte { background: rgba(3, 5, 10, 0.55); }
+
+.pwa-feuille__panneau {
+  position: relative;
+  width: 100%;
+  max-width: 30rem;
+  max-height: calc(100dvh - 3rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0.5rem 1.25rem calc(1.25rem + env(safe-area-inset-bottom));
+  border-radius: 1.5rem 1.5rem 0 0;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-bottom: 0;
+  background: #0f1117;
+  color: #F8FAFC;
+  box-shadow: 0 -18px 48px rgba(0, 0, 0, 0.45);
+  transform: translateY(100%);
+  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.pwa-feuille.est-ouverte .pwa-feuille__panneau { transform: translateY(0); }
+
+/* Tablette et ordinateur : carte posee au-dessus du bas de l'ecran. */
+@media (min-width: 640px) {
+  .pwa-feuille { align-items: center; padding: 1.5rem; }
+  .pwa-feuille__panneau {
+    border-radius: 1.5rem;
+    border-bottom: 1px solid rgba(245, 158, 11, 0.25);
+    padding-bottom: 1.5rem;
+  }
+}
+
+.pwa-feuille__poignee {
+  width: 2.5rem;
+  height: 0.25rem;
+  margin: 0.25rem auto 0;
+  border-radius: 9999px;
+  background: rgba(148, 163, 184, 0.35);
+}
+
+@media (min-width: 640px) {
+  .pwa-feuille__poignee { display: none; }
+}
+
+.pwa-feuille__tete {
+  display: grid;
+  grid-template-columns: 48px 1fr 44px;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pwa-feuille__icone {
+  width: 48px;
+  height: 48px;
+  border-radius: 0.875rem;
+  background: #ffffff;
+  padding: 4px;
+}
+
+.pwa-feuille__titre {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 800;
+  line-height: 1.3;
+  color: #F8FAFC;
+}
+
+.pwa-feuille__intro {
+  margin: 0.125rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: #94A3B8;
+}
+
+.pwa-feuille__fermer {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.75rem;
+  background: transparent;
+  color: #94A3B8;
+  cursor: pointer;
+}
+
+.pwa-feuille__fermer:hover { background: rgba(148, 163, 184, 0.12); color: #F8FAFC; }
+
+.pwa-feuille__etapes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pwa-feuille__etape {
+  display: grid;
+  grid-template-columns: 1.75rem 1fr 1.5rem;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3.25rem;
+  padding: 0.625rem 0.875rem;
+  border-radius: 0.875rem;
+  background: rgba(148, 163, 184, 0.07);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.pwa-feuille__numero {
+  width: 1.75rem;
+  height: 1.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  color: #1a1207;
+  background: linear-gradient(135deg, #F59E0B, #EA580C);
+}
+
+.pwa-feuille__consigne {
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: #E2E8F0;
+}
+
+.pwa-feuille__consigne strong { color: #FFFFFF; font-weight: 700; }
+
+.pwa-feuille__pictogramme {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: #4ADE80;
+  justify-self: end;
+}
+
+.pwa-feuille__astuce {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: #94A3B8;
+  text-align: center;
+}
+
+.pwa-feuille__compris {
+  min-height: 48px;
+  width: 100%;
+  border: 0;
+  border-radius: 0.875rem;
+  font-size: 0.9375rem;
+  font-weight: 800;
+  color: #1a1207;
+  background: linear-gradient(90deg, #F59E0B, #EA580C);
+  cursor: pointer;
+}
+
+.pwa-feuille__fermer:focus-visible,
+.pwa-feuille__compris:focus-visible {
+  outline: 2px solid #F59E0B;
+  outline-offset: 3px;
+}
+
+/* ---------- Lancee depuis l'ecran d'accueil (mode application) ---------- */
+
+/* Le bandeau d'horloge du site n'a pas sa place dans l'application : la barre
+   de navigation remonte en haut, sous l'encoche eventuelle. */
+html.pwa-standalone #top-bar { display: none; }
+html.pwa-standalone body > nav { top: env(safe-area-inset-top); }
+
+/* Ecran a encoche en paysage (viewport-fit=cover) : le contenu reste lisible. */
+body {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pwa-installer,
+  .pwa-feuille,
+  .pwa-feuille__panneau { transition: none; }
+  .pwa-installer:hover { transform: none; }
+}
