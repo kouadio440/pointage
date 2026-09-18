@@ -476,6 +476,27 @@
         </div>
       </div>
 
+      <!-- ==================== SECTION : AVIS (avis/avis.js) ==================== -->
+      <!--
+        Uniquement de vrais avis : deposes par des comptes connectes et publies
+        apres verification par l'equipe Timora. Aucun avis, aucune note et aucun
+        nom n'est ecrit ici.
+      -->
+      <section id="avis" class="avis" aria-labelledby="avis-titre">
+        <div class="avis__entete">
+          <span class="avis__surtitre">AVIS DES UTILISATEURS</span>
+          <h2 id="avis-titre" class="avis__titre">Ce que les utilisateurs pensent de <span class="avis__accent">Timora</span></h2>
+          <p id="avis-resume" class="avis__resume" aria-live="polite"></p>
+        </div>
+        <div id="avis-liste" class="avis__liste" role="list"></div>
+        <div class="avis__actions">
+          <button type="button" class="avis__cta" data-avis-action="donner">
+            <i data-lucide="message-square-plus" class="w-4 h-4" aria-hidden="true"></i>
+            Donner mon avis
+          </button>
+        </div>
+      </section>
+
       <!-- ==================== SECTION : ABONNEMENTS ==================== -->
       <!--
         Les cartes ne sont PAS ecrites ici : elles sont generees depuis la
@@ -2605,6 +2626,9 @@
         <button onclick="switchSaasSection('activity')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition whitespace-nowrap" data-saas-section="activity">
           🖥️ Activité de la plateforme
         </button>
+        <button onclick="switchSaasSection('reviews'); chargerModerationAvis();" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition whitespace-nowrap" data-saas-section="reviews">
+          ⭐ Avis (<span id="saas-avis-compteur">—</span>)
+        </button>
         <button onclick="switchSaasSection('calendar')" class="saas-subtab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition whitespace-nowrap" data-saas-section="calendar">
           📅 Calendrier
         </button>
@@ -2895,6 +2919,24 @@
           </div>
         </div>
 
+      </div>
+
+      <!-- ==================== AVIS A MODERER (avis/avis.js) ==================== -->
+      <div id="saas-section-reviews" class="saas-sub-section hidden space-y-4">
+        <div class="glass-panel p-6 border-slate-800 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <h3 class="font-bold text-slate-200 text-sm flex items-center gap-2">
+              <i data-lucide="star" class="w-4 h-4 text-amber-400"></i>
+              Avis des utilisateurs
+            </h3>
+            <div class="avis-filtres" role="group" aria-label="Statut des avis">
+              <button type="button" data-avis-filtre="PENDING" aria-pressed="true">En attente</button>
+              <button type="button" data-avis-filtre="APPROVED" aria-pressed="false">Publiés</button>
+              <button type="button" data-avis-filtre="REJECTED" aria-pressed="false">Refusés</button>
+            </div>
+          </div>
+          <div id="saas-avis-liste" class="space-y-3"></div>
+        </div>
       </div>
 
       <!-- ==================== ACTIVITÉ ==================== -->
@@ -3261,6 +3303,20 @@
         </button>
       </div>
       <div id="activation-ecran" class="auth-ecran" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <!-- DEPOT D'UN AVIS (avis/avis.js) -->
+  <div id="modal-avis" class="auth-modale" role="dialog" aria-modal="true" aria-labelledby="avis-form-titre" hidden>
+    <div class="auth-carte">
+      <div class="auth-barre">
+        <span aria-hidden="true"></span>
+        <img src="/assets/marque/timora-logo-fond-sombre.png" width="466" height="120" alt="Timora" class="auth-logo" />
+        <button type="button" class="auth-icone-bouton" data-avis-action="fermer" aria-label="Fermer">
+          <i data-lucide="x" class="w-5 h-5" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div id="avis-ecran" class="auth-ecran" aria-live="polite"></div>
     </div>
   </div>
   <!-- MODAL AJOUT D'ÉCHÉANCE CALENDRIER -->
@@ -3833,10 +3889,12 @@
   </div>
 
   <!-- JavaScript App Logic -->
+  <script src="billing/catalogue.js"></script>
   <script src="app.js"></script>
   <script src="auth/auth-flow.js"></script>
   <script src="demo/demo.js"></script>
   <script src="billing/activation.js"></script>
+  <script src="avis/avis.js"></script>
   <!-- Application installable : n'ajoute rien au premier affichage (enregistrement apres chargement). -->
   <script src="/pwa/install-manager.js"></script>
   <script src="/pwa/sw-registration.js"></script>

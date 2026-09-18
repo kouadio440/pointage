@@ -9,7 +9,8 @@
 //     de navigateur ;
 //   - l'activation est atomique et idempotente (billing_apply_provider_status).
 
-import { journaliser } from './journal.mjs';
+import { journaliser, traceDev } from './journal.mjs';
+import { montantCatalogue } from './catalogue.mjs';
 import { rpc, consignerEnBase } from './supabase.mjs';
 import { creerPaiement, lirePaiement, paysDePaiement, signatureValide } from './joonapay.mjs';
 
@@ -93,6 +94,18 @@ export async function demarrerPaiement(config, { jeton, plan, periode, adresseRe
     return { status: 422, corps: { code: 'FORMULE_INDISPONIBLE', message: 'Formule inconnue.' } };
   }
   const per = periode ? String(periode).toUpperCase() : 'MONTHLY';
+  if (!['MONTHLY', 'ANNUAL'].includes(per)) {
+    return { status: 422, corps: { code: 'PERIODE_INVALIDE', message: 'Période invalide.' } };
+  }
+  traceDev('checkout requested', { plan, period: per });
+
+  // Montant attendu : recalcule ici a partir du CODE de la formule, dans le
+  // catalogue partage avec la page d'accueil. Aucun montant envoye par un
+  // navigateur n'est lu.
+  const attendu = montantCatalogue(plan, per);
+  if (attendu === null) {
+    return { status: 422, corps: { code: 'FORMULE_INDISPONIBLE', message: 'Cette formule ne se souscrit pas en ligne.' } };
+  }
 
   const prep = await rpc(config, 'billing_prepare_checkout', {
     p_plan: plan,
@@ -116,6 +129,7 @@ export async function demarrerPaiement(config, { jeton, plan, periode, adresseRe
   }
 
   const p = prep.data || {};
+  traceDev('billing status', { action: p.action, reference: p.reference || null });
   if (p.action === 'REDIRECT') {
     journaliser('JOONAPAY_CHECKOUT_REUSED', { reference: p.reference, environment: config.environnement });
     return { status: 200, corps: { reference: p.reference, checkout_url: p.checkout_url, reutilise: true } };
@@ -123,6 +137,20 @@ export async function demarrerPaiement(config, { jeton, plan, periode, adresseRe
   if (p.action === 'IN_PROGRESS') {
     return { status: 409, corps: { code: 'PAIEMENT_EN_PREPARATION', reference: p.reference, message: 'Votre paiement est en cours de préparation.' } };
   }
+
+  // Double controle : le montant calcule par la base (platform_plans) doit
+  // etre celui du catalogue. Un ecart (tarif modifie d'un seul cote) bloque
+  // le paiement plutot que de facturer un prix different de celui affiche.
+  if (p.amount !== attendu || p.currency !== 'XOF') {
+    journaliser('JOONAPAY_PAYMENT_CREATE_FAILED', {
+      reference: p.reference, etape: 'tarif', code: 'TARIF_INCOHERENT', attendu, base: p.amount,
+    });
+    await rpc(config, 'billing_mark_create_failed', {
+      p_reference: p.reference, p_environment: config.environnement, p_code: 'TARIF_INCOHERENT',
+    });
+    return { status: 503, corps: { code: 'TARIF_EN_MISE_A_JOUR', message: 'Nos tarifs sont en cours de mise à jour. Aucun montant n\'a été débité. Réessayez dans quelques minutes.' } };
+  }
+  traceDev('amount resolved', { plan: p.plan, period: p.period, amount: p.amount, currency: p.currency });
 
   journaliser('JOONAPAY_PAYMENT_CREATE_STARTED', {
     reference: p.reference, environment: config.environnement, plan: p.plan, period: p.period, amount: p.amount,
@@ -132,6 +160,11 @@ export async function demarrerPaiement(config, { jeton, plan, periode, adresseRe
   if (!pays.ok) return echecCreation(config, p.reference, pays);
 
   const retour = `${adresseRetour}/?paiement=retour&ref=${encodeURIComponent(p.reference)}`;
+  // JoonaPay n'accepte que des adresses de retour HTTPS. En developpement
+  // local (http://localhost), elles ne sont pas transmises : JoonaPay garde
+  // alors le client sur sa propre page, et le paiement est verifie quand il
+  // revient sur Timora (ecran d'activation).
+  const retourHttps = urlHttps(retour);
   const client = p.customer || {};
   const corps = {
     amount: p.amount,
@@ -144,16 +177,19 @@ export async function demarrerPaiement(config, { jeton, plan, periode, adresseRe
     description: `Abonnement Timora ${p.plan_name} — ${p.period === 'ANNUAL' ? '12 mois' : '1 mois'} — ${p.company_name}`.slice(0, 500),
     merchant_transaction_id: p.reference,
     webhook_url: config.joonapay.webhookUrl,
-    success_url: retour,
-    cancel_url: `${retour}&issue=annule`,
-    failure_url: `${retour}&issue=echec`,
+    success_url: retourHttps ? retour : undefined,
+    cancel_url: retourHttps ? `${retour}&issue=annule` : undefined,
+    failure_url: retourHttps ? `${retour}&issue=echec` : undefined,
     allow_partial_payment: false,
   };
 
+  traceDev('JoonaPay request started', { reference: p.reference, amount: corps.amount, currency: corps.currency, retour_https: retourHttps });
   const cree = await creerPaiement(config, corps);
+  traceDev('JoonaPay response status', { http_status: cree.status, ok: cree.ok, code: cree.code || null, request_id: cree.requestId || null });
   if (!cree.ok) return echecCreation(config, p.reference, cree);
 
   const d = cree.data || {};
+  traceDev('JoonaPay payment id', { uuid: d.uuid || null, provider_reference: d.reference || null, status: d.status || null });
   const montantRecu = nombre(d.amount);
   const incoherent = typeof d.uuid !== 'string' || !d.uuid || d.uuid.length > 64
     || !urlHttps(d.payment_link)
@@ -179,6 +215,7 @@ export async function demarrerPaiement(config, { jeton, plan, periode, adresseRe
   journaliser('JOONAPAY_PAYMENT_CREATED', {
     reference: p.reference, environment: config.environnement, provider_reference: d.reference || null, request_id: cree.requestId,
   });
+  traceDev('checkout url', { reference: p.reference, checkout_url: d.payment_link });
   return { status: 200, corps: { reference: p.reference, checkout_url: d.payment_link, reutilise: false } };
 }
 

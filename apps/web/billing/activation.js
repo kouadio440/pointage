@@ -12,8 +12,8 @@
  *     JoonaPay et renvoie l'adresse de paiement. Au retour, il demande l'etat
  *     au serveur (/api/billing/status), qui le relit chez JoonaPay.
  *   - « Bienvenue sur Timora » ne s'affiche que si le serveur repond COMPLETED.
- *   - Aucun prix n'est ecrit ici : les montants viennent de la base
- *     (billing_plans_public), charges par le module des tarifs (app.js).
+ *   - Aucun prix n'est ecrit ici : les montants viennent du catalogue
+ *     (billing/catalogue.js), le meme que celui du serveur de paiement.
  *   - Aucun secret : seul le jeton de session de l'utilisateur est transmis,
  *     dans l'en-tete Authorization, a nos propres routes.
  * ========================================================================== */
@@ -39,6 +39,24 @@ const activation = {
 
 function suivreActivation(nom, donnees = {}) {
   if (typeof suivreTarifs === 'function') suivreTarifs(nom, donnees);
+}
+
+const estLocal = () => ['localhost', '127.0.0.1'].includes(window.location.hostname);
+
+/**
+ * Traces « [BILLING] » pour suivre le parcours pendant le developpement : en
+ * local uniquement, et jamais de cle, de jeton ni de donnee de carte.
+ */
+function traceFacturation(message, details = null) {
+  if (!estLocal()) return;
+  console.info(`[BILLING] ${message}`, details || '');
+}
+
+/** Badge SANDBOX : en developpement local seulement, jamais montre aux clients. */
+function badgeSandbox() {
+  const billing = (activation.contexte && activation.contexte.billing) || {};
+  const env = (activation.paiement && activation.paiement.environment) || billing.environnement;
+  return estLocal() && env === 'sandbox' ? '<span class="activation-sandbox">SANDBOX</span>' : '';
 }
 
 const echapActivation = (s) => (typeof escapeHtml === 'function' ? escapeHtml(String(s ?? '')) : String(s ?? ''));
@@ -167,10 +185,7 @@ async function ouvrirActivation(contexte, { renouvellement = false } = {}) {
   afficherModaleActivation();
   rendreActivation();
 
-  const [entreprise] = await Promise.all([
-    lireEntreprise(actif.company_id),
-    typeof chargerTarifsServeur === 'function' ? chargerTarifsServeur() : Promise.resolve(),
-  ]);
+  const entreprise = await lireEntreprise(actif.company_id);
   activation.entreprise = entreprise || { id: actif.company_id, name: actif.company_name, employee_range: null };
 
   if (!prixDisponibles()) {
@@ -187,7 +202,20 @@ async function ouvrirActivation(contexte, { renouvellement = false } = {}) {
 
   activation.formule = (memorisee && memorisee.code) || precedente || recommandee || 'business';
   activation.periode = (memorisee && memorisee.periode) || 'MONTHLY';
-  activation.etat = activation.formule === 'entreprise' ? 'DEVIS' : 'CHOIX';
+  traceFacturation('billing status', { etat: billing.etat || null, entreprise: actif.company_id || null });
+
+  // Retour sur Timora apres un passage chez JoonaPay, sans adresse de retour
+  // (fermeture de l'onglet, developpement local) : le paiement recent est
+  // verifie aupres du serveur avant de proposer de payer a nouveau.
+  const recent = lireStockage(CLE_PAIEMENT_EN_COURS);
+  if (recent && recent.reference && Date.now() - (recent.depuis || 0) < 2 * 3600 * 1000 && !activation.verificationAuto) {
+    activation.verificationAuto = true;
+    traceFacturation('verification du paiement recent', { reference: recent.reference });
+    verifierPaiement(recent.reference);
+    return;
+  }
+
+  activation.etat = 'CHOIX';
   suivreActivation('activation_viewed', {
     etat_abonnement: billing.etat || null, formule: activation.formule, renouvellement,
   });
@@ -231,16 +259,23 @@ async function continuerVersPaiement(tentative = 1) {
   // Verrou anti double clic. Les nouveaux essais automatiques (tentative > 1)
   // le detiennent deja : ils passent.
   if (activation.enCours && tentative === 1) return;
+  if (activation.formule === 'entreprise') {
+    activation.etat = 'DEVIS';
+    rendreActivation();
+    return;
+  }
   const plan = formuleEnLigne(activation.formule);
   if (!plan) return;
 
   activation.enCours = true;
   activation.erreur = null;
   if (tentative === 1) {
+    traceFacturation('selected plan', { plan: plan.code, periode: activation.periode, montant_affiche: montantFormule(plan) });
     suivreActivation('checkout_started', {
       plan: plan.code, periode: activation.periode, montant: montantFormule(plan),
     });
   }
+  traceFacturation('checkout requested', { plan: plan.code, periode: activation.periode, tentative });
   rendreActivation();
 
   const r = await appelerFacturation('/api/billing/checkout', {
@@ -249,13 +284,16 @@ async function continuerVersPaiement(tentative = 1) {
     body: JSON.stringify({ plan: plan.code, period: activation.periode }),
   });
 
+  traceFacturation('checkout response', { http_status: r.status, code: r.corps.code || null, reference: r.corps.reference || null });
   if (r.status === 200 && r.corps.checkout_url && /^https:\/\//.test(r.corps.checkout_url)) {
+    traceFacturation('checkout url', { reference: r.corps.reference, checkout_url: r.corps.checkout_url, reutilise: !!r.corps.reutilise });
     if (!r.corps.reutilise) suivreActivation('joonapay_checkout_created', { plan: plan.code });
     ecrireStockage(CLE_PAIEMENT_EN_COURS, { reference: r.corps.reference, depuis: Date.now() });
     ecrireStockage(CLE_FORMULE_CHOISIE, null);
     activation.etat = 'REDIRECTION';
     rendreActivation();
     suivreActivation('payment_redirected', { plan: plan.code });
+    traceFacturation('redirect started', { vers: new URL(r.corps.checkout_url).host });
     setTimeout(() => window.location.assign(r.corps.checkout_url), 400);
     return;
   }
@@ -426,22 +464,31 @@ function ecranChoixActivation() {
   const expire = billing.etat === 'EXPIRED';
   const nomEntreprise = echapActivation((activation.entreprise && activation.entreprise.name) || 'votre entreprise');
   const recommandee = EFFECTIF_VERS_FORMULE[(activation.entreprise || {}).employee_range];
-  const plan = formuleEnLigne(activation.formule) || formules().find((p) => !p.surDevis && p.mensuel);
+  const surDevis = activation.formule === 'entreprise';
+  const plan = surDevis ? formules().find((p) => p.code === 'entreprise')
+    : formuleEnLigne(activation.formule) || formules().find((p) => !p.surDevis && p.mensuel);
   activation.formule = plan.code;
-  const montant = montantFormule(plan);
+  const montant = surDevis ? null : montantFormule(plan);
   const unite = activation.periode === 'ANNUAL' ? 'an' : 'mois';
   const enCours = lireStockage(CLE_PAIEMENT_EN_COURS);
 
-  let titre = 'Activez Timora';
-  let sousTitre = `Dernière étape : choisissez la formule de <strong>${nomEntreprise}</strong>`;
+  let titre = 'Votre espace Timora est presque prêt.';
+  let sousTitre = 'Choisissez votre formule pour activer votre entreprise.';
   if (expire) {
     titre = 'Votre abonnement Timora a expiré.';
     sousTitre = 'Vos données sont conservées. Renouvelez votre abonnement pour que vos équipes puissent de nouveau pointer.';
+  } else if (billing.etat === 'PAST_DUE') {
+    titre = 'Un paiement Timora est en attente.';
+    sousTitre = 'Vos données sont conservées. Réglez votre abonnement pour que vos équipes puissent de nouveau pointer.';
+  } else if (billing.etat === 'CANCELLED') {
+    titre = 'Votre abonnement Timora a été résilié.';
+    sousTitre = 'Vos données sont conservées. Choisissez une formule pour réactiver votre entreprise.';
   } else if (activation.renouvellement) {
     titre = 'Renouveler mon abonnement';
     sousTitre = `La nouvelle période s'ajoute à la fin de l'abonnement en cours de <strong>${nomEntreprise}</strong>.`;
   }
 
+  const carteEntreprise = formules().find((p) => p.code === 'entreprise');
   const cartes = formules().filter((p) => !p.surDevis && p.mensuel).map((p) => `
     <label class="activation-formule${p.code === plan.code ? ' is-choisie' : ''}">
       <input type="radio" name="activation-formule" value="${p.code}" ${p.code === plan.code ? 'checked' : ''} data-activation-formule />
@@ -456,10 +503,24 @@ function ecranChoixActivation() {
           <span class="activation-formule__prix">${echapActivation(formaterFcfa(montantFormule(p)))}<small> / ${unite}</small></span>
         </span>
       </span>
-    </label>`).join('');
+    </label>`).join('') + (carteEntreprise ? `
+    <label class="activation-formule${surDevis ? ' is-choisie' : ''}">
+      <input type="radio" name="activation-formule" value="entreprise" ${surDevis ? 'checked' : ''} data-activation-formule />
+      <span class="activation-formule__corps">
+        <span class="activation-formule__ligne">
+          <strong>${echapActivation(carteEntreprise.nom)}</strong>
+          ${recommandee === 'entreprise' ? '<span class="activation-pastille">Recommandé</span>' : ''}
+        </span>
+        <span class="activation-formule__ligne">
+          <span class="activation-formule__cible">${echapActivation(carteEntreprise.cible)}</span>
+          <span class="activation-formule__prix">Sur devis</span>
+        </span>
+      </span>
+    </label>` : '');
 
   return `
     ${enteteActivation(titre, sousTitre)}
+    <p class="activation-entreprise">${badgeSandbox()}<span>${nomEntreprise}</span></p>
 
     ${enCours && !expire ? `
       <p class="activation-info">
@@ -468,6 +529,8 @@ function ecranChoixActivation() {
           <button type="button" class="auth-lien" data-activation-action="verifier-recent">Vérifier son état</button></span>
       </p>` : ''}
 
+    <div class="activation-grille">
+    <div class="activation-colonne">
     <div class="activation-periode" role="group" aria-label="Période">
       <button type="button" data-activation-periode="MONTHLY" aria-pressed="${activation.periode === 'MONTHLY'}">Mensuel</button>
       <button type="button" data-activation-periode="ANNUAL" aria-pressed="${activation.periode === 'ANNUAL'}">Annuel <small>2 mois offerts</small></button>
@@ -477,15 +540,32 @@ function ecranChoixActivation() {
       <legend class="sr-only">Formule</legend>
       ${cartes}
     </fieldset>
+    </div>
 
+    <div class="activation-colonne">
+    ${surDevis ? `
     <div class="activation-recap">
-      <p class="activation-recap__titre">Ce que vous activez</p>
+      <p class="activation-recap__formule"><strong>ENTREPRISE</strong><span>${echapActivation(plan.cible)} — Sur devis</span></p>
+      <p class="activation-recap__note">
+        Au-delà de 100 collaborateurs, l'abonnement est établi sur devis selon vos sites et votre organisation.
+      </p>
+    </div>
+
+    <div class="activation-action">
+      <button type="button" class="auth-bouton auth-bouton--principal" data-activation-action="payer">
+        <span>Demander un devis</span><i data-lucide="arrow-right" class="w-4 h-4" aria-hidden="true"></i>
+      </button>
+    </div>` : `
+    <div class="activation-recap">
+      <p class="activation-recap__formule">
+        <strong>${echapActivation(plan.nom.toUpperCase())}</strong>
+        <span>${echapActivation(plan.cible)} — ${echapActivation(formaterFcfa(montant))} / ${unite}</span>
+      </p>
       <ul>
-        ${(plan.principales || []).slice(0, 4).map((f) => `<li><i data-lucide="check" aria-hidden="true"></i>${echapActivation(f)}</li>`).join('')}
-        <li><i data-lucide="check" aria-hidden="true"></i>Jusqu'à ${plan.maxEmployes} collaborateurs</li>
+        ${(plan.principales || []).map((f) => `<li><i data-lucide="check" aria-hidden="true"></i>${echapActivation(f)}</li>`).join('')}
       </ul>
       <div class="activation-total">
-        <span>Total aujourd'hui</span>
+        <span>TOTAL AUJOURD'HUI</span>
         <strong>${echapActivation(formaterFcfa(montant))}</strong>
       </div>
       <p class="activation-recap__note">
@@ -503,11 +583,9 @@ function ecranChoixActivation() {
           : `<span>Continuer vers le paiement</span><i data-lucide="arrow-right" class="w-4 h-4" aria-hidden="true"></i>`}
       </button>
       ${piedSecurise(formaterFcfa(montant))}
+    </div>`}
     </div>
-
-    <p class="auth-lien-secondaire">
-      <button type="button" data-activation-action="devis">Plus de 100 collaborateurs ? Formule Entreprise sur devis</button>
-    </p>`;
+    </div>`;
 }
 
 function ecranDevisActivation() {
@@ -575,6 +653,7 @@ const ECRANS_ACTIVATION = {
 
   VERIFICATION: () => `
     <div class="auth-attente" role="status">
+      ${badgeSandbox()}
       <span class="auth-roue" aria-hidden="true"></span>
       <h2 id="activation-titre" class="auth-titre" tabindex="-1">Vérification de votre paiement…</h2>
       <p class="auth-sous-titre">Timora demande la confirmation à JoonaPay. Cela prend quelques secondes.</p>
@@ -645,6 +724,9 @@ const ECRANS_ACTIVATION = {
             <span>Reprendre le paiement</span>
           </a>` : ''}
       </div>
+      <p class="auth-lien-secondaire">
+        <button type="button" data-activation-action="changer">Choisir une autre formule</button>
+      </p>
       ${diagnosticSandbox()}`;
   },
 
@@ -686,6 +768,9 @@ function rendreActivation() {
   const changement = zone.dataset.etat !== activation.etat;
   zone.dataset.etat = activation.etat;
   zone.innerHTML = (ECRANS_ACTIVATION[activation.etat] || ECRANS_ACTIVATION.ERREUR)();
+  // Ecran de choix : deux colonnes sur ordinateur (formules | recapitulatif).
+  const carte = zone.closest('.activation-carte');
+  if (carte) carte.classList.toggle('is-large', activation.etat === 'CHOIX');
   if (window.lucide) window.lucide.createIcons();
   if (changement) {
     const titre = document.getElementById('activation-titre');
@@ -836,6 +921,10 @@ function initialiserActivation() {
       else if (action === 'reessayer') ouvrirActivation(activation.contexte);
       else if (action === 'recharger') ouvrirActivation(activation.contexte);
       else if (action === 'verifier') verifierPaiement(activation.reference);
+      else if (action === 'changer') {
+        ecrireStockage(CLE_PAIEMENT_EN_COURS, null);
+        ouvrirActivation(activation.contexte);
+      }
       else if (action === 'verifier-recent') {
         const enCours = lireStockage(CLE_PAIEMENT_EN_COURS);
         if (enCours && enCours.reference) verifierPaiement(enCours.reference);
@@ -851,6 +940,7 @@ function initialiserActivation() {
       const radio = e.target.closest('[data-activation-formule]');
       if (!radio) return;
       activation.formule = radio.value;
+      traceFacturation('selected plan', { plan: radio.value });
       suivreActivation('plan_selected', { plan: radio.value, source: 'activation' });
       rendreActivation();
     });

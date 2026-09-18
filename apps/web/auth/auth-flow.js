@@ -1042,6 +1042,7 @@ async function soumettreOnboarding(formulaire) {
     if (error) throw error;
 
     suivreAuth('company_created', { statut: data.status, effectif: donnees.effectif });
+    if (typeof traceFacturation === 'function') traceFacturation('company created', { statut: data.status, destination: data.destination });
     if (typeof showToast === 'function') {
       if (data.status === 'ALREADY_EXISTS') {
         showToast('Votre entreprise existe déjà', `Vous êtes redirigé vers ${escapeHtml(data.company_name)}.`, 'info', 6000);
@@ -1271,6 +1272,10 @@ async function executerResolution({ intention = null, silencieux = false, entrep
       rendreAuthentification();
       break;
   }
+
+  // « Donner mon avis » avait demande une connexion : le formulaire s'ouvre
+  // maintenant que le compte est identifie.
+  if (typeof reprendreAvisApresConnexion === 'function') reprendreAvisApresConnexion();
 
   return destination;
 }

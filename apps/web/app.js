@@ -3125,7 +3125,7 @@ function renderEmployeePunchRejection(verdict, steps) {
       title: 'Pointage indisponible',
       body: "Le compte de votre entreprise est suspendu. Contactez votre direction.",
     },
-    SUBSCRIPTION_INACTIVE: {
+    SUBSCRIPTION_REQUIRED: {
       title: 'Abonnement inactif',
       body: "L'abonnement Timora de votre entreprise n'est pas actif. Prévenez votre responsable.",
     },
@@ -5201,11 +5201,13 @@ function askCopilot(topic) {
 //  deja — 25 000 dans la carte, 20 000 en annuel (presente comme un prix
 //  mensuel), 150 000 dans le ROI pour une offre qui n'existait pas.
 //
-//  Depuis la migration 031, les MONTANTS et les EFFECTIFS ne sont plus ecrits
-//  ici : ils viennent de la base (billing_plans_public), la meme table que
-//  celle ou le serveur de paiement lit le prix a facturer. Ce fichier ne garde
-//  que la presentation (nom, public vise, fonctionnalites). Un prix modifie
-//  dans le navigateur ne change donc rien a ce qui est facture.
+//  Les MONTANTS et les EFFECTIFS ne sont pas ecrits ici : ils viennent du
+//  catalogue billing/catalogue.js, charge avant ce fichier. C'est le meme
+//  fichier que le serveur de paiement utilise pour recalculer le montant a
+//  facturer ; la base en garde une copie (platform_plans) et le serveur refuse
+//  tout ecart. Les prix s'affichent donc immediatement, sans appel reseau, et
+//  un prix modifie dans le navigateur ne change rien a ce qui est facture.
+//  Ce fichier ne garde que la presentation (fonctionnalites, badge).
 //
 //  Le seuil d'une formule est son `maxEmployes` : la recommandation prend le
 //  PREMIER plan capable d'accueillir l'effectif saisi.
@@ -5224,15 +5226,36 @@ function askCopilot(topic) {
  */
 const TARIFS_CONTACT_COMMERCIAL = '';
 
+/** Catalogue des formules (billing/catalogue.js). Absent seulement si ce script n'a pas pu se charger. */
+const CATALOGUE_FORMULES = (typeof window !== 'undefined' && window.CATALOGUE_TIMORA) || null;
+
+/** Prix, effectif et mode de souscription d'une formule, tels que le catalogue les definit. */
+function prixCatalogue(code) {
+  const f = CATALOGUE_FORMULES && CATALOGUE_FORMULES.formules.find((x) => x.code === code);
+  if (!f) return { maxEmployes: null, mensuel: null, annuel: null, surDevis: code === 'entreprise' };
+  return {
+    maxEmployes: f.maxEmployes === null ? Infinity : f.maxEmployes,
+    mensuel: f.mensuel,
+    annuel: f.annuel,
+    surDevis: !f.enLigne,
+  };
+}
+
+/** « Jusqu'à 10 employés », « Plus de 100 employés » : derive des effectifs du catalogue. */
+function cibleCatalogue(code) {
+  const formules = CATALOGUE_FORMULES ? CATALOGUE_FORMULES.formules : [];
+  const f = formules.find((x) => x.code === code);
+  if (f && f.maxEmployes !== null) return `Jusqu'à ${f.maxEmployes} employés`;
+  const plafond = Math.max(0, ...formules.filter((x) => x.maxEmployes !== null).map((x) => x.maxEmployes));
+  return plafond ? `Plus de ${plafond} employés` : 'Sur mesure';
+}
+
 const PLANS_TIMORA = [
   {
     code: 'essentiel',
     nom: 'Essentiel',
-    cible: 'Jusqu\'à 10 employés',
-    // Effectif et prix : charges depuis la base (chargerTarifsServeur).
-    maxEmployes: null,
-    mensuel: null,
-    annuel: null,
+    cible: cibleCatalogue('essentiel'),
+    ...prixCatalogue('essentiel'),
     principales: [
       'Reconnaissance faciale',
       'Pointage GPS & géofencing',
@@ -5252,11 +5275,8 @@ const PLANS_TIMORA = [
   {
     code: 'business',
     nom: 'Business',
-    cible: 'Jusqu\'à 30 employés',
-    // Effectif et prix : charges depuis la base (chargerTarifsServeur).
-    maxEmployes: null,
-    mensuel: null,
-    annuel: null,
+    cible: cibleCatalogue('business'),
+    ...prixCatalogue('business'),
     badge: 'Le choix des PME',
     misEnAvant: true,
     principales: [
@@ -5280,11 +5300,8 @@ const PLANS_TIMORA = [
   {
     code: 'pro',
     nom: 'Pro',
-    cible: 'Jusqu\'à 100 employés',
-    // Effectif et prix : charges depuis la base (chargerTarifsServeur).
-    maxEmployes: null,
-    mensuel: null,
-    annuel: null,
+    cible: cibleCatalogue('pro'),
+    ...prixCatalogue('pro'),
     principales: [
       'Toutes les fonctionnalités Business',
       'Gestion multi-sites',
@@ -5303,12 +5320,9 @@ const PLANS_TIMORA = [
   {
     code: 'entreprise',
     nom: 'Entreprise',
-    cible: 'Plus de 100 employés',
+    cible: cibleCatalogue('entreprise'),
     // Aucune borne haute : c'est la formule qui absorbe tout le reste.
-    maxEmployes: Infinity,
-    mensuel: null,
-    annuel: null,
-    surDevis: true,
+    ...prixCatalogue('entreprise'),
     principales: [
       'Nombre d\'employés personnalisé',
       'Multi-sites avancé',
@@ -5376,45 +5390,9 @@ const etatTarifs = {
   groupeCompare: COMPARAISON_TARIFS[0].groupe,
   derniereRecommandation: null,
   vueSignalee: false,
-  /** 'attente' | 'pret' | 'erreur' : etat du chargement des prix depuis la base. */
-  chargement: 'attente',
+  /** 'pret' des le chargement ; 'erreur' seulement si le catalogue n'a pas pu se charger. */
+  chargement: CATALOGUE_FORMULES ? 'pret' : 'erreur',
 };
-
-let chargementTarifs = null;
-
-/**
- * Charge prix et effectifs depuis la base. Une seule requete, partagee par la
- * page d'accueil, la demonstration et l'ecran d'activation.
- */
-function chargerTarifsServeur() {
-  if (etatTarifs.chargement === 'pret') return Promise.resolve(true);
-  if (chargementTarifs) return chargementTarifs;
-  chargementTarifs = (async () => {
-    try {
-      if (!supabaseClient) throw new Error('Supabase indisponible');
-      const { data, error } = await supabaseClient.rpc('billing_plans_public');
-      if (error) throw error;
-      (data || []).forEach((p) => {
-        const plan = PLANS_TIMORA.find((x) => x.code === p.code);
-        if (!plan) return;
-        plan.mensuel = p.monthly_price;
-        plan.annuel = p.annual_price;
-        plan.maxEmployes = p.max_employees === null ? Infinity : p.max_employees;
-        plan.surDevis = !p.self_serve;
-      });
-      etatTarifs.chargement = PLANS_TIMORA.some((p) => !p.surDevis && p.mensuel) ? 'pret' : 'erreur';
-    } catch (err) {
-      console.warn('[Tarifs] Chargement impossible :', err && err.message);
-      etatTarifs.chargement = 'erreur';
-    } finally {
-      chargementTarifs = null;
-    }
-    renderTarifs();
-    afficherPrixMinimum();
-    return etatTarifs.chargement === 'pret';
-  })();
-  return chargementTarifs;
-}
 
 /** Le plus petit prix mensuel publie, ou `null` tant qu'il n'est pas connu. */
 function prixMinimumTimora() {
@@ -5464,7 +5442,7 @@ function suivreTarifs(nom, donnees = {}) {
 //  CALCULS
 // -----------------------------------------------------------------------------
 
-/** La premiere formule capable d'accueillir cet effectif (effectifs lus en base). */
+/** La premiere formule capable d'accueillir cet effectif (effectifs du catalogue). */
 function planRecommandeTarifs(employes) {
   if (etatTarifs.chargement !== 'pret') return PLANS_TIMORA[PLANS_TIMORA.length - 1];
   return PLANS_TIMORA.find((p) => p.maxEmployes !== null && employes <= p.maxEmployes)
@@ -5507,6 +5485,15 @@ function coutParEmployeTarifs(plan) {
 function renderTarifs() {
   const grille = document.getElementById('tarifs-grille');
   if (!grille) return;
+
+  if (etatTarifs.chargement !== 'pret') {
+    grille.innerHTML = `
+      <div class="tarifs__erreur" role="alert">
+        <p>Les tarifs n'ont pas pu être chargés. Vérifiez votre connexion.</p>
+        <button type="button" class="tarifs__cta is-principal" data-tarifs-reessayer>Réessayer</button>
+      </div>`;
+    return;
+  }
 
   const pret = etatTarifs.chargement === 'pret';
   const recommande = planRecommandeTarifs(etatTarifs.employes);
@@ -5551,9 +5538,7 @@ function renderTarifs() {
         <div class="tarifs__prix-bloc">
           <p class="tarifs__prix">
             <span class="tarifs__montant">
-              ${plan.surDevis ? 'Sur devis'
-                : montant !== null ? formaterFcfa(montant)
-                  : etatTarifs.chargement === 'erreur' ? 'Tarif indisponible' : '…'}
+              ${plan.surDevis || montant === null ? 'Sur devis' : formaterFcfa(montant)}
             </span>
             ${montant === null ? '' :
               `<span class="tarifs__unite">/ ${etatTarifs.periode === 'annuel' ? 'an' : 'mois'}</span>`}
@@ -5769,6 +5754,10 @@ function initialiserTarifs() {
   if (!section) return;
 
   section.addEventListener('click', (e) => {
+    if (e.target.closest('[data-tarifs-reessayer]')) {
+      window.location.reload();
+      return;
+    }
     const cible = e.target.closest('[data-pas], [data-plan-cta], [data-deplier], [data-groupe], #tarifs-btn-comparer, [data-periode]');
     if (!cible) return;
 
@@ -5821,7 +5810,7 @@ function initialiserTarifs() {
   }
 
   renderTarifs();
-  chargerTarifsServeur();
+  afficherPrixMinimum();
 }
 
 

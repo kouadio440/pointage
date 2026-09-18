@@ -33,11 +33,13 @@
 --
 --  ENTREPRISES EXISTANTES
 --  ----------------------
---  Les entreprises presentes avant cette migration sont marquees
---  `billing_legacy` : elles restent actives, sans rien perdre. Leurs
---  abonnements herites sont comptes a 0 FCFA de revenu — ils n'ont jamais
---  ete factures, et le tarif « pro » desormais connu ne doit pas fabriquer un
---  chiffre d'affaires qui n'existe pas.
+--  Sont preservees (`billing_legacy`, actives sans rien perdre) celles qui
+--  avaient un abonnement ou une activite reelle (pointages, collaborateurs
+--  actifs). Leurs abonnements herites sont comptes a 0 FCFA de revenu : ils
+--  n'ont jamais ete factures.
+--  Les entreprises creees SANS abonnement ni activite passent en attente de
+--  paiement, comme toute nouvelle entreprise : aucune donnee n'est supprimee,
+--  le proprietaire choisit simplement sa formule a sa prochaine connexion.
 --
 --  CORRECTION AU PASSAGE
 --  ---------------------
@@ -110,10 +112,16 @@ BEGIN
                     WHERE table_schema = 'public' AND table_name = 'companies'
                       AND column_name = 'billing_legacy') THEN
         ALTER TABLE public.companies ADD COLUMN billing_legacy BOOLEAN NOT NULL DEFAULT FALSE;
-        -- Calcule UNE SEULE FOIS : toutes les entreprises deja creees sont
-        -- heritees. Une relance de la migration ne marquera pas celles creees
-        -- depuis.
-        UPDATE public.companies SET billing_legacy = TRUE;
+        -- Calcule UNE SEULE FOIS, a la premiere application : sont heritees
+        -- les entreprises qui avaient un abonnement, ou une activite reelle.
+        -- Une relance de la migration ne marque pas celles creees depuis.
+        UPDATE public.companies c SET billing_legacy = TRUE
+         WHERE EXISTS (SELECT 1 FROM public.company_subscriptions s
+                        WHERE s.company_id = c.id AND s.status IN ('TRIAL', 'ACTIVE', 'PAST_DUE'))
+            OR EXISTS (SELECT 1 FROM public.attendances a WHERE a.company_id = c.id)
+            OR EXISTS (SELECT 1 FROM public.company_memberships m
+                        WHERE m.company_id = c.id AND m.status = 'ACTIVE'
+                          AND public.normaliser_role_membre(m.role) <> 'OWNER');
     END IF;
 END;
 $$;
@@ -137,12 +145,11 @@ ALTER TABLE public.companies ALTER COLUMN plan DROP DEFAULT;
 -- -----------------------------------------------------------------------------
 -- 3. TARIFS : LA SOURCE DE VERITE
 -- -----------------------------------------------------------------------------
---  Les montants ne vivent QU'ICI. Le navigateur les lit pour les afficher ; le
---  serveur de paiement les relit pour facturer. Un montant modifie dans le
---  navigateur ne change donc rien a ce qui est demande a JoonaPay.
---
---  Les prix deja saisis par le super admin ne sont jamais ecrases : seules
---  les valeurs absentes sont completees.
+--  Source unique : apps/web/billing/catalogue.js. Les valeurs ci-dessous en
+--  sont GENEREES (generer_031) : la page d'accueil affiche le catalogue, la
+--  base calcule le montant facture avec ces memes valeurs, et le serveur de
+--  paiement refuse tout ecart entre les deux. Un montant modifie dans le
+--  navigateur ne change rien a ce qui est demande a JoonaPay.
 
 ALTER TABLE public.platform_plans ADD COLUMN IF NOT EXISTS currency TEXT NOT NULL DEFAULT 'XOF';
 ALTER TABLE public.platform_plans ADD COLUMN IF NOT EXISTS self_serve BOOLEAN NOT NULL DEFAULT TRUE;
@@ -152,16 +159,19 @@ ALTER TABLE public.platform_plans ADD CONSTRAINT platform_plans_currency_check C
 
 INSERT INTO public.platform_plans (code, name, monthly_price_fcfa, annual_price_fcfa, max_employees,
                                    is_active, sort_order, currency, self_serve)
-VALUES ('essentiel',  'Essentiel',  15000, 150000, 10,   TRUE, 10, 'XOF', TRUE),
-       ('business',   'Business',   35000, 350000, 30,   TRUE, 20, 'XOF', TRUE),
-       ('pro',        'Pro',        75000, 750000, 100,  TRUE, 30, 'XOF', TRUE),
-       ('entreprise', 'Entreprise', NULL,  NULL,   NULL, TRUE, 40, 'XOF', FALSE)
+VALUES
+       ('essentiel', 'Essentiel', 15000, 150000, 10, TRUE, 10, 'XOF', TRUE),
+       ('business', 'Business', 35000, 350000, 30, TRUE, 20, 'XOF', TRUE),
+       ('pro', 'Pro', 75000, 750000, 100, TRUE, 30, 'XOF', TRUE),
+       ('entreprise', 'Entreprise', NULL, NULL, NULL, TRUE, 40, 'XOF', FALSE)
 ON CONFLICT (code) DO UPDATE SET
-    name               = COALESCE(NULLIF(public.platform_plans.name, initcap(public.platform_plans.code)), EXCLUDED.name),
-    monthly_price_fcfa = COALESCE(public.platform_plans.monthly_price_fcfa, EXCLUDED.monthly_price_fcfa),
-    annual_price_fcfa  = COALESCE(public.platform_plans.annual_price_fcfa,  EXCLUDED.annual_price_fcfa),
-    max_employees      = COALESCE(public.platform_plans.max_employees,      EXCLUDED.max_employees),
+    name               = EXCLUDED.name,
+    monthly_price_fcfa = EXCLUDED.monthly_price_fcfa,
+    annual_price_fcfa  = EXCLUDED.annual_price_fcfa,
+    max_employees      = EXCLUDED.max_employees,
+    is_active          = TRUE,
     sort_order         = EXCLUDED.sort_order,
+    currency           = EXCLUDED.currency,
     self_serve         = EXCLUDED.self_serve,
     updated_at         = NOW();
 
@@ -229,6 +239,24 @@ ALTER TABLE public.company_subscriptions ADD CONSTRAINT company_subscriptions_en
     CHECK (environment IN ('sandbox', 'production'));
 ALTER TABLE public.company_subscriptions ADD COLUMN IF NOT EXISTS current_period_start TIMESTAMPTZ;
 ALTER TABLE public.company_subscriptions ADD COLUMN IF NOT EXISTS last_payment_id UUID;
+
+-- -----------------------------------------------------------------------------
+-- 4 bis. ENTREPRISES SANS ABONNEMENT NI ACTIVITE : EN ATTENTE DE PAIEMENT
+-- -----------------------------------------------------------------------------
+--  Rien n'est supprime : l'entreprise, son code et ses rattachements restent.
+--  Seul l'acces aux fonctions payantes attend le paiement.
+
+UPDATE public.companies c
+   SET status = 'pending_payment', billing_environment = public.billing_mode(), updated_at = NOW()
+ WHERE NOT c.billing_legacy
+   AND lower(COALESCE(c.status, 'active')) = 'active'
+   AND NOT EXISTS (SELECT 1 FROM public.company_subscriptions s WHERE s.company_id = c.id);
+
+INSERT INTO public.company_subscriptions (company_id, plan_code, status, billing_period, amount_fcfa, environment)
+SELECT c.id, NULL, 'PENDING_PAYMENT', 'MONTHLY', 0, c.billing_environment
+  FROM public.companies c
+ WHERE lower(COALESCE(c.status, '')) = 'pending_payment'
+   AND NOT EXISTS (SELECT 1 FROM public.company_subscriptions s WHERE s.company_id = c.id);
 
 -- -----------------------------------------------------------------------------
 -- 5. PAIEMENTS EN LIGNE ET JOURNAL
@@ -347,7 +375,10 @@ GRANT EXECUTE ON FUNCTION public.billing_log(TEXT, TEXT, TEXT, JSONB) TO service
 --   ACTIVE           entreprise heritee, ou abonnement actif dans la periode
 --   PENDING_PAYMENT  jamais payee
 --   EXPIRED          periode payee terminee (donnees conservees)
---   SUSPENDED        suspendue par la plateforme
+--   PAST_DUE         paiement en retard (pose par la plateforme)
+--   CANCELLED        abonnement ou entreprise resilie
+--   SUSPENDED        entreprise suspendue par la plateforme
+--  Seul ACTIVE ouvre les fonctions payantes.
 --
 --  L'abonnement doit appartenir au MEME environnement que l'entreprise : un
 --  abonnement active par un paiement de test n'ouvre jamais une entreprise
@@ -377,17 +408,24 @@ BEGIN
       FROM public.company_subscriptions s
      WHERE s.company_id = p_company
        AND s.environment = v_c.billing_environment
-       AND s.status IN ('ACTIVE', 'PAST_DUE', 'EXPIRED')
-     ORDER BY (s.status = 'ACTIVE') DESC, s.current_period_end DESC NULLS FIRST, s.updated_at DESC
+       AND s.status IN ('ACTIVE', 'PAST_DUE', 'EXPIRED', 'CANCELLED')
+     ORDER BY (s.status = 'ACTIVE') DESC, (s.status = 'PAST_DUE') DESC,
+              s.current_period_end DESC NULLS FIRST, s.updated_at DESC
      LIMIT 1;
 
-    IF v_c.status IN ('suspended', 'cancelled') THEN
+    IF v_c.status = 'cancelled' THEN
+        v_etat := 'CANCELLED';
+    ELSIF v_c.status = 'suspended' THEN
         v_etat := 'SUSPENDED';
     ELSIF v_c.billing_legacy AND v_c.status = 'active' THEN
         v_etat := 'ACTIVE';
     ELSIF v_s.status = 'ACTIVE' AND v_c.status = 'active'
           AND (v_s.current_period_end IS NULL OR v_s.current_period_end > NOW()) THEN
         v_etat := 'ACTIVE';
+    ELSIF v_s.status = 'PAST_DUE' THEN
+        v_etat := 'PAST_DUE';
+    ELSIF v_s.status = 'CANCELLED' THEN
+        v_etat := 'CANCELLED';
     ELSIF v_s.status IS NOT NULL THEN
         v_etat := 'EXPIRED';
     ELSE
@@ -853,7 +891,7 @@ BEGIN
 
     -- ---- Activation : une periode, prolongee si l'abonnement court encore ----
     SELECT * INTO v_abo FROM public.company_subscriptions
-     WHERE company_id = v_p.company_id AND status IN ('TRIAL', 'ACTIVE', 'PAST_DUE')
+     WHERE company_id = v_p.company_id AND status IN ('TRIAL', 'PENDING_PAYMENT', 'ACTIVE', 'PAST_DUE')
      ORDER BY created_at DESC
      LIMIT 1
      FOR UPDATE;
@@ -1117,7 +1155,7 @@ BEGIN
 
     -- Aucun pointage reel sans abonnement actif (migration 031).
     IF NOT public.entreprise_operationnelle(v_company.id) THEN
-        RETURN jsonb_build_object('accepted', FALSE, 'code', 'SUBSCRIPTION_INACTIVE',
+        RETURN jsonb_build_object('accepted', FALSE, 'code', 'SUBSCRIPTION_REQUIRED',
             'message', 'L''abonnement Timora de votre entreprise n''est pas actif. Prévenez votre responsable.');
     END IF;
 
@@ -1440,7 +1478,7 @@ BEGIN
     END IF;
 
     IF NOT public.entreprise_operationnelle(v_user.company_id) THEN
-        RETURN jsonb_build_object('ok', FALSE, 'code', 'SUBSCRIPTION_INACTIVE',
+        RETURN jsonb_build_object('ok', FALSE, 'code', 'SUBSCRIPTION_REQUIRED',
             'message', 'L''abonnement Timora de votre entreprise n''est pas actif. Prévenez votre responsable.');
     END IF;
 
@@ -1498,7 +1536,7 @@ BEGIN
     SELECT * INTO v_company FROM public.companies WHERE id = v_user.company_id;
 
     IF NOT public.entreprise_operationnelle(v_user.company_id) THEN
-        RETURN jsonb_build_object('ok', FALSE, 'code', 'SUBSCRIPTION_INACTIVE',
+        RETURN jsonb_build_object('ok', FALSE, 'code', 'SUBSCRIPTION_REQUIRED',
             'message', 'L''abonnement Timora de votre entreprise n''est pas actif. Prévenez votre responsable.');
     END IF;
 
@@ -1679,7 +1717,7 @@ BEGIN
     END IF;
 
     IF NOT public.entreprise_operationnelle(v_site.company_id) THEN
-        RETURN jsonb_build_object('ok', FALSE, 'code', 'SUBSCRIPTION_INACTIVE',
+        RETURN jsonb_build_object('ok', FALSE, 'code', 'SUBSCRIPTION_REQUIRED',
             'message', 'Activez l''abonnement Timora pour ouvrir une borne de pointage.');
     END IF;
 
@@ -1743,7 +1781,7 @@ BEGIN
 
     IF NOT public.entreprise_operationnelle(v_demande.company_id) THEN
         RAISE EXCEPTION 'Activez l''abonnement Timora pour accueillir des collaborateurs.'
-            USING ERRCODE = 'TM402', HINT = 'ABONNEMENT_INACTIF';
+            USING ERRCODE = 'TM402', HINT = 'SUBSCRIPTION_REQUIRED';
     END IF;
 
     IF v_demande.status NOT IN ('PENDING_APPROVAL', 'INVITED') THEN
@@ -1835,7 +1873,7 @@ BEGIN
 
     IF NOT public.entreprise_operationnelle(v_company.id) THEN
         RAISE EXCEPTION 'Cette entreprise n''a pas encore activé Timora. Son responsable doit d''abord activer l''abonnement.'
-            USING ERRCODE = 'TM402', HINT = 'ABONNEMENT_INACTIF';
+            USING ERRCODE = 'TM402', HINT = 'SUBSCRIPTION_REQUIRED';
     END IF;
 
     SELECT m.status INTO v_statut
@@ -1906,31 +1944,45 @@ $$;
 REVOKE ALL ON FUNCTION public.lookup_company_by_code(TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.lookup_company_by_code(TEXT) TO anon, authenticated;
 
--- Zones GPS et horaires : lecture libre pour l'entreprise, ecriture seulement
--- avec un abonnement actif. La suppression reste possible (gestion des donnees).
-DROP POLICY IF EXISTS geofences_write_configurator ON public.geofences;
-CREATE POLICY geofences_write_configurator ON public.geofences
-    FOR ALL TO authenticated
-    USING (public.can_configure_company(company_id))
-    WITH CHECK (public.can_configure_company(company_id) AND public.entreprise_operationnelle(company_id));
+-- Ecritures directes du navigateur (zones GPS, horaires, rattachements,
+-- conges, heures supplementaires) : refusees avec un code metier explicite
+-- tant que l'abonnement n'est pas actif. La lecture et la suppression restent
+-- possibles (les donnees appartiennent a l'entreprise). Les fonctions serveur
+-- (SECURITY DEFINER) portent leurs propres controles.
+CREATE OR REPLACE FUNCTION public.exiger_abonnement_actif()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = public
+AS $$
+BEGIN
+    IF NOT public.appel_direct_client() OR public.entreprise_operationnelle(NEW.company_id) THEN
+        RETURN NEW;
+    END IF;
+    RAISE EXCEPTION '%', CASE TG_TABLE_NAME
+            WHEN 'geofences' THEN 'Activez l''abonnement Timora pour créer vos zones de pointage.'
+            WHEN 'work_schedules' THEN 'Activez l''abonnement Timora pour définir vos horaires.'
+            WHEN 'company_memberships' THEN 'Cette entreprise n''a pas encore activé Timora.'
+            ELSE 'L''abonnement Timora de votre entreprise n''est pas actif.'
+        END
+        USING ERRCODE = 'TM402', HINT = 'SUBSCRIPTION_REQUIRED';
+END;
+$$;
 
-DROP POLICY IF EXISTS schedules_write_configurator ON public.work_schedules;
-CREATE POLICY schedules_write_configurator ON public.work_schedules
-    FOR ALL TO authenticated
-    USING (public.can_configure_company(company_id))
-    WITH CHECK (public.can_configure_company(company_id) AND public.entreprise_operationnelle(company_id));
-
--- Collaborateurs : ni demande d'adhesion, ni ajout direct sans abonnement actif.
-DROP POLICY IF EXISTS memberships_insert_demande ON public.company_memberships;
-CREATE POLICY memberships_insert_demande ON public.company_memberships
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        public.entreprise_operationnelle(company_id)
-        AND (
-            (user_id = auth.uid() AND COALESCE(status, 'PENDING_APPROVAL') = 'PENDING_APPROVAL')
-            OR public.can_configure_company(company_id)
-        )
-    );
+DROP TRIGGER IF EXISTS ac_abonnement_requis ON public.geofences;
+CREATE TRIGGER ac_abonnement_requis BEFORE INSERT OR UPDATE ON public.geofences
+    FOR EACH ROW EXECUTE FUNCTION public.exiger_abonnement_actif();
+DROP TRIGGER IF EXISTS ac_abonnement_requis ON public.work_schedules;
+CREATE TRIGGER ac_abonnement_requis BEFORE INSERT OR UPDATE ON public.work_schedules
+    FOR EACH ROW EXECUTE FUNCTION public.exiger_abonnement_actif();
+DROP TRIGGER IF EXISTS ac_abonnement_requis ON public.company_memberships;
+CREATE TRIGGER ac_abonnement_requis BEFORE INSERT ON public.company_memberships
+    FOR EACH ROW EXECUTE FUNCTION public.exiger_abonnement_actif();
+DROP TRIGGER IF EXISTS ac_abonnement_requis ON public.leaves;
+CREATE TRIGGER ac_abonnement_requis BEFORE INSERT ON public.leaves
+    FOR EACH ROW EXECUTE FUNCTION public.exiger_abonnement_actif();
+DROP TRIGGER IF EXISTS ac_abonnement_requis ON public.overtimes;
+CREATE TRIGGER ac_abonnement_requis BEFORE INSERT ON public.overtimes
+    FOR EACH ROW EXECUTE FUNCTION public.exiger_abonnement_actif();
 
 -- L'ancienne creation d'entreprise (avant la refonte) n'a plus d'appelant ;
 -- elle permettrait de creer une entreprise sans passer par l'activation.
@@ -2029,6 +2081,12 @@ BEGIN
     VALUES (v_nom, v_pays, v_ville, p_employee_range, TRUE, v_user, NULL, 'pending_payment',
             public.billing_mode(), FALSE)
     RETURNING id, name, company_code INTO v_company;
+
+    -- L'abonnement existe des la creation, EN ATTENTE DE PAIEMENT : il ne
+    -- devient ACTIVE que par un paiement confirme (billing_apply_provider_status)
+    -- ou une activation manuelle de la plateforme.
+    INSERT INTO public.company_subscriptions (company_id, plan_code, status, billing_period, amount_fcfa, environment)
+    VALUES (v_company.id, NULL, 'PENDING_PAYMENT', 'MONTHLY', 0, public.billing_mode());
 
     -- Le rattachement d'abord : la fiche peut ensuite pointer vers une
     -- entreprise que l'utilisateur administre (voir users_bloquer_escalade).
@@ -2460,7 +2518,7 @@ BEGIN
         ) AS x
         FROM public.companies c
         LEFT JOIN public.company_subscriptions s
-               ON s.company_id = c.id AND s.status IN ('TRIAL', 'ACTIVE', 'PAST_DUE')
+               ON s.company_id = c.id AND s.status IN ('TRIAL', 'PENDING_PAYMENT', 'ACTIVE', 'PAST_DUE', 'EXPIRED')
         LEFT JOIN public.platform_plans p ON p.code = s.plan_code
     ) t;
 
@@ -2524,7 +2582,7 @@ BEGIN
     SELECT id INTO v_id
       FROM public.company_subscriptions
      WHERE company_id = p_company
-       AND status IN ('TRIAL','ACTIVE','PAST_DUE','SUSPENDED','EXPIRED')
+       AND status IN ('TRIAL','PENDING_PAYMENT','ACTIVE','PAST_DUE','SUSPENDED','EXPIRED')
      ORDER BY created_at DESC
      LIMIT 1;
 
@@ -2567,6 +2625,45 @@ BEGIN
     RETURN jsonb_build_object('ok', TRUE, 'abonnement_id', v_id);
 END;
 $$;
+
+-- Les trois formules du catalogue ne se modifient plus depuis la console : le
+-- prix affiche (catalogue.js) et le prix facture (platform_plans) doivent
+-- rester identiques. Les autres formules restent reglables.
+CREATE OR REPLACE FUNCTION public.platform_set_plan_price(p_code text, p_monthly integer, p_annual integer DEFAULT NULL::integer)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+    IF NOT public.is_platform_admin() THEN
+        RAISE EXCEPTION 'Acces refuse : compte non administrateur de la plateforme.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    IF lower(p_code) IN ('essentiel', 'business', 'pro') THEN
+        RAISE EXCEPTION 'Tarif du catalogue Timora : il se modifie dans apps/web/billing/catalogue.js puis par migration, pour que le prix affiché et le prix facturé restent identiques.'
+            USING ERRCODE = 'TM409', HINT = 'TARIF_CATALOGUE';
+    END IF;
+
+    IF p_monthly IS NOT NULL AND p_monthly < 0 THEN
+        RAISE EXCEPTION 'Le tarif mensuel ne peut pas etre negatif.';
+    END IF;
+
+    UPDATE public.platform_plans
+       SET monthly_price_fcfa = p_monthly,
+           annual_price_fcfa  = p_annual,
+           updated_at         = NOW()
+     WHERE code = lower(p_code);
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Plan inconnu : %', p_code;
+    END IF;
+
+    RETURN jsonb_build_object('ok', TRUE, 'code', lower(p_code),
+                              'mensuel', p_monthly, 'annuel', p_annual);
+END;
+$function$;
 
 -- Les champs de facturation ne se modifient pas depuis le navigateur.
 CREATE OR REPLACE FUNCTION public.companies_champs_reserves()

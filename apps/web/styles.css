@@ -492,7 +492,8 @@ body {
 }
 
 .tarifs__periode-btn {
-  min-height: 40px;
+  /* 44 px : taille minimale d'une cible tactile. */
+  min-height: 44px;
   padding: 0 1.25rem;
   border: none;
   border-radius: 9999px;
@@ -2248,6 +2249,32 @@ html.activation-ouverte { overflow: hidden; }
   text-align: center;
 }
 
+/* Sur telephone, les enveloppes de colonnes s'effacent : la zone de paiement
+   collante peut alors suivre tout le defilement de la feuille. */
+.activation-grille,
+.activation-colonne { display: contents; }
+
+/* Ordinateur et tablette : formules a gauche, recapitulatif et paiement a
+   droite. Le bouton de paiement tient dans l'ecran sans defiler. */
+@media (min-width: 768px) {
+  .auth-carte.activation-carte.is-large { max-width: 56rem; }
+  .activation-grille { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 1.5rem; }
+  .activation-colonne { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+}
+
+/* Ecran bas (portable 1366 x 650...) : la zone de paiement reste collee au
+   bas de la fenetre. */
+@media (min-width: 481px) {
+  .activation-action {
+    position: sticky;
+    bottom: -1.5rem;
+    padding: 0.75rem 0 1.5rem;
+    margin-bottom: -1.5rem;
+    background: linear-gradient(to top, #0f1117 80%, rgba(15, 17, 23, 0));
+    z-index: 1;
+  }
+}
+
 /* Sur telephone, le bouton de paiement reste visible en bas de la feuille,
    au-dessus de la barre d'accueil de l'iPhone. */
 @media (max-width: 480px) {
@@ -2384,4 +2411,365 @@ html.activation-ouverte { overflow: hidden; }
   .demo-ecran { animation: none; }
   .demo-roue { animation-duration: 1.6s; }
   .accueil-cta { transition: none; }
+}
+
+/* ==========================================================================
+   TARIFS — etat d'erreur (catalogue introuvable, cas exceptionnel)
+   ========================================================================== */
+
+.tarifs__erreur {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  border-radius: 1rem;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  color: var(--color-muted);
+  text-align: center;
+}
+
+.tarifs__erreur .tarifs__cta { width: auto; margin-top: 0; padding-inline: 1.5rem; }
+
+/* ==========================================================================
+   ACTIVATION — complements (entreprise, badge sandbox, formule choisie)
+   ========================================================================== */
+
+.activation-entreprise {
+  margin: -0.5rem 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #CBD5E1;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.activation-sandbox {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px dashed #F59E0B;
+  color: #FBBF24;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.activation-recap__formule {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #1E293B;
+}
+
+.activation-recap__formule strong { font-size: 0.9375rem; letter-spacing: 0.04em; color: #F8FAFC; }
+.activation-recap__formule span { font-size: 0.8125rem; color: #94A3B8; }
+
+/* ==========================================================================
+   AVIS DES UTILISATEURS (avis/avis.js)
+   --------------------------------------------------------------------------
+   Meme langage que la section des tarifs : variables du theme, coins
+   arrondis, accents or et vert. Trois cartes sur ordinateur ; sur telephone,
+   un defilement horizontal natif (scroll-snap), sans bibliotheque.
+   ========================================================================== */
+
+.avis {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(1.25rem, 3vw, 2rem);
+  padding-top: 1.5rem;
+}
+
+.avis__entete {
+  max-width: 44rem;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  text-align: center;
+}
+
+.avis__surtitre {
+  align-self: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  background: var(--color-green-glow);
+  color: var(--color-green);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.avis__titre {
+  font-size: clamp(1.5rem, 4vw, 2.25rem);
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--color-offwhite);
+  text-wrap: balance;
+}
+
+.avis__accent { color: var(--color-gold); }
+
+.avis__resume {
+  min-height: 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-gold);
+}
+
+.avis__liste {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.avis-carte {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 1.25rem;
+  border-radius: 1.25rem;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  transition: transform 200ms cubic-bezier(0.22, 0.61, 0.36, 1), border-color 200ms ease;
+}
+
+.avis-carte:hover { transform: translateY(-2px); border-color: var(--border-accent); }
+
+.avis-carte__tete { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+
+.avis-etoiles { color: var(--color-gold); letter-spacing: 0.08em; font-size: 0.9375rem; line-height: 1; }
+.avis-etoiles__vide { color: var(--border-accent); opacity: 0.6; }
+
+.avis-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  background: var(--color-green-glow);
+  color: var(--color-green);
+  font-size: 0.6875rem;
+  font-weight: 700;
+}
+
+.avis-badge svg { width: 0.875rem; height: 0.875rem; }
+
+.avis-carte__titre { margin: 0; font-size: 0.9375rem; font-weight: 700; color: var(--color-offwhite); }
+
+.avis-carte__texte {
+  margin: 0;
+  flex: 1;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--color-muted);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.avis-carte__auteur {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.5rem;
+  padding-top: 0.625rem;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.avis-carte__auteur strong { color: var(--color-offwhite); }
+
+.avis__vide {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 2rem 1.25rem;
+  border-radius: 1.25rem;
+  border: 1px dashed var(--border-accent);
+  background: var(--bg-card);
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--color-muted);
+}
+
+.avis__vide p { margin: 0; }
+.avis__vide strong { color: var(--color-offwhite); font-size: 0.9375rem; }
+.avis__vide-icone { width: 1.75rem; height: 1.75rem; color: var(--color-gold); }
+
+.avis__actions { display: flex; justify-content: center; }
+
+.avis__cta {
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 1.5rem;
+  border-radius: 0.875rem;
+  border: 1px solid var(--border-accent);
+  background: var(--bg-card);
+  color: var(--color-offwhite);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 150ms ease, transform 150ms ease;
+}
+
+.avis__cta:hover { filter: brightness(1.08); }
+.avis__cta:active { transform: scale(0.99); }
+.avis__cta:focus-visible,
+.avis__lien:focus-visible { outline: 2px solid var(--color-gold); outline-offset: 2px; }
+
+.avis__lien {
+  min-height: 44px;
+  border: none;
+  background: none;
+  color: var(--color-gold);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+@media (max-width: 1023px) {
+  .avis__liste { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 767px) {
+  .avis__liste {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-x: contain;
+    padding-bottom: 0.5rem;
+    margin-inline: -0.25rem;
+    padding-inline: 0.25rem;
+    -webkit-overflow-scrolling: touch;
+  }
+  .avis-carte { flex: 0 0 min(85%, 22rem); scroll-snap-align: start; }
+  .avis__vide { flex: 1 0 100%; }
+}
+
+/* ---------- Formulaire ---------- */
+
+html.avis-ouvert { overflow: hidden; }
+
+.avis-note { border: none; padding: 0; margin: 0; }
+
+.avis-note__etoiles {
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+
+.avis-note__etoiles input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+
+.avis-note__etoiles label {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  font-size: 1.75rem;
+  line-height: 1;
+  color: #334155;
+  cursor: pointer;
+  transition: color 120ms ease, transform 120ms ease;
+}
+
+/* Survol et selection : l'etoile et toutes celles « avant » elle (ordre inverse). */
+.avis-note__etoiles label:hover,
+.avis-note__etoiles label:hover ~ label,
+.avis-note__etoiles input:checked ~ label { color: #F59E0B; }
+.avis-note__etoiles label:active { transform: scale(0.94); }
+.avis-note__etoiles input:focus-visible + label { outline: 2px solid #F59E0B; outline-offset: 2px; }
+
+#modal-avis textarea {
+  width: 100%;
+  min-height: 7.5rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid #334155;
+  border-radius: 0.75rem;
+  background: #0b0d13;
+  color: #F8FAFC;
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+#modal-avis textarea:focus { outline: none; border-color: #F59E0B; box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2); }
+
+.avis-compteur { align-self: flex-end; font-size: 0.75rem; color: #64748B; font-variant-numeric: tabular-nums; }
+.avis-facultatif { font-weight: 400; color: #64748B; }
+
+.avis-case { display: flex; align-items: flex-start; gap: 0.625rem; min-height: 44px; font-size: 0.8125rem; color: #CBD5E1; cursor: pointer; }
+.avis-case input { width: 1.125rem; height: 1.125rem; margin-top: 0.125rem; accent-color: #F59E0B; }
+
+/* ---------- Moderation (console plateforme) ---------- */
+
+.avis-filtres { display: inline-flex; gap: 0.25rem; padding: 0.25rem; border-radius: 0.75rem; background: #0b0d13; border: 1px solid #1E293B; }
+
+.avis-filtres button {
+  min-height: 36px;
+  padding: 0 0.75rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #94A3B8;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.avis-filtres button[aria-pressed="true"] { background: #1E293B; color: #F8FAFC; }
+
+.avis-moderation {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-radius: 0.875rem;
+  border: 1px solid #1E293B;
+  background: #0f1117;
+}
+
+.avis-moderation__tete { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem 0.75rem; font-size: 0.75rem; color: #94A3B8; }
+.avis-moderation__tete strong { color: #F8FAFC; }
+.avis-moderation__neutre { color: #64748B; }
+.avis-moderation__titre { margin: 0; font-size: 0.875rem; font-weight: 700; color: #F8FAFC; }
+.avis-moderation__texte { margin: 0; font-size: 0.8125rem; line-height: 1.55; color: #CBD5E1; white-space: pre-line; overflow-wrap: anywhere; }
+.avis-moderation__actions { display: flex; gap: 0.5rem; }
+
+.avis-moderation__actions button {
+  min-height: 40px;
+  padding: 0 1rem;
+  border-radius: 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.avis-moderation__publier { border: 1px solid rgba(16, 185, 129, 0.45); background: rgba(16, 185, 129, 0.15); color: #34D399; }
+.avis-moderation__refuser { border: 1px solid rgba(244, 63, 94, 0.4); background: rgba(244, 63, 94, 0.1); color: #FB7185; }
+
+@media (prefers-reduced-motion: reduce) {
+  .avis-carte, .avis__cta, .avis-note__etoiles label { transition: none; }
+  .avis-carte:hover { transform: none; }
 }

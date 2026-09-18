@@ -32,3 +32,14 @@ export function journaliser(evenement, details = {}) {
   const sortie = /FAILED|INVALID|ERROR/.test(evenement) ? console.warn : console.log;
   sortie(JSON.stringify(ligne));
 }
+
+/**
+ * Trace lisible « [BILLING] … » pour suivre un paiement pendant le
+ * developpement. Muette en production Vercel (VERCEL_ENV=production).
+ * Memes regles : aucune cle, aucun secret, aucun jeton.
+ */
+export function traceDev(message, details = {}) {
+  if (process.env.VERCEL_ENV === 'production') return;
+  const propre = nettoyer(details);
+  console.log(`[BILLING] ${message}`, Object.keys(propre).length ? JSON.stringify(propre) : '');
+}

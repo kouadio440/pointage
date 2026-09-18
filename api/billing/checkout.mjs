@@ -1,6 +1,7 @@
 // POST /api/billing/checkout
 //
-// Corps attendu : { "plan": "essentiel" }   (et, facultatif, "period": "MONTHLY")
+// Corps attendu : { "plan": "essentiel" }, et facultativement la periode :
+//                 "period": "MONTHLY" | "ANNUAL", ou "billing_cycle": "monthly" | "annual"
 // En-tete       : Authorization: Bearer <jeton de session Supabase>
 //
 // Le navigateur n'envoie NI montant, NI entreprise, NI devise : la base les
@@ -39,11 +40,18 @@ export async function POST(request) {
     return repondre(400, { code: 'JSON_INVALIDE', message: 'Requête invalide.' });
   }
 
+  // Periode : « period » (MONTHLY / ANNUAL) ou « billing_cycle » (monthly / annual).
+  const cycle = typeof corps.billing_cycle === 'string' ? corps.billing_cycle.trim().toLowerCase() : null;
+  const periode = typeof corps.period === 'string' ? corps.period
+    : cycle === 'monthly' ? 'MONTHLY'
+      : cycle === 'annual' || cycle === 'yearly' ? 'ANNUAL'
+        : cycle ? 'INVALIDE' : null;
+
   try {
     const r = await demarrerPaiement(conf, {
       jeton,
       plan: typeof corps.plan === 'string' ? corps.plan.trim().toLowerCase() : '',
-      periode: typeof corps.period === 'string' ? corps.period : null,
+      periode,
       adresseRetour: adresseDeRetour(request, conf),
     });
     return repondre(r.status, r.corps);

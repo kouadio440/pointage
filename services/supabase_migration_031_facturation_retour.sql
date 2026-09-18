@@ -1454,6 +1454,37 @@ BEGIN
 END;
 $function$;
 
+CREATE OR REPLACE FUNCTION public.platform_set_plan_price(p_code text, p_monthly integer, p_annual integer DEFAULT NULL::integer)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+    IF NOT public.is_platform_admin() THEN
+        RAISE EXCEPTION 'Acces refuse : compte non administrateur de la plateforme.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    IF p_monthly IS NOT NULL AND p_monthly < 0 THEN
+        RAISE EXCEPTION 'Le tarif mensuel ne peut pas etre negatif.';
+    END IF;
+
+    UPDATE public.platform_plans
+       SET monthly_price_fcfa = p_monthly,
+           annual_price_fcfa  = p_annual,
+           updated_at         = NOW()
+     WHERE code = lower(p_code);
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Plan inconnu : %', p_code;
+    END IF;
+
+    RETURN jsonb_build_object('ok', TRUE, 'code', lower(p_code),
+                              'mensuel', p_monthly, 'annuel', p_annual);
+END;
+$function$;
+
 DROP FUNCTION IF EXISTS public.billing_prepare_checkout(TEXT, TEXT, TEXT, UUID);
 DROP FUNCTION IF EXISTS public.billing_attach_checkout(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT);
 DROP FUNCTION IF EXISTS public.billing_mark_create_failed(TEXT, TEXT, TEXT);
@@ -1461,6 +1492,13 @@ DROP FUNCTION IF EXISTS public.billing_apply_provider_status(TEXT, TEXT, TEXT, T
 DROP FUNCTION IF EXISTS public.billing_payment_status(TEXT);
 DROP FUNCTION IF EXISTS public.company_onboarding_progress(UUID);
 DROP FUNCTION IF EXISTS public.billing_plans_public();
+
+DROP TRIGGER IF EXISTS ac_abonnement_requis ON public.geofences;
+DROP TRIGGER IF EXISTS ac_abonnement_requis ON public.work_schedules;
+DROP TRIGGER IF EXISTS ac_abonnement_requis ON public.company_memberships;
+DROP TRIGGER IF EXISTS ac_abonnement_requis ON public.leaves;
+DROP TRIGGER IF EXISTS ac_abonnement_requis ON public.overtimes;
+DROP FUNCTION IF EXISTS public.exiger_abonnement_actif();
 
 -- Plus aucune fonction ne depend de ces deux-la apres la restauration ci-dessus.
 DROP FUNCTION IF EXISTS public.entreprise_operationnelle(UUID);

@@ -21,7 +21,7 @@
     "check:tenant": "node scripts/check-tenant-scoping.mjs",
     "check:no-bg-geo": "node scripts/check-no-background-geolocation.mjs",
     "check:boot-views": "node scripts/check-boot-views.mjs",
-    "check:all": "pnpm check:tokens && pnpm check:tenant && pnpm check:no-bg-geo && pnpm check:boot-views",
+    "check:all": "pnpm check:tokens && pnpm check:tenant && pnpm check:no-bg-geo && pnpm check:boot-views && pnpm check:catalogue",
     "db:migrate": "pnpm --filter @pointage/api db:migrate",
     "db:seed": "pnpm --filter @pointage/api db:seed",
     "db:studio": "pnpm --filter @pointage/api db:studio",
@@ -29,7 +29,8 @@
     "stack:down": "docker compose down",
     "stack:logs": "docker compose logs -f",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,css,yml,yaml}\"",
-    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,css,yml,yaml}\""
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,css,yml,yaml}\"",
+    "check:catalogue": "node scripts/check-billing-catalogue.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",

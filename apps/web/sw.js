@@ -30,7 +30,7 @@
  *  change. Un deploiement ordinaire du site n'exige rien ici.
  * ========================================================================== */
 
-const VERSION = 'timora-2026-09-18-1';
+const VERSION = 'timora-2026-09-18-2';
 
 const CACHE_SITE = `${VERSION}-site`;
 const CACHE_CDN = `${VERSION}-cdn`;
@@ -42,6 +42,8 @@ const PRECHARGEMENT = [
   '/auth/auth-flow.js',
   '/demo/demo.js',
   '/billing/activation.js',
+  '/billing/catalogue.js',
+  '/avis/avis.js',
   '/styles.css',
   '/manifest.webmanifest',
   '/pwa/install-manager.js',
@@ -61,6 +63,8 @@ const CODE_DU_SITE = new Set([
   '/auth/auth-flow.js',
   '/demo/demo.js',
   '/billing/activation.js',
+  '/billing/catalogue.js',
+  '/avis/avis.js',
   '/styles.css',
   '/manifest.webmanifest',
   '/pwa/install-manager.js',
