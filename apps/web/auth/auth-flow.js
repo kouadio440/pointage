@@ -234,6 +234,7 @@ const MESSAGES_ERREUR_AUTH = {
   NETWORK_ERROR: 'Connexion internet indisponible. Vérifiez votre réseau puis réessayez.',
   COMPANY_CODE_INVALID: 'Aucune entreprise ne correspond à ce code.',
   COMPANY_SUSPENDED: 'L\'abonnement de cette entreprise est suspendu. Contactez votre responsable.',
+  COMPANY_NOT_ACTIVATED: 'Cette entreprise n\'a pas encore activé Timora. Son responsable doit d\'abord activer l\'abonnement.',
   EMAIL_NOT_VERIFIED: 'Votre adresse email n\'est pas vérifiée. Connectez-vous avec un code reçu par email.',
   UNKNOWN_ERROR: 'Une erreur inattendue est survenue. Réessayez.',
 };
@@ -259,6 +260,7 @@ function classerErreurAuth(err, contexte = {}) {
 
   if (code === 'tm404') return 'COMPANY_CODE_INVALID';
   if (code === 'tm403') return 'COMPANY_SUSPENDED';
+  if (code === 'tm402') return 'COMPANY_NOT_ACTIVATED';
   if (code === 'tm401') return 'EMAIL_NOT_VERIFIED';
 
   // Supabase emploie le meme code pour deux refus tres differents :
@@ -452,7 +454,7 @@ const ECRANS_AUTH = {
     ${entete('Espace entreprise', 'Que souhaitez-vous faire ?')}
     <div class="auth-pile">
       ${carteChoix('intention', INTENTIONS_AUTH.CONNEXION_ENTREPRISE, 'log-in', 'Me connecter', 'Mon entreprise utilise déjà Timora')}
-      ${carteChoix('intention', INTENTIONS_AUTH.CREATION_ENTREPRISE, 'sparkles', 'Créer mon entreprise', '7 jours gratuits, sans carte bancaire')}
+      ${carteChoix('intention', INTENTIONS_AUTH.CREATION_ENTREPRISE, 'sparkles', 'Activer Timora pour mon entreprise', 'Abonnement mensuel, sans engagement')}
     </div>`,
 
   [ETATS_AUTH.AUTH_METHOD]: () => {
@@ -557,7 +559,7 @@ const ECRANS_AUTH = {
   [ETATS_AUTH.COMPANY_ONBOARDING]: () => {
     const b = flux.brouillon || {};
     return `
-      ${entete('Configurez votre entreprise', 'Quatre informations, et votre espace Timora est prêt.')}
+      ${entete('Votre entreprise', 'Quatre informations, puis le choix de votre formule.')}
       <form class="auth-pile" data-auth-form="onboarding" novalidate>
         <div class="auth-champ">
           <label for="auth-entreprise-nom">Nom de l'entreprise</label>
@@ -588,8 +590,8 @@ const ECRANS_AUTH = {
           </div>
         </fieldset>
         ${blocErreur()}
-        <button type="submit" class="auth-bouton auth-bouton--principal" data-libelle-attente="Création de votre entreprise…">
-          <span>Créer mon espace Timora</span>
+        <button type="submit" class="auth-bouton auth-bouton--principal" data-libelle-attente="Enregistrement de votre entreprise…">
+          <span>Continuer vers l'abonnement</span>
         </button>
       </form>`;
   },
@@ -796,6 +798,12 @@ async function verifierCodeEntreprise(formulaire) {
     }
     if (['suspended', 'expired', 'cancelled'].includes(String(data.status || '').toLowerCase())) {
       afficherErreur('COMPANY_SUSPENDED');
+      return;
+    }
+    // Abonnement pas encore actif : le collaborateur l'apprend ici, avant de
+    // s'identifier (le serveur refuserait de toute facon son adhesion).
+    if (data.accepts_members === false) {
+      afficherErreur('COMPANY_NOT_ACTIVATED');
       return;
     }
     allerA(ETATS_AUTH.EMPLOYEE_COMPANY_CONFIRM, {
@@ -1037,6 +1045,10 @@ async function soumettreOnboarding(formulaire) {
     if (typeof showToast === 'function') {
       if (data.status === 'ALREADY_EXISTS') {
         showToast('Votre entreprise existe déjà', `Vous êtes redirigé vers ${escapeHtml(data.company_name)}.`, 'info', 6000);
+      } else if (data.destination === 'company_billing_required') {
+        // Aucune utilisation reelle avant le paiement : pas de « bienvenue »
+        // tant que l'abonnement n'est pas actif.
+        showToast('Entreprise enregistrée ✓', 'Dernière étape : choisir votre formule et activer votre abonnement.', 'success', 6000);
       } else {
         showToast('Entreprise créée ✓', `Bienvenue dans l'espace de ${escapeHtml(data.company_name)}.`, 'success', 6000);
       }
@@ -1222,6 +1234,23 @@ async function executerResolution({ intention = null, silencieux = false, entrep
       break;
     }
 
+    case 'company_billing_required':
+      // Entreprise sans abonnement actif (jamais payee, ou expiree) : l'ecran
+      // d'activation, jamais le cockpit. Le serveur refuse de toute facon
+      // pointage, zones et adhesions tant que le paiement n'est pas confirme.
+      oublierSessionLocale();
+      effacerFlux();
+      fermerAuthentification({ oublier: true });
+      if (typeof ouvrirActivation === 'function') ouvrirActivation(contexte);
+      break;
+
+    case 'company_inactive':
+      oublierSessionLocale();
+      effacerFlux();
+      fermerAuthentification({ oublier: true });
+      if (typeof ouvrirEntrepriseInactive === 'function') ouvrirEntrepriseInactive(contexte);
+      break;
+
     case 'company_suspended':
       oublierSessionLocale();
       ouvrirSiFerme();
@@ -1321,6 +1350,12 @@ async function entrerDansEspace(contexte, { silencieux, forcerVue = false }) {
     silencieux,
     vue,
   });
+
+  // Premiers pas (zone, code, demandes, premier pointage) et rappel de
+  // renouvellement : pour qui peut configurer l'entreprise.
+  if (['OWNER', 'ADMIN'].includes(role) && typeof afficherDemarrage === 'function') {
+    afficherDemarrage(actif.company_id);
+  }
 }
 
 /**

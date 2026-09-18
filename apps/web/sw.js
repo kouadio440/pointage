@@ -30,7 +30,7 @@
  *  change. Un deploiement ordinaire du site n'exige rien ici.
  * ========================================================================== */
 
-const VERSION = 'timora-2026-09-17-1';
+const VERSION = 'timora-2026-09-18-1';
 
 const CACHE_SITE = `${VERSION}-site`;
 const CACHE_CDN = `${VERSION}-cdn`;
@@ -40,6 +40,8 @@ const PRECHARGEMENT = [
   '/',
   '/app.js',
   '/auth/auth-flow.js',
+  '/demo/demo.js',
+  '/billing/activation.js',
   '/styles.css',
   '/manifest.webmanifest',
   '/pwa/install-manager.js',
@@ -57,6 +59,8 @@ const PRECHARGEMENT = [
 const CODE_DU_SITE = new Set([
   '/app.js',
   '/auth/auth-flow.js',
+  '/demo/demo.js',
+  '/billing/activation.js',
   '/styles.css',
   '/manifest.webmanifest',
   '/pwa/install-manager.js',
@@ -180,6 +184,10 @@ function aiguillerMemeOrigine(evenement, requete, url) {
 
   // Le service worker lui-meme est toujours recupere par le navigateur.
   if (url.pathname === '/sw.js') return;
+
+  // Routes serveur (paiement, webhook) : jamais lues ni stockees. L'etat d'un
+  // paiement doit toujours venir du serveur, jamais d'une copie.
+  if (url.pathname.startsWith('/api/')) return;
 
   if (requete.mode === 'navigate') {
     evenement.respondWith(navigation(requete, url));

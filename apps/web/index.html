@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Timora — SaaS de Pointage Géolocalisé & Sécurisé pour Entreprises</title>
-  <meta name="description" content="Plateforme SaaS de pointage géolocalisé, anti-fraude, selfie IA et gestion du temps de travail pour les PME et grandes entreprises." />
+  <meta name="description" content="Timora vérifie l'identité, la position et l'heure de chaque pointage depuis le smartphone de vos collaborateurs. Sans badge. Sans pointeuse." />
 
   <!-- Icones du navigateur. favicon.ico sert les navigateurs qui le demandent
        d'office a la racine ; les PNG servent les autres, aux tailles exactes. -->
@@ -251,8 +251,8 @@
         <button id="nav-login-btn" onclick="openAuthModal('login')" class="px-3.5 py-1.5 rounded-full bg-[var(--border-subtle)] hover:bg-[var(--border-accent)] text-[var(--color-offwhite)] text-xs font-semibold border border-[var(--border-subtle)] transition">
           Se Connecter
         </button>
-        <button id="nav-register-btn" onclick="openAuthModal('register')" class="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white text-xs font-bold shadow-md shadow-orange-500/20 transition">
-          Inscription
+        <button id="nav-register-btn" onclick="activerMonEntreprise('navigation')" class="px-3.5 py-1.5 rounded-full bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white text-xs font-bold shadow-md shadow-orange-500/20 transition">
+          Activer Timora
         </button>
         <button type="button" data-pwa-install="en-tete" class="pwa-installer pwa-installer--en-tete" hidden>
           <i data-lucide="download" class="pwa-installer__icone" aria-hidden="true"></i><span class="pwa-installer__libelle">Installer Timora</span>
@@ -291,8 +291,8 @@
         <button id="mobile-nav-login-btn" onclick="openAuthModal('login'); closeMobileMenu();" class="w-full py-2.5 rounded-xl bg-slate-800/90 text-slate-200 text-xs font-semibold border border-slate-700 text-center block">
           Se Connecter
         </button>
-        <button id="mobile-nav-register-btn" onclick="openAuthModal('register'); closeMobileMenu();" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-emerald-500 text-white text-xs font-bold text-center block shadow-lg shadow-amber-500/20">
-          Inscription
+        <button id="mobile-nav-register-btn" onclick="closeMobileMenu(); activerMonEntreprise('menu-mobile');" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-emerald-500 text-white text-xs font-bold text-center block shadow-lg shadow-amber-500/20">
+          Activer mon entreprise
         </button>
         <button type="button" data-pwa-install="menu-mobile" class="pwa-installer pwa-installer--menu" hidden>
           <i data-lucide="download" class="pwa-installer__icone" aria-hidden="true"></i><span>Installer Timora</span>
@@ -310,125 +310,81 @@
       <!-- HERO TOP ROW -->
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
         
-        <!-- Left Hero Column -->
+        <!-- Colonne gauche : la promesse, puis deux actions (tester, activer). -->
         <div class="lg:col-span-7 space-y-6">
-          <div class="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-mono glow-amber">
-            <i data-lucide="sparkles" class="w-4 h-4 text-amber-400"></i>
-            <span>N°1 du Pointage Anti-Fraude en Afrique de l'Ouest</span>
+          <div class="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-mono">
+            <i data-lucide="smartphone" class="w-4 h-4 text-amber-400"></i>
+            <span>Pointage vérifié depuis le smartphone</span>
           </div>
 
           <h1 class="text-4xl md:text-6xl font-extrabold tracking-tight text-[var(--color-offwhite)] leading-[1.15]">
-            Stoppez la fraude aux horaires. <span class="font-serif italic bg-gradient-to-r from-amber-400 via-orange-400 to-emerald-400 bg-clip-text text-transparent font-normal">Garantissez la présence</span> réelle sur vos chantiers et bureaux.
+            Sachez qui est <span class="font-serif italic bg-gradient-to-r from-amber-400 via-orange-400 to-emerald-400 bg-clip-text text-transparent font-normal">réellement présent</span>. Sans badge. Sans pointeuse.
           </h1>
 
           <p class="text-[var(--color-muted)] text-base md:text-lg max-w-2xl leading-relaxed">
-            La solution SaaS tout-en-un conçue pour les <strong class="text-[var(--color-offwhite)]">PME, usines et entreprises exigeantes</strong>. Géofencing GPS strict, reconnaissance faciale IA anti-usurpation, calcul des retards et heures supp en 1 clic.
+            Timora vérifie l'identité, la position et l'heure de chaque pointage depuis le smartphone de vos collaborateurs.
           </p>
 
-          <!-- Social Proof Quick Badge -->
-          <div class="flex items-center space-x-4 pt-1">
-            <div class="flex -space-x-2.5">
-              <img class="inline-block h-8 w-8 rounded-full ring-2 ring-amber-500/40 object-cover" src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&q=80" alt="Client 1">
-              <img class="inline-block h-8 w-8 rounded-full ring-2 ring-amber-500/40 object-cover" src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&q=80" alt="Client 2">
-              <img class="inline-block h-8 w-8 rounded-full ring-2 ring-amber-500/40 object-cover" src="https://images.unsplash.com/photo-1531384441138-2736e62e0919?w=150&q=80" alt="Client 3">
-              <img class="inline-block h-8 w-8 rounded-full ring-2 ring-amber-500/40 object-cover" src="https://images.unsplash.com/photo-1589156280159-27698a70f29e?w=150&q=80" alt="Client 4">
-            </div>
-            <div class="text-xs">
-              <div class="flex items-center text-amber-400 font-bold">
-                ★★★★★ <span class="ml-1.5 text-[var(--color-offwhite)]">4.9 / 5</span>
-              </div>
-              <p class="text-[var(--color-muted)] text-[11px]">+150 PME & usines utilisatrices à Abidjan & sous-région</p>
+          <ul class="accueil-verifs" aria-label="Ce que Timora vérifie">
+            <li><i data-lucide="scan-face" aria-hidden="true"></i><span><strong>Identité</strong> le visage enregistré</span></li>
+            <li><i data-lucide="map-pin" aria-hidden="true"></i><span><strong>Position</strong> dans la zone définie</span></li>
+            <li><i data-lucide="clock" aria-hidden="true"></i><span><strong>Heure</strong> celle du serveur</span></li>
+          </ul>
+
+          <div class="accueil-actions">
+            <button type="button" onclick="openPunchModal()" class="accueil-cta accueil-cta--principal">
+              <i data-lucide="play" class="w-4 h-4" aria-hidden="true"></i>
+              Tester Timora
+            </button>
+            <div class="accueil-cta-bloc">
+              <button type="button" onclick="activerMonEntreprise('accueil')" class="accueil-cta accueil-cta--secondaire">
+                Activer mon entreprise
+                <i data-lucide="arrow-right" class="w-4 h-4" aria-hidden="true"></i>
+              </button>
+              <span class="accueil-prix" data-prix-minimum hidden></span>
             </div>
           </div>
 
-          <!-- Key Metrics Pills -->
-          <div class="grid grid-cols-3 gap-4 pt-2 max-w-xl">
-            <div class="glass-panel p-3.5 text-center border-t-2 border-t-amber-500">
-              <div class="font-mono text-2xl font-bold text-amber-400">100%</div>
-              <div class="text-[11px] text-[var(--color-muted)]">Périmètre GPS Vérifié</div>
-            </div>
-            <div class="glass-panel p-3.5 text-center border-t-2 border-t-orange-500">
-              <div class="font-mono text-2xl font-bold text-orange-400">0.3s</div>
-              <div class="text-[11px] text-[var(--color-muted)]">Temps de Pointage</div>
-            </div>
-            <div class="glass-panel p-3.5 text-center border-t-2 border-t-emerald-500">
-              <div class="font-mono text-2xl font-bold text-emerald-400">0%</div>
-              <div class="text-[11px] text-[var(--color-muted)]">Fraude Tolérée</div>
-            </div>
-          </div>
-
-          <!-- Action Buttons -->
-          <div class="flex flex-wrap items-center gap-4 pt-2">
-            <button onclick="openAuthModal('login')" class="magnetic-btn px-7 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white font-bold text-sm flex items-center gap-2.5 shadow-xl shadow-orange-500/25 transition transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer">
-              <span>Commencer</span>
-              <i data-lucide="arrow-right" class="w-4 h-4 text-white"></i>
-            </button>
-            <button onclick="openPunchModal()" class="px-6 py-3.5 rounded-xl bg-[var(--border-subtle)] hover:bg-[var(--border-accent)] text-[var(--color-offwhite)] font-semibold text-sm border border-[var(--border-subtle)] flex items-center gap-2 transition">
-              <i data-lucide="play" class="w-4 h-4 fill-white"></i>
-              Tester le Pointage en Direct
-            </button>
+          <div class="accueil-liens">
+            <button type="button" class="accueil-lien" onclick="voirTarifs('accueil')">Voir les tarifs</button>
             <button type="button" data-pwa-install="hero" class="pwa-installer pwa-installer--hero" hidden>
               <i data-lucide="download" class="pwa-installer__icone" aria-hidden="true"></i><span>Installer l'application</span>
             </button>
           </div>
         </div>
 
-        <!-- Right Hero Interactive Simulator -->
+        <!-- Colonne droite : un pointage, tel que le responsable le voit (exemple). -->
         <div class="lg:col-span-5">
           <div class="glass-panel-elevated p-6 relative overflow-hidden border border-amber-500/40">
-            <div class="scan-beam"></div>
-
             <div class="flex items-center justify-between mb-4 border-b border-[var(--border-subtle)] pb-3">
-              <div class="flex items-center space-x-2">
-                <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                <span class="font-mono text-xs text-[var(--color-offwhite)]">BORNE POINTAGE EN DIRECT</span>
-              </div>
-              <span class="text-xs text-amber-400 font-mono">Abidjan HQ • Zone Yopougon</span>
+              <span class="font-mono text-xs text-[var(--color-offwhite)]">UN POINTAGE TIMORA</span>
+              <span class="text-[11px] text-[var(--color-muted)]">Exemple</span>
             </div>
 
-            <!-- Radar GPS Display -->
-            <div class="relative w-full h-52 bg-black/40 rounded-xl border border-[var(--border-subtle)] flex items-center justify-center overflow-hidden mb-4">
+            <div class="relative w-full h-44 bg-black/40 rounded-xl border border-[var(--border-subtle)] flex items-center justify-center overflow-hidden mb-4" aria-hidden="true">
               <div class="absolute inset-0 bg-[radial-gradient(#f59e0b_1px,transparent_1px)] [background-size:16px_16px] opacity-20"></div>
-              
-              <!-- Geofence Circle -->
-              <div class="w-36 h-36 rounded-full border border-amber-500/40 bg-amber-500/5 flex items-center justify-center relative pulse-ring">
-                <div class="w-24 h-24 rounded-full border border-dashed border-orange-400/60 flex items-center justify-center">
+              <div class="w-32 h-32 rounded-full border border-amber-500/40 bg-amber-500/5 flex items-center justify-center relative pulse-ring">
+                <div class="w-20 h-20 rounded-full border border-dashed border-orange-400/60 flex items-center justify-center">
                   <div class="w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center glow-amber">
                     <div class="w-1.5 h-1.5 rounded-full bg-black"></div>
                   </div>
                 </div>
               </div>
-
-              <!-- Scanner Line -->
-              <div class="absolute inset-0 radar-line opacity-30 bg-[conic-gradient(from_0deg,transparent_0_300deg,rgba(245,158,11,0.5)_360deg)] rounded-xl"></div>
-
-              <!-- Real-time Position Label -->
               <div class="absolute bottom-2 left-2 right-2 bg-black/80 backdrop-blur-md rounded-lg p-2 border border-[var(--border-subtle)] flex justify-between text-[11px] font-mono">
-                <span class="text-[var(--color-muted)]">Position : <strong class="text-amber-400">5.3599° N, 4.0083° W</strong></span>
-                <span class="text-emerald-400 font-bold">Périmètre Valide (12m)</span>
+                <span class="text-[var(--color-muted)]">Zone : <strong class="text-amber-400">Siège, rayon 150 m</strong></span>
+                <span class="text-emerald-400 font-bold">Dans la zone</span>
               </div>
             </div>
 
-            <!-- Live Status Badges -->
-            <div class="space-y-2 mb-4">
-              <div class="flex items-center justify-between p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs">
-                <span class="text-[var(--color-muted)] flex items-center gap-1.5">
-                  <i data-lucide="user-check" class="w-4 h-4 text-emerald-400"></i> Selfie Biométrique IA
-                </span>
-                <span class="text-emerald-400 font-mono font-bold">Vérifié (99.2%)</span>
-              </div>
-              <div class="flex items-center justify-between p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border-subtle)] text-xs">
-                <span class="text-[var(--color-muted)] flex items-center gap-1.5">
-                  <i data-lucide="shield-alert" class="w-4 h-4 text-amber-400"></i> Détection Faux GPS (Mock)
-                </span>
-                <span class="text-emerald-400 font-mono font-bold">Risque Nul (0/100)</span>
-              </div>
-            </div>
+            <ul class="accueil-apercu">
+              <li><i data-lucide="check" aria-hidden="true"></i><span><strong>Identité vérifiée</strong>Kevin Kouassi</span></li>
+              <li><i data-lucide="check" aria-hidden="true"></i><span><strong>Zone autorisée</strong>Siège — Abidjan</span></li>
+              <li><i data-lucide="check" aria-hidden="true"></i><span><strong>Présence enregistrée</strong>Arrivée — 08:03</span></li>
+            </ul>
 
-            <!-- Punch Action Trigger -->
-            <button onclick="openPunchModal()" class="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white font-bold text-sm tracking-wide transition shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2">
-              <i data-lucide="fingerprint" class="w-5 h-5"></i>
-              LANCER LE POINTAGE TEST EN LIVE
+            <button type="button" onclick="openPunchModal()" class="w-full min-h-[48px] py-3 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white font-bold text-sm transition shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2">
+              <i data-lucide="play-circle" class="w-5 h-5" aria-hidden="true"></i>
+              Voir Timora en action
             </button>
           </div>
         </div>
@@ -492,19 +448,19 @@
             <div class="w-12 h-12 rounded-xl bg-orange-500/20 text-orange-400 flex items-center justify-center">
               <i data-lucide="camera" class="w-6 h-6"></i>
             </div>
-            <h3 class="font-bold text-base text-[var(--color-offwhite)]">Selfie IA Biométrique</h3>
+            <h3 class="font-bold text-base text-[var(--color-offwhite)]">Reconnaissance faciale</h3>
             <p class="text-xs text-[var(--color-muted)] leading-relaxed">
-              L'employé prend une photo instantanée au pointage. L'IA compare la biométrie faciale et prévient tout remplacement d'un collègue.
+              Au pointage, le visage est comparé à celui enregistré par le collaborateur : personne ne pointe à la place d'un collègue.
             </p>
           </div>
 
           <div class="glass-panel p-6 space-y-3 interactive-card border-t-2 border-t-emerald-500">
             <div class="w-12 h-12 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
-              <i data-lucide="shield-ban" class="w-6 h-6"></i>
+              <i data-lucide="crosshair" class="w-6 h-6"></i>
             </div>
-            <h3 class="font-bold text-base text-[var(--color-offwhite)]">Anti-Faux GPS (Mock)</h3>
+            <h3 class="font-bold text-base text-[var(--color-offwhite)]">Précision GPS contrôlée</h3>
             <p class="text-xs text-[var(--color-muted)] leading-relaxed">
-              Bloque automatiquement les applications de triche de localisation GPS installées sur Android ou iPhone. Risque zéro.
+              Une position trop imprécise ou hors de la zone est refusée. Chaque tentative refusée apparaît dans le cockpit, avec la distance mesurée.
             </p>
           </div>
 
@@ -514,149 +470,9 @@
             </div>
             <h3 class="font-bold text-base text-[var(--color-offwhite)]">Calcul Heures & Paie</h3>
             <p class="text-xs text-[var(--color-muted)] leading-relaxed">
-              Calcul automatique des minutes de retard et des majorations d'heures supp (+25%, +50%) conforme au Code du Travail.
+              Calcul automatique des minutes de retard et des heures supplémentaires, avec leurs majorations (+25 %, +50 %).
             </p>
           </div>
-        </div>
-      </div>
-
-      <!-- CALCULATEUR DE ROI INTERACTIF DYNAMIQUE -->
-      <div class="glass-panel-elevated p-8 border border-amber-500/30 space-y-6">
-        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-          <div class="lg:col-span-6 space-y-5">
-            <span class="px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 font-mono text-xs font-bold">SIMULATEUR ROI INTERACTIF</span>
-            <h3 class="text-2xl font-extrabold text-[var(--color-offwhite)]">
-              Combien d'argent gagnez-vous à passer à Timora ?
-            </h3>
-            <p class="text-xs text-[var(--color-muted)] leading-relaxed">
-              Ajustez l'effectif et le salaire moyen mensuel pour calculer vos bénéfices réels.
-            </p>
-
-            <!-- Employee Count Slider -->
-            <div class="space-y-2 pt-1">
-              <div class="flex justify-between text-xs font-semibold">
-                <span class="text-[var(--color-muted)]">Effectif d'employés :</span>
-                <span class="text-amber-400 font-mono text-base font-bold"><span id="roi-employee-count">25</span> employés</span>
-              </div>
-              <input id="roi-employee-slider" type="range" min="5" max="300" value="25" step="5" oninput="updateRoiCalculator()" class="w-full h-2.5 bg-[var(--border-subtle)] rounded-lg appearance-none cursor-pointer accent-amber-500">
-              <div class="flex justify-between text-[10px] text-[var(--color-muted)] font-mono">
-                <span>5 emp.</span>
-                <span>150 emp.</span>
-                <span>300 emp.</span>
-              </div>
-            </div>
-
-            <!-- Average Monthly Salary Dropdown -->
-            <div class="space-y-1.5 pt-1">
-              <label for="roi-salary-select" class="block text-xs font-semibold text-[var(--color-muted)]">Salaire Moyen Mensuel par Employé :</label>
-              <select id="roi-salary-select" onchange="updateRoiCalculator()" class="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--color-offwhite)] text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-amber-500 font-mono">
-                <option value="150000">150 000 FCFA / mois (SMIG / Ouvriers)</option>
-                <option value="250000" selected>250 000 FCFA / mois (Moyenne Nationale PME)</option>
-                <option value="450000">450 000 FCFA / mois (Techniciens & Cadres)</option>
-                <option value="750000">750 000 FCFA / mois (Cadres Supérieurs)</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="lg:col-span-6 bg-[var(--bg-card)] p-6 rounded-2xl border border-[var(--border-accent)] space-y-4 text-center relative overflow-hidden shadow-2xl">
-            <div class="absolute top-2 right-2 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold">
-              ROI ESTIMÉ : <span id="roi-percentage">+980%</span>
-            </div>
-
-            <p class="text-xs text-[var(--color-muted)] uppercase tracking-wider font-mono">Économie Mensuelle Nette</p>
-            <div id="roi-fcfa-saved" class="text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-amber-400 via-orange-400 to-emerald-400 bg-clip-text text-transparent font-mono">
-              718 750 FCFA
-            </div>
-
-            <div class="grid grid-cols-2 gap-3 pt-2 text-xs border-t border-[var(--border-subtle)]">
-              <div class="p-2 rounded-lg bg-[var(--border-subtle)]/30">
-                <span class="text-[var(--color-muted)] block text-[10px]">Gain Annuel Cumulé</span>
-                <strong id="roi-fcfa-annual" class="text-amber-400 font-mono text-sm">8 625 000 FCFA / an</strong>
-              </div>
-              <div class="p-2 rounded-lg bg-[var(--border-subtle)]/30">
-                <span class="text-[var(--color-muted)] block text-[10px]">Temps Récupéré</span>
-                <strong id="roi-hours-saved" class="text-emerald-400 font-mono text-sm">163 heures / mois</strong>
-              </div>
-            </div>
-
-            <button onclick="openPunchModal()" class="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold text-xs tracking-wide transition shadow-lg shadow-orange-500/20">
-              RÉSERVER MES ÉCONOMIES MAINTENANT
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- SECTION: AVIS & TÉMOIGNAGES CLIENTS -->
-      <div class="space-y-8 pt-4">
-        <div class="text-center max-w-2xl mx-auto space-y-2">
-          <h2 class="text-3xl font-extrabold text-[var(--color-offwhite)]">
-            Ce que disent nos <span class="text-amber-400">Dirigeants & DRH</span>
-          </h2>
-          <p class="text-xs text-[var(--color-muted)]">Des retours d'expérience authentiques d'entreprises à Abidjan et en Afrique de l'Ouest.</p>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          
-          <!-- Testimonial 1 -->
-          <div class="glass-panel p-6 space-y-4 relative border-l-4 border-l-amber-500">
-            <div class="flex items-center space-x-3">
-              <img src="https://images.unsplash.com/photo-1542385151-efd9000785a0?w=150&q=80" alt="Jean-Philippe KOBENAN" class="w-12 h-12 rounded-full object-cover border-2 border-amber-500/40">
-              <div>
-                <h4 class="font-bold text-sm text-[var(--color-offwhite)]">Jean-Philippe KOBENAN</h4>
-                <p class="text-xs text-[var(--color-muted)]">Directeur Général • BTP & Construction (Abidjan)</p>
-                <div class="text-amber-400 text-xs">★★★★★</div>
-              </div>
-            </div>
-            <p class="text-xs text-[var(--color-muted)] italic leading-relaxed">
-              « Avant Timora, certains ouvriers pointaient à la place de leurs collègues absents sur nos chantiers de Cocody. Grâce au selfie IA et à la géolocalisation stricte, nous avons éliminé la fraude et gagné +35% de régularité ! »
-            </p>
-          </div>
-
-          <!-- Testimonial 2 -->
-          <div class="glass-panel p-6 space-y-4 relative border-l-4 border-l-orange-500">
-            <div class="flex items-center space-x-3">
-              <img src="https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=150&auto=format&fit=crop&q=80" alt="Mariam DIARRA" class="w-12 h-12 rounded-full object-cover border-2 border-orange-500/40">
-              <div>
-                <h4 class="font-bold text-sm text-[var(--color-offwhite)]">Mariam DIARRA</h4>
-                <p class="text-xs text-[var(--color-muted)]">Responsable RH • Usine Agro-alimentaire (San Pedro)</p>
-                <div class="text-amber-400 text-xs">★★★★★</div>
-              </div>
-            </div>
-            <p class="text-xs text-[var(--color-muted)] italic leading-relaxed">
-              « Le calcul automatique des heures supplémentaires et le traitement des congés nous font gagner un temps précieux en fin de mois. Les exports PDF sont parfaitement adaptés pour nos bulletins de paie. »
-            </p>
-          </div>
-
-          <!-- Testimonial 3 -->
-          <div class="glass-panel p-6 space-y-4 relative border-l-4 border-l-emerald-500">
-            <div class="flex items-center space-x-3">
-              <img src="https://images.unsplash.com/photo-1531384441138-2736e62e0919?w=150&q=80" alt="Cheick Oumar TRAORÉ" class="w-12 h-12 rounded-full object-cover border-2 border-emerald-500/40">
-              <div>
-                <h4 class="font-bold text-sm text-[var(--color-offwhite)]">Cheick Oumar TRAORÉ</h4>
-                <p class="text-xs text-[var(--color-muted)]">Chef de Flotte Commerciaux • Distrib (Dakar & Abidjan)</p>
-                <div class="text-amber-400 text-xs">★★★★★</div>
-              </div>
-            </div>
-            <p class="text-xs text-[var(--color-muted)] italic leading-relaxed">
-              « Nos commerciaux itinérants pointent directement lors de leurs rendez-vous clients. La vérification anti-faux GPS nous garantit qu'ils sont bien sur le terrain. L'application mobile PWA est rapide et très intuitive. »
-            </p>
-          </div>
-
-          <!-- Testimonial 4 -->
-          <div class="glass-panel p-6 space-y-4 relative border-l-4 border-l-cyan-500">
-            <div class="flex items-center space-x-3">
-              <img src="https://images.unsplash.com/photo-1522529599102-193c0d76b5b6?w=150&q=80" alt="Kouassi BROU" class="w-12 h-12 rounded-full object-cover border-2 border-cyan-500/40">
-              <div>
-                <h4 class="font-bold text-sm text-[var(--color-offwhite)]">Kouassi BROU</h4>
-                <p class="text-xs text-[var(--color-muted)]">Gérant d'Atelier & Imprimerie (Abidjan)</p>
-                <div class="text-amber-400 text-xs">★★★★★</div>
-              </div>
-            </div>
-            <p class="text-xs text-[var(--color-muted)] italic leading-relaxed">
-              « La borne QR Code Kiosque installée sur la tablette à l'entrée de l'atelier permet un pointage fluide en 2 secondes sans embouteillage le matin à 08h00. Un outil moderne et indispensable ! »
-            </p>
-          </div>
-
         </div>
       </div>
 
@@ -676,7 +492,7 @@
             Trouvez la formule adaptée à <span class="tarifs__accent">votre équipe</span>.
           </h2>
           <p class="tarifs__sous-titre">
-            Commencez gratuitement pendant 7 jours. Aucune carte bancaire nécessaire.
+            Testez la démonstration gratuitement, puis activez votre entreprise. Abonnement mensuel, sans engagement.
           </p>
         </div>
 
@@ -735,7 +551,7 @@
 
         <p class="tarifs__reassurance">
           <i data-lucide="shield-check" class="w-4 h-4" aria-hidden="true"></i>
-          7 jours gratuits &nbsp;•&nbsp; aucune carte bancaire nécessaire &nbsp;•&nbsp; annulez quand vous voulez
+          Paiement sécurisé (Mobile Money ou carte) &nbsp;•&nbsp; activation dès la confirmation &nbsp;•&nbsp; aucun prélèvement automatique
         </p>
 
         <!-- ---------- Comparaison dépliable ---------- -->
@@ -758,7 +574,7 @@
       <div id="tarifs-cta-mobile" class="tarifs__sticky" hidden>
         <button type="button" class="tarifs__sticky-btn" data-plan-cta="sticky">
           <i data-lucide="rocket" class="w-4 h-4" aria-hidden="true"></i>
-          Essayer Timora gratuitement
+          Activer mon entreprise
         </button>
       </div>
 
@@ -770,52 +586,79 @@
         </div>
 
         <div class="space-y-3">
-          
+
           <div class="glass-panel p-4 rounded-xl border border-[var(--border-subtle)] cursor-pointer" onclick="toggleFaq(1)">
-            <div class="flex justify-between items-center text-sm font-bold text-[var(--color-offwhite)]">
-              <span>Comment le système empêche-t-il la triche par faux GPS (Mock Location) ?</span>
-              <i id="faq-icon-1" data-lucide="chevron-down" class="w-4 h-4 transition-transform"></i>
+            <div class="flex justify-between items-center gap-3 text-sm font-bold text-[var(--color-offwhite)]">
+              <span>Puis-je essayer Timora avant de payer ?</span>
+              <i id="faq-icon-1" data-lucide="chevron-down" class="w-4 h-4 shrink-0 transition-transform"></i>
             </div>
             <p id="faq-answer-1" class="text-xs text-[var(--color-muted)] pt-3 leading-relaxed hidden">
-              Timora utilise un algorithme de vérification multi-couches qui analyse les données brutes des capteurs matériels du téléphone. Si une application de simulation de position est détectée, le pointage est instantanément bloqué et une alerte est envoyée au manager.
+              Oui. La démonstration de cette page montre un pointage et ce que voit le responsable RH, sans compte, sans caméra et sans position réelle. Le pointage réel de vos équipes démarre après l'activation de votre entreprise.
             </p>
           </div>
 
           <div class="glass-panel p-4 rounded-xl border border-[var(--border-subtle)] cursor-pointer" onclick="toggleFaq(2)">
-            <div class="flex justify-between items-center text-sm font-bold text-[var(--color-offwhite)]">
-              <span>Que se passe-t-il si la connexion internet est coupée sur le site ?</span>
-              <i id="faq-icon-2" data-lucide="chevron-down" class="w-4 h-4 transition-transform"></i>
+            <div class="flex justify-between items-center gap-3 text-sm font-bold text-[var(--color-offwhite)]">
+              <span>Comment se passe le paiement ?</span>
+              <i id="faq-icon-2" data-lucide="chevron-down" class="w-4 h-4 shrink-0 transition-transform"></i>
             </div>
             <p id="faq-answer-2" class="text-xs text-[var(--color-muted)] pt-3 leading-relaxed hidden">
-              L'application enregistre les pointages en local de manière chiffrée avec horodatage sécurisé. Dès que le réseau est rétabli, les données se synchronisent automatiquement sans aucune perte.
+              En ligne, par Mobile Money ou carte bancaire, via notre prestataire de paiement JoonaPay. Votre entreprise est activée dès que JoonaPay confirme le paiement à Timora. L'abonnement couvre un mois (ou un an) : aucun prélèvement automatique, vous le renouvelez depuis votre espace.
             </p>
           </div>
 
           <div class="glass-panel p-4 rounded-xl border border-[var(--border-subtle)] cursor-pointer" onclick="toggleFaq(3)">
-            <div class="flex justify-between items-center text-sm font-bold text-[var(--color-offwhite)]">
-              <span>Quel est le délai de déploiement dans notre entreprise ?</span>
-              <i id="faq-icon-3" data-lucide="chevron-down" class="w-4 h-4 transition-transform"></i>
+            <div class="flex justify-between items-center gap-3 text-sm font-bold text-[var(--color-offwhite)]">
+              <span>Comment Timora empêche-t-il de pointer à la place d'un collègue ou depuis chez soi ?</span>
+              <i id="faq-icon-3" data-lucide="chevron-down" class="w-4 h-4 shrink-0 transition-transform"></i>
             </div>
             <p id="faq-answer-3" class="text-xs text-[var(--color-muted)] pt-3 leading-relaxed hidden">
-              Moins de 24 heures ! Il vous suffit d'importer la liste de vos employés via un fichier Excel ou CSV, de configurer les coordonnées GPS de vos sites, et vos équipes peuvent commencer à pointer immédiatement.
+              Chaque pointage est vérifié par le serveur : le visage est comparé à celui enregistré par le collaborateur, la position doit être assez précise et située dans la zone définie, et l'heure retenue est celle du serveur, pas celle du téléphone. Une tentative refusée est conservée et visible dans le cockpit.
+            </p>
+          </div>
+
+          <div class="glass-panel p-4 rounded-xl border border-[var(--border-subtle)] cursor-pointer" onclick="toggleFaq(4)">
+            <div class="flex justify-between items-center gap-3 text-sm font-bold text-[var(--color-offwhite)]">
+              <span>Que se passe-t-il si la connexion internet est coupée ?</span>
+              <i id="faq-icon-4" data-lucide="chevron-down" class="w-4 h-4 shrink-0 transition-transform"></i>
+            </div>
+            <p id="faq-answer-4" class="text-xs text-[var(--color-muted)] pt-3 leading-relaxed hidden">
+              Le pointage nécessite une connexion : il est vérifié et horodaté par le serveur au moment où il est fait. Sans réseau, l'application le signale et n'enregistre rien sur le téléphone, pour qu'aucun pointage ne puisse être antidaté.
+            </p>
+          </div>
+
+          <div class="glass-panel p-4 rounded-xl border border-[var(--border-subtle)] cursor-pointer" onclick="toggleFaq(5)">
+            <div class="flex justify-between items-center gap-3 text-sm font-bold text-[var(--color-offwhite)]">
+              <span>Combien de temps pour démarrer ?</span>
+              <i id="faq-icon-5" data-lucide="chevron-down" class="w-4 h-4 shrink-0 transition-transform"></i>
+            </div>
+            <p id="faq-answer-5" class="text-xs text-[var(--color-muted)] pt-3 leading-relaxed hidden">
+              Quelques minutes : vous définissez votre zone de pointage, puis vous partagez le code de votre entreprise. Chaque collaborateur le saisit depuis son téléphone et vous acceptez sa demande. Aucun matériel à installer.
             </p>
           </div>
 
         </div>
       </div>
 
-      <!-- FINAL CTA BANNER -->
+      <!-- APPEL FINAL -->
       <div class="glass-panel-elevated p-8 rounded-3xl border border-amber-500/40 text-center space-y-6 bg-gradient-to-r from-amber-950/40 via-[var(--bg-card)] to-orange-950/40">
         <h2 class="text-3xl md:text-4xl font-extrabold text-[var(--color-offwhite)]">
-          Prêt à maîtriser le temps de travail de vos équipes ?
+          Sachez dès demain qui est réellement présent.
         </h2>
         <p class="text-xs md:text-sm text-[var(--color-muted)] max-w-xl mx-auto">
-          Rejoignez des centaines d'entreprises qui ont déjà fait le choix de la transparence, de la sécurité et de la rentabilité.
+          Activez Timora pour votre entreprise : vos collaborateurs pointent depuis leur smartphone, vous suivez tout depuis le cockpit.
         </p>
-        <div class="flex flex-wrap items-center justify-center gap-4 pt-2">
-          <button onclick="openAuthModal('register')" class="magnetic-btn px-8 py-4 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-emerald-500 hover:from-amber-600 hover:to-emerald-600 text-white font-extrabold text-sm shadow-2xl shadow-orange-500/30 flex items-center gap-2">
-            <i data-lucide="credit-card" class="w-5 h-5"></i>
-            SOUSCRIRE À UN ABONNEMENT ENTREPRISE
+        <div class="accueil-actions accueil-actions--centre">
+          <div class="accueil-cta-bloc">
+            <button type="button" onclick="activerMonEntreprise('appel-final')" class="accueil-cta accueil-cta--principal">
+              Activer mon entreprise
+              <i data-lucide="arrow-right" class="w-4 h-4" aria-hidden="true"></i>
+            </button>
+            <span class="accueil-prix" data-prix-minimum hidden></span>
+          </div>
+          <button type="button" onclick="openPunchModal()" class="accueil-cta accueil-cta--secondaire">
+            <i data-lucide="play" class="w-4 h-4" aria-hidden="true"></i>
+            Tester Timora
           </button>
         </div>
       </div>
@@ -825,6 +668,9 @@
 
     <!-- ==================== VIEW 2: DASHBOARD MAIN ==================== -->
     <section id="view-dashboard" class="view-section hidden space-y-6">
+
+      <!-- Premiers pas apres l'activation (billing/activation.js). -->
+      <div id="demarrage-timora" class="demarrage" hidden></div>
 
       <!-- Dashboard Header avec Entreprise & Utilisateur Connecté -->
       <div class="glass-panel p-4 sm:p-5 space-y-4 border border-slate-800/80 shadow-xl bg-slate-900/80 backdrop-blur-xl rounded-2xl">
@@ -1936,87 +1782,21 @@
 
   <!-- ==================== MODALS & DRAWERS ==================== -->
 
-  <!-- MODAL 1: PUNCH MODAL (GEOLOCATION & BIOMETRIC FACIAL SCANNER) -->
-  <div id="modal-punch" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4">
-    <div class="glass-panel-elevated max-w-lg w-full p-6 space-y-4 border border-emerald-500/40 relative">
-      <button onclick="closePunchModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white p-1">
-        <i data-lucide="x" class="w-5 h-5"></i>
-      </button>
-
-      <div class="space-y-1">
-        <h3 class="text-lg font-bold text-white flex items-center gap-2">
-          <i data-lucide="scan-face" class="w-5 h-5 text-emerald-400"></i>
-          Pointage par Reconnaissance Faciale IA
-        </h3>
-        <p class="text-xs text-slate-400">Authentification Biométrique & Géofencing GPS pour Entreprises</p>
-      </div>
-
-      <!-- Employee Selector -->
-      <div>
-        <label class="text-xs text-slate-300 font-semibold mb-1 block">Sélectionner l'Employé pour le Test :</label>
-        <select id="punch-employee-select" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 font-mono">
-          <!-- Rempli par remplirSelecteursEmployes() depuis les employes reels. -->
-        </select>
-      </div>
-
-      <!-- Live Camera Stream & Facial Scanner Container -->
-      <div class="relative w-full h-56 bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center">
-        
-        <!-- Live Real Webcam Stream -->
-        <video id="punch-webcam" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover hidden"></video>
-
-        <!-- Grid overlay -->
-        <div class="absolute inset-0 bg-[radial-gradient(#1c2533_1px,transparent_1px)] [background-size:14px_14px] opacity-40"></div>
-
-        <!-- Laser Scan Line -->
-        <div id="laser-scan-line" class="hidden absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_20px_#10b981] z-20 animate-scan-laser"></div>
-
-        <!-- Face Frame Box -->
-        <div id="punch-face-frame" class="w-36 h-44 rounded-2xl border-2 border-dashed border-emerald-400/80 flex flex-col items-center justify-between p-2 relative z-10 transition-all duration-300">
-          <span class="text-[9px] font-mono text-emerald-400 bg-black/70 px-2 py-0.5 rounded border border-emerald-500/30">Cadrer le Visage</span>
-          
-          <div id="punch-avatar-fallback" class="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-emerald-400 glow-amber">
-            <i data-lucide="user-check" class="w-8 h-8"></i>
-          </div>
-
-          <span id="selfie-match-badge" class="text-[9px] font-mono text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/40">Détection : Prêt</span>
-        </div>
-
-        <div class="absolute bottom-2 left-2 right-2 flex justify-between text-[10px] font-mono text-slate-300 bg-slate-900/90 p-2 rounded-lg border border-slate-800 z-10 backdrop-blur-md">
-          <span class="flex items-center gap-1"><i data-lucide="sun" class="w-3 h-3 text-amber-400"></i> Luminosité : OK</span>
-          <span class="flex items-center gap-1 text-emerald-400"><i data-lucide="shield-check" class="w-3 h-3"></i> Anti-Spoofing : Actif</span>
-        </div>
-      </div>
-
-      <!-- Live Scan Status Message -->
-      <div class="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs font-mono text-center">
-        <p id="punch-scan-status-msg" class="text-slate-300">Positionnez votre visage dans le cadre et cliquez sur <strong>Pointer l'Arrivée</strong>.</p>
-      </div>
-
-      <!-- Location Verification status -->
-      <div class="p-3 rounded-xl bg-slate-900/60 border border-slate-800/80 space-y-1 text-xs font-mono">
-        <div class="flex justify-between">
-          <span class="text-slate-400">Coordonnées GPS :</span>
-          <span class="text-emerald-400 font-bold">5.3599° N, 4.0083° W</span>
-        </div>
-        <div class="flex justify-between">
-          <span class="text-slate-400">Géofence Siège Yopougon :</span>
-          <span class="text-emerald-400 font-bold">14 mètres (Dans le rayon)</span>
-        </div>
-      </div>
-
-      <!-- Action Buttons -->
-      <div class="grid grid-cols-2 gap-3 pt-1">
-        <button id="btn-punch-arrivee" onclick="submitPunch('ENTRÉE')" class="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-black font-extrabold text-xs tracking-wider transition shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2">
-          <i data-lucide="log-in" class="w-4 h-4"></i> POINTER L'ARRIVÉE
-        </button>
-        <button id="btn-punch-sortie" onclick="submitPunch('SORTIE')" class="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs tracking-wider transition flex items-center justify-center gap-2">
-          <i data-lucide="log-out" class="w-4 h-4"></i> POINTER LA SORTIE
+  <!--
+    DEMONSTRATION DE LA PAGE D'ACCUEIL (demo/demo.js).
+    Aucune camera, aucune position, aucun compte : rien n'est enregistre.
+  -->
+  <div id="modal-punch" class="auth-modale demo-modale" role="dialog" aria-modal="true" aria-labelledby="demo-titre" hidden>
+    <div class="auth-carte demo-carte">
+      <div class="demo-barre">
+        <span class="demo-etiquette"><i data-lucide="play-circle" class="w-4 h-4" aria-hidden="true"></i>Démonstration</span>
+        <button type="button" class="auth-icone-bouton" data-demo-action="fermer" aria-label="Fermer la démonstration">
+          <i data-lucide="x" class="w-5 h-5" aria-hidden="true"></i>
         </button>
       </div>
+      <div id="demo-ecran" class="demo-ecran" aria-live="polite"></div>
     </div>
   </div>
-
 
   <!--
     MODAL POINTAGE EMPLOYÉ — Selfie + GPS en une seule opération.
@@ -3466,6 +3246,23 @@
       </p>
     </div>
   </div>
+
+  <!--
+    ACTIVATION DE L'ENTREPRISE (billing/activation.js) : formule, paiement
+    JoonaPay, verification du paiement par le serveur au retour.
+  -->
+  <div id="modal-activation" class="auth-modale" role="dialog" aria-modal="true" aria-labelledby="activation-titre" hidden>
+    <div class="auth-carte activation-carte">
+      <div class="auth-barre">
+        <span aria-hidden="true"></span>
+        <img src="/assets/marque/timora-logo-fond-sombre.png" width="466" height="120" alt="Timora" class="auth-logo" />
+        <button type="button" class="auth-icone-bouton" data-activation-action="fermer" aria-label="Fermer">
+          <i data-lucide="x" class="w-5 h-5" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div id="activation-ecran" class="auth-ecran" aria-live="polite"></div>
+    </div>
+  </div>
   <!-- MODAL AJOUT D'ÉCHÉANCE CALENDRIER -->
   <div id="modal-add-event" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
     <div class="glass-panel-elevated p-6 max-w-md w-full relative space-y-5 border border-amber-500/40 shadow-2xl rounded-2xl">
@@ -4038,6 +3835,8 @@
   <!-- JavaScript App Logic -->
   <script src="app.js"></script>
   <script src="auth/auth-flow.js"></script>
+  <script src="demo/demo.js"></script>
+  <script src="billing/activation.js"></script>
   <!-- Application installable : n'ajoute rien au premier affichage (enregistrement apres chargement). -->
   <script src="/pwa/install-manager.js"></script>
   <script src="/pwa/sw-registration.js"></script>

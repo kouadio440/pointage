@@ -142,8 +142,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   renderSaasCalendar();
   renderSaasDashboard();
   setTheme('terracotta');
-  updateRoiCalculator();
   initialiserTarifs();
+
+  // Retour de la page de paiement JoonaPay : la verification (par le serveur)
+  // demarre avant l'orientation, qui ne doit pas la recouvrir.
+  if (typeof detecterRetourPaiement === 'function') detecterRetourPaiement();
 
   // Chargement automatique et immédiat des données réelles Supabase au démarrage
   if (supabaseClient) {
@@ -1640,78 +1643,7 @@ async function captureCurrentLocationForSelectedSite() {
 
 // Dynamic QR Countdown Timer
 
-// Modals Trigger Handlers & Media Stream
-let punchMediaStream = null;
-let isPunchScanning = false;
-
-async function openPunchModal() {
-  const modal = document.getElementById('modal-punch');
-  if (modal) {
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-  }
-
-  resetPunchScanUI();
-
-  // Attempt real webcam feed
-  const videoEl = document.getElementById('punch-webcam');
-  const fallbackFace = document.getElementById('punch-avatar-fallback');
-
-  if (videoEl && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-    try {
-      punchMediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-      videoEl.srcObject = punchMediaStream;
-      videoEl.classList.remove('hidden');
-      if (fallbackFace) fallbackFace.classList.add('hidden');
-    } catch (err) {
-      console.log('Webcam non activée (utilisation de la simulation faciale HD):', err);
-      if (videoEl) videoEl.classList.add('hidden');
-      if (fallbackFace) fallbackFace.classList.remove('hidden');
-    }
-  }
-}
-
-function closePunchModal() {
-  const modal = document.getElementById('modal-punch');
-  if (modal) {
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
-  }
-
-  if (punchMediaStream) {
-    punchMediaStream.getTracks().forEach(track => track.stop());
-    punchMediaStream = null;
-  }
-  resetPunchScanUI();
-}
-
-function resetPunchScanUI() {
-  isPunchScanning = false;
-  const laser = document.getElementById('laser-scan-line');
-  const statusBadge = document.getElementById('selfie-match-badge');
-  const scanMsg = document.getElementById('punch-scan-status-msg');
-  const faceFrame = document.getElementById('punch-face-frame');
-  const btnArrivee = document.getElementById('btn-punch-arrivee');
-  const btnSortie = document.getElementById('btn-punch-sortie');
-
-  if (laser) laser.classList.add('hidden');
-  if (statusBadge) {
-    statusBadge.innerText = 'Détection : Prêt';
-    statusBadge.className = 'text-[9px] font-mono text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded border border-emerald-500/40';
-  }
-  if (scanMsg) scanMsg.innerHTML = 'Positionnez votre visage dans le cadre et cliquez sur <strong>Pointer l\'Arrivée</strong>.';
-  if (faceFrame) faceFrame.className = 'w-36 h-44 rounded-2xl border-2 border-dashed border-emerald-400/80 flex flex-col items-center justify-between p-2 relative z-10 transition-all duration-300';
-
-  if (btnArrivee) {
-    btnArrivee.disabled = false;
-    btnArrivee.innerHTML = `<i data-lucide="log-in" class="w-4 h-4"></i> POINTER L'ARRIVÉE`;
-  }
-  if (btnSortie) {
-    btnSortie.disabled = false;
-    btnSortie.innerHTML = `<i data-lucide="log-out" class="w-4 h-4"></i> POINTER LA SORTIE`;
-  }
-  if (window.lucide) lucide.createIcons();
-}
+// La demonstration de la page d'accueil vit dans demo/demo.js (sans camera).
 
 let isSubmittingLeave = false;
 
@@ -1890,7 +1822,7 @@ function remplirSelecteursEmployes() {
         .join('')
     : '<option value="">Aucun employé enregistré</option>';
 
-  for (const id of ['overtime-employee', 'punch-employee-select']) {
+  for (const id of ['overtime-employee']) {
     const sel = document.getElementById(id);
     if (!sel) continue;
     const precedent = sel.value;
@@ -2141,85 +2073,6 @@ function openCopilotDrawer() {
 }
 function closeCopilotDrawer() {
   document.getElementById('drawer-copilot').classList.add('translate-x-full');
-}
-
-// Action Submissions with Live Facial Recognition Scan Simulation
-function submitPunch(type) {
-  if (isPunchScanning) return;
-  isPunchScanning = true;
-
-  const empSelect = document.getElementById('punch-employee-select');
-  const empName = empSelect ? empSelect.options[empSelect.selectedIndex].text.split(' (')[0] : 'Employé';
-
-  const laser = document.getElementById('laser-scan-line');
-  const statusBadge = document.getElementById('selfie-match-badge');
-  const scanMsg = document.getElementById('punch-scan-status-msg');
-  const faceFrame = document.getElementById('punch-face-frame');
-  const activeBtn = type === 'ENTRÉE' ? document.getElementById('btn-punch-arrivee') : document.getElementById('btn-punch-sortie');
-  const otherBtn = type === 'ENTRÉE' ? document.getElementById('btn-punch-sortie') : document.getElementById('btn-punch-arrivee');
-
-  if (otherBtn) otherBtn.disabled = true;
-  if (activeBtn) {
-    activeBtn.disabled = true;
-    activeBtn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> SCAN FACIAL EN COURS...`;
-    if (window.lucide) lucide.createIcons();
-  }
-
-  // Activate laser scanner beam
-  if (laser) laser.classList.remove('hidden');
-  if (faceFrame) faceFrame.className = 'w-36 h-44 rounded-2xl border-2 border-emerald-400 flex flex-col items-center justify-between p-2 relative z-10 transition-all duration-300 shadow-[0_0_25px_rgba(16,185,129,0.5)]';
-
-  // Phase 1: 0ms -> Localisation des points biométriques
-  if (scanMsg) scanMsg.innerHTML = '<span class="text-amber-400 font-bold animate-pulse">🔍 Phase 1/3 :</span> Analyse des 68 points biométriques faciaux...';
-  if (statusBadge) {
-    statusBadge.innerText = 'Calcul biométrique...';
-    statusBadge.className = 'text-[9px] font-mono text-amber-400 bg-amber-500/20 px-2 py-0.5 rounded border border-amber-500/40 animate-pulse';
-  }
-
-  // Phase 2: 900ms -> Anti-spoofing & Vivacité
-  setTimeout(() => {
-    if (scanMsg) scanMsg.innerHTML = '<span class="text-emerald-400 font-bold animate-pulse">🧬 Phase 2/3 :</span> Test de vivacité & Anti-usurpation d\'identité...';
-    if (statusBadge) statusBadge.innerText = 'Vivacité : 94.2%';
-  }, 900);
-
-  // Phase 3: 1800ms -> Matching réussi
-  setTimeout(() => {
-    if (scanMsg) scanMsg.innerHTML = '<span class="text-emerald-400 font-bold">✅ Phase 3/3 :</span> Identité faciale validée avec succès !';
-    if (statusBadge) {
-      statusBadge.innerText = 'Match IA : 99.4%';
-      statusBadge.className = 'text-[9px] font-mono text-emerald-400 bg-emerald-500/30 px-2 py-0.5 rounded border border-emerald-400 font-bold shadow-lg shadow-emerald-500/30';
-    }
-    if (laser) laser.classList.add('hidden');
-    if (faceFrame) {
-      faceFrame.className = 'w-36 h-44 rounded-2xl border-2 border-solid border-emerald-400 bg-emerald-500/10 flex flex-col items-center justify-between p-2 relative z-10 shadow-[0_0_35px_rgba(16,185,129,0.7)]';
-    }
-  }, 1800);
-
-  // Etape 4 : resultat de la DEMONSTRATION.
-  //
-  // Cette vitrine ne pointe personne : rien n'est envoye au serveur, rien n'est
-  // ecrit en base ni en memoire locale, et aucun indicateur d'employe n'est
-  // modifie. Un pointage reel passe par « Pointer maintenant » dans l'espace
-  // employe, et seul le serveur (record_attendance) peut le confirmer.
-  setTimeout(() => {
-    const heure = new Date().toLocaleTimeString('fr-FR', {
-      timeZone: 'Africa/Abidjan',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-
-    showToast(
-      'Démonstration terminée',
-      `<strong class="text-white">${escapeHtml(empName)}</strong> — simulation d'${escapeHtml(String(type).toLowerCase())} à ${escapeHtml(heure)} GMT.<br/>` +
-      '<span class="text-slate-300">Aucun pointage n\'a été enregistré : cette démonstration montre le déroulé ' +
-      '(selfie, position, horodatage). Un pointage réel est vérifié et confirmé par le serveur depuis l\'espace employé.</span>',
-      'info',
-      8000
-    );
-
-    closePunchModal();
-  }, 2500);
 }
 
 // =============================================================================
@@ -3271,6 +3124,10 @@ function renderEmployeePunchRejection(verdict, steps) {
     COMPANY_SUSPENDED: {
       title: 'Pointage indisponible',
       body: "Le compte de votre entreprise est suspendu. Contactez votre direction.",
+    },
+    SUBSCRIPTION_INACTIVE: {
+      title: 'Abonnement inactif',
+      body: "L'abonnement Timora de votre entreprise n'est pas actif. Prévenez votre responsable.",
     },
     MEMBERSHIP_NOT_ACTIVE: {
       title: 'Compte en attente de validation',
@@ -5333,45 +5190,6 @@ function askCopilot(topic) {
   }
 }
 
-// SaaS Landing Page Interactive Features
-function updateRoiCalculator() {
-  const slider = document.getElementById('roi-employee-slider');
-  const salarySelect = document.getElementById('roi-salary-select');
-  const countEl = document.getElementById('roi-employee-count');
-  const fcfaSavedEl = document.getElementById('roi-fcfa-saved');
-  const fcfaAnnualEl = document.getElementById('roi-fcfa-annual');
-  const hoursSavedEl = document.getElementById('roi-hours-saved');
-  const roiPercentageEl = document.getElementById('roi-percentage');
-
-  if (!slider || !countEl) return;
-
-  const count = parseInt(slider.value, 10);
-  const avgSalary = salarySelect ? parseInt(salarySelect.value, 10) : 250000;
-
-  countEl.innerText = count;
-
-  // Real ROI calculation model:
-  // Average 11.5% lost productive time per month due to tardiness + fraudulent buddy punches
-  const lostTimePercentage = 0.115;
-  const monthlySavingsPerEmp = avgSalary * lostTimePercentage;
-  const totalMonthlySavings = Math.round(count * monthlySavingsPerEmp);
-  const totalAnnualSavings = totalMonthlySavings * 12;
-  const totalHoursSaved = Math.round(count * 6.5);
-
-  // Cost of SaaS plan estimated
-  // Le cout mensuel vient de la grille tarifaire publiee, jamais d'une
-  // table parallele : les deux ont deja diverge par le passe.
-  const planRoi = planRecommandeTarifs(count);
-  const saasCostMonthly = planRoi.mensuel ?? PLANS_TIMORA[PLANS_TIMORA.length - 2].mensuel;
-  const netProfitMonthly = totalMonthlySavings - saasCostMonthly;
-  const roiMultiplier = Math.round((netProfitMonthly / saasCostMonthly) * 100);
-
-  if (fcfaSavedEl) fcfaSavedEl.innerText = `${totalMonthlySavings.toLocaleString('fr-FR')} FCFA`;
-  if (fcfaAnnualEl) fcfaAnnualEl.innerText = `${totalAnnualSavings.toLocaleString('fr-FR')} FCFA / an`;
-  if (hoursSavedEl) hoursSavedEl.innerText = `${totalHoursSaved} heures`;
-  if (roiPercentageEl) roiPercentageEl.innerText = `+${roiMultiplier}%`;
-}
-
 // =============================================================================
 //  SECTION ABONNEMENTS DE LA PAGE D'ACCUEIL
 // =============================================================================
@@ -5381,22 +5199,27 @@ function updateRoiCalculator() {
 //  Avant, un tarif vivait a trois endroits : le balisage de la carte,
 //  `togglePricingBilling()` et le calculateur de ROI. Les trois divergeaient
 //  deja — 25 000 dans la carte, 20 000 en annuel (presente comme un prix
-//  mensuel), 150 000 dans le ROI pour une offre qui n'existait pas. Tout
-//  descend desormais de `PLANS_TIMORA`, y compris le ROI.
+//  mensuel), 150 000 dans le ROI pour une offre qui n'existait pas.
+//
+//  Depuis la migration 031, les MONTANTS et les EFFECTIFS ne sont plus ecrits
+//  ici : ils viennent de la base (billing_plans_public), la meme table que
+//  celle ou le serveur de paiement lit le prix a facturer. Ce fichier ne garde
+//  que la presentation (nom, public vise, fonctionnalites). Un prix modifie
+//  dans le navigateur ne change donc rien a ce qui est facture.
 //
 //  Le seuil d'une formule est son `maxEmployes` : la recommandation prend le
-//  PREMIER plan capable d'accueillir l'effectif saisi. Ajouter une formule ne
-//  demande donc aucune condition supplementaire ailleurs.
-
-/** Duree de l'essai, affichee sur chaque carte. */
-const TARIFS_ESSAI_JOURS = 7;
+//  PREMIER plan capable d'accueillir l'effectif saisi.
+//
+//  Il n'y a plus d'essai gratuit : la demonstration de la page d'accueil fait
+//  essayer Timora sans compte ; l'utilisation reelle commence au paiement.
 
 /**
  * Destination du bouton « Parler à notre équipe ».
  *
  * Laisser vide tant qu'aucune adresse commerciale n'existe reellement : le
- * bouton bascule alors vers l'inscription a l'essai, qui fonctionne. Y mettre
- * une adresse inventee enverrait les demandes de devis dans le vide.
+ * bouton mene alors a l'enregistrement de l'entreprise, visible par l'equipe
+ * Timora dans sa console. Y mettre une adresse inventee enverrait les
+ * demandes de devis dans le vide.
  * Accepte une adresse e-mail ou un lien (https://wa.me/225...).
  */
 const TARIFS_CONTACT_COMMERCIAL = '';
@@ -5406,10 +5229,10 @@ const PLANS_TIMORA = [
     code: 'essentiel',
     nom: 'Essentiel',
     cible: 'Jusqu\'à 10 employés',
-    maxEmployes: 10,
-    mensuel: 15000,
-    annuel: 150000,
-    cta: 'Essayer gratuitement',
+    // Effectif et prix : charges depuis la base (chargerTarifsServeur).
+    maxEmployes: null,
+    mensuel: null,
+    annuel: null,
     principales: [
       'Reconnaissance faciale',
       'Pointage GPS & géofencing',
@@ -5430,12 +5253,12 @@ const PLANS_TIMORA = [
     code: 'business',
     nom: 'Business',
     cible: 'Jusqu\'à 30 employés',
-    maxEmployes: 30,
-    mensuel: 35000,
-    annuel: 350000,
+    // Effectif et prix : charges depuis la base (chargerTarifsServeur).
+    maxEmployes: null,
+    mensuel: null,
+    annuel: null,
     badge: 'Le choix des PME',
     misEnAvant: true,
-    cta: 'Essayer gratuitement',
     principales: [
       'Reconnaissance faciale',
       'Pointage GPS & géofencing',
@@ -5458,10 +5281,10 @@ const PLANS_TIMORA = [
     code: 'pro',
     nom: 'Pro',
     cible: 'Jusqu\'à 100 employés',
-    maxEmployes: 100,
-    mensuel: 75000,
-    annuel: 750000,
-    cta: 'Essayer gratuitement',
+    // Effectif et prix : charges depuis la base (chargerTarifsServeur).
+    maxEmployes: null,
+    mensuel: null,
+    annuel: null,
     principales: [
       'Toutes les fonctionnalités Business',
       'Gestion multi-sites',
@@ -5486,7 +5309,6 @@ const PLANS_TIMORA = [
     mensuel: null,
     annuel: null,
     surDevis: true,
-    cta: 'Parler à notre équipe',
     principales: [
       'Nombre d\'employés personnalisé',
       'Multi-sites avancé',
@@ -5519,7 +5341,7 @@ const COMPARAISON_TARIFS = [
   {
     groupe: 'Capacité',
     lignes: [
-      { intitule: 'Employés inclus', valeurs: { essentiel: '10', business: '30', pro: '100', entreprise: 'Sur mesure' } },
+      { intitule: 'Employés inclus', valeurs: { essentiel: 'maxEmployes', business: 'maxEmployes', pro: 'maxEmployes', entreprise: 'Sur mesure' } },
       { intitule: 'Sites', valeurs: { essentiel: '1', business: '3', pro: '10', entreprise: 'Illimité' } },
       { intitule: 'Administrateurs', valeurs: { essentiel: '1', business: '3', pro: '10', entreprise: 'Sur mesure' } },
     ],
@@ -5554,7 +5376,66 @@ const etatTarifs = {
   groupeCompare: COMPARAISON_TARIFS[0].groupe,
   derniereRecommandation: null,
   vueSignalee: false,
+  /** 'attente' | 'pret' | 'erreur' : etat du chargement des prix depuis la base. */
+  chargement: 'attente',
 };
+
+let chargementTarifs = null;
+
+/**
+ * Charge prix et effectifs depuis la base. Une seule requete, partagee par la
+ * page d'accueil, la demonstration et l'ecran d'activation.
+ */
+function chargerTarifsServeur() {
+  if (etatTarifs.chargement === 'pret') return Promise.resolve(true);
+  if (chargementTarifs) return chargementTarifs;
+  chargementTarifs = (async () => {
+    try {
+      if (!supabaseClient) throw new Error('Supabase indisponible');
+      const { data, error } = await supabaseClient.rpc('billing_plans_public');
+      if (error) throw error;
+      (data || []).forEach((p) => {
+        const plan = PLANS_TIMORA.find((x) => x.code === p.code);
+        if (!plan) return;
+        plan.mensuel = p.monthly_price;
+        plan.annuel = p.annual_price;
+        plan.maxEmployes = p.max_employees === null ? Infinity : p.max_employees;
+        plan.surDevis = !p.self_serve;
+      });
+      etatTarifs.chargement = PLANS_TIMORA.some((p) => !p.surDevis && p.mensuel) ? 'pret' : 'erreur';
+    } catch (err) {
+      console.warn('[Tarifs] Chargement impossible :', err && err.message);
+      etatTarifs.chargement = 'erreur';
+    } finally {
+      chargementTarifs = null;
+    }
+    renderTarifs();
+    afficherPrixMinimum();
+    return etatTarifs.chargement === 'pret';
+  })();
+  return chargementTarifs;
+}
+
+/** Le plus petit prix mensuel publie, ou `null` tant qu'il n'est pas connu. */
+function prixMinimumTimora() {
+  const prix = PLANS_TIMORA.filter((p) => !p.surDevis && p.mensuel).map((p) => p.mensuel);
+  return prix.length ? Math.min(...prix) : null;
+}
+
+/** « À partir de … / mois » sous les boutons d'activation. */
+function afficherPrixMinimum() {
+  const prix = prixMinimumTimora();
+  document.querySelectorAll('[data-prix-minimum]').forEach((el) => {
+    el.textContent = prix ? `À partir de ${formaterFcfa(prix)} / mois` : '';
+    el.hidden = !prix;
+  });
+}
+
+function voirTarifs(source) {
+  suivreTarifs('pricing_link_clicked', { source });
+  const section = document.getElementById('tarifs');
+  if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 // -----------------------------------------------------------------------------
 //  MESURE
@@ -5583,9 +5464,11 @@ function suivreTarifs(nom, donnees = {}) {
 //  CALCULS
 // -----------------------------------------------------------------------------
 
-/** La premiere formule capable d'accueillir cet effectif. */
+/** La premiere formule capable d'accueillir cet effectif (effectifs lus en base). */
 function planRecommandeTarifs(employes) {
-  return PLANS_TIMORA.find((p) => employes <= p.maxEmployes) || PLANS_TIMORA[PLANS_TIMORA.length - 1];
+  if (etatTarifs.chargement !== 'pret') return PLANS_TIMORA[PLANS_TIMORA.length - 1];
+  return PLANS_TIMORA.find((p) => p.maxEmployes !== null && employes <= p.maxEmployes)
+    || PLANS_TIMORA[PLANS_TIMORA.length - 1];
 }
 
 /** Le montant affiche pour la periode en cours, ou `null` si la formule est sur devis. */
@@ -5625,15 +5508,16 @@ function renderTarifs() {
   const grille = document.getElementById('tarifs-grille');
   if (!grille) return;
 
+  const pret = etatTarifs.chargement === 'pret';
   const recommande = planRecommandeTarifs(etatTarifs.employes);
   const rangRecommande = PLANS_TIMORA.indexOf(recommande);
 
   grille.innerHTML = PLANS_TIMORA.map((plan, i) => {
-    const estRecommande = plan.code === recommande.code;
+    const estRecommande = pret && plan.code === recommande.code;
     const montant = montantTarifs(plan);
-    const parEmploye = coutParEmployeTarifs(plan);
+    const parEmploye = pret ? coutParEmployeTarifs(plan) : null;
     const depliee = etatTarifs.carteDepliee === plan.code;
-    const tropPetit = !plan.surDevis && etatTarifs.employes > plan.maxEmployes;
+    const tropPetit = pret && !plan.surDevis && etatTarifs.employes > plan.maxEmployes;
 
     // Sur mobile, la formule recommandee remonte en tete ; l'ordre d'origine
     // est conserve pour les autres. Le CSS n'applique cet ordre qu'en dessous
@@ -5667,7 +5551,9 @@ function renderTarifs() {
         <div class="tarifs__prix-bloc">
           <p class="tarifs__prix">
             <span class="tarifs__montant">
-              ${montant === null ? 'Sur devis' : formaterFcfa(montant)}
+              ${plan.surDevis ? 'Sur devis'
+                : montant !== null ? formaterFcfa(montant)
+                  : etatTarifs.chargement === 'erreur' ? 'Tarif indisponible' : '…'}
             </span>
             ${montant === null ? '' :
               `<span class="tarifs__unite">/ ${etatTarifs.periode === 'annuel' ? 'an' : 'mois'}</span>`}
@@ -5680,12 +5566,6 @@ function renderTarifs() {
                 : ''}
           </p>
         </div>
-
-        ${plan.surDevis ? '' : `
-          <span class="tarifs__essai">
-            <i data-lucide="gift" class="w-3 h-3" aria-hidden="true"></i>
-            ${TARIFS_ESSAI_JOURS} jours gratuits
-          </span>`}
 
         <ul class="tarifs__liste">${puces(plan.principales)}</ul>
 
@@ -5701,8 +5581,8 @@ function renderTarifs() {
 
         <button type="button"
                 class="tarifs__cta${estRecommande || plan.misEnAvant ? ' is-principal' : ''}"
-                data-plan-cta="${plan.code}">
-          ${escapeHtml(plan.cta)}
+                data-plan-cta="${plan.code}" ${!plan.surDevis && !pret ? 'disabled' : ''}>
+          ${plan.surDevis ? 'Demander un devis' : `Choisir ${escapeHtml(plan.nom)}`}
         </button>
       </article>`;
   }).join('');
@@ -5711,7 +5591,7 @@ function renderTarifs() {
   const valeur = document.getElementById('tarifs-effectif-valeur');
   if (valeur) {
     const n = etatTarifs.employes;
-    valeur.textContent = `${n}${n >= 500 ? '+' : ''} employé${n > 1 ? 's' : ''} — ${recommande.nom}`;
+    valeur.textContent = `${n}${n >= 500 ? '+' : ''} employé${n > 1 ? 's' : ''}${pret ? ` — ${recommande.nom}` : ''}`;
   }
 
   const slider = document.getElementById('tarifs-slider');
@@ -5724,7 +5604,7 @@ function renderTarifs() {
 
   // La recommandation n'est signalee QUE lorsqu'elle change, pas a chaque
   // pixel parcouru par le curseur du slider.
-  if (etatTarifs.derniereRecommandation !== recommande.code) {
+  if (pret && etatTarifs.derniereRecommandation !== recommande.code) {
     etatTarifs.derniereRecommandation = recommande.code;
     suivreTarifs('pricing_plan_recommended', {
       plan: recommande.code, employes: etatTarifs.employes, rang: rangRecommande,
@@ -5739,6 +5619,8 @@ function renderComparaisonTarifs() {
   if (!hote) return;
 
   const cellule = (valeur, plan) => {
+    // L'effectif inclus est celui de la base, pas une copie ecrite ici.
+    if (valeur === 'maxEmployes') valeur = plan.maxEmployes === null ? '…' : String(plan.maxEmployes);
     if (valeur === true) return `<span class="tarifs__compare-cellule tarifs__compare-oui" data-formule="${escapeHtml(plan.nom)}">✓</span>`;
     if (valeur === false) return `<span class="tarifs__compare-cellule tarifs__compare-non" data-formule="${escapeHtml(plan.nom)}">—</span>`;
     return `<span class="tarifs__compare-cellule" data-formule="${escapeHtml(plan.nom)}">${escapeHtml(String(valeur))}</span>`;
@@ -5839,24 +5721,25 @@ function basculerComparaisonTarifs() {
 }
 
 /**
- * Lance l'essai gratuit.
- *
- * Reutilise le formulaire d'inscription existant : aucune authentification
- * parallele, aucune route nouvelle.
+ * Choix d'une formule sur la page d'accueil : elle est memorisee, puis le
+ * parcours d'activation commence (compte, entreprise, paiement). Aucun essai :
+ * l'utilisation reelle commence a la confirmation du paiement.
  */
-function demarrerEssaiTarifs(code) {
+function choisirFormuleTarifs(code) {
   const plan = PLANS_TIMORA.find((p) => p.code === code);
+  if (!plan) return;
 
-  suivreTarifs('pricing_cta_clicked', {
+  suivreTarifs('plan_selected', {
     plan: code,
     periode: etatTarifs.periode,
     employes: etatTarifs.employes,
-    montant: plan ? montantTarifs(plan) : null,
+    montant: montantTarifs(plan),
+    source: 'tarifs',
   });
+  if (typeof memoriserFormuleChoisie === 'function') memoriserFormuleChoisie(code, etatTarifs.periode);
 
-  if (plan && plan.surDevis) {
+  if (plan.surDevis) {
     suivreTarifs('enterprise_contact_clicked', { employes: etatTarifs.employes });
-
     if (TARIFS_CONTACT_COMMERCIAL) {
       const cible = TARIFS_CONTACT_COMMERCIAL.includes('@')
         ? `mailto:${TARIFS_CONTACT_COMMERCIAL}?subject=${encodeURIComponent(
@@ -5865,11 +5748,9 @@ function demarrerEssaiTarifs(code) {
       window.open(cible, '_blank', 'noopener');
       return;
     }
-    // Sans adresse commerciale renseignee, l'essai reste le chemin le plus
-    // court : le compte cree permet a l'equipe de rappeler le prospect.
   }
 
-  openAuthModal('register');
+  if (typeof activerMonEntreprise === 'function') activerMonEntreprise('tarifs');
 }
 
 // -----------------------------------------------------------------------------
@@ -5896,7 +5777,7 @@ function initialiserTarifs() {
     } else if (cible.dataset.periode) {
       definirPeriodeTarifs(cible.dataset.periode);
     } else if (cible.dataset.planCta) {
-      demarrerEssaiTarifs(cible.dataset.planCta);
+      choisirFormuleTarifs(cible.dataset.planCta);
     } else if (cible.dataset.deplier) {
       basculerFonctionsTarifs(cible.dataset.deplier);
     } else if (cible.id === 'tarifs-btn-comparer') {
@@ -5914,7 +5795,10 @@ function initialiserTarifs() {
   // Le CTA collant est en dehors de la section : il a son propre ecouteur.
   const sticky = document.getElementById('tarifs-cta-mobile');
   if (sticky) {
-    sticky.addEventListener('click', () => demarrerEssaiTarifs(etatTarifs.derniereRecommandation || 'business'));
+    sticky.addEventListener('click', () => {
+      if (etatTarifs.chargement === 'pret') choisirFormuleTarifs(planRecommandeTarifs(etatTarifs.employes).code);
+      else if (typeof activerMonEntreprise === 'function') activerMonEntreprise('tarifs-collant');
+    });
   }
 
   // `pricing_viewed` et l'apparition du CTA collant partagent le meme
@@ -5937,6 +5821,7 @@ function initialiserTarifs() {
   }
 
   renderTarifs();
+  chargerTarifsServeur();
 }
 
 
@@ -9081,7 +8966,8 @@ function renderSuperAdminEntreprises() {
   }
 
   const etatAbo = {
-    ACTIVE: ['Actif', 'text-emerald-400'], TRIAL: ['Essai', 'text-cyan-400'],
+    ACTIVE: ['Actif', 'text-emerald-400'], TRIAL: ['Essai (ancien modèle)', 'text-cyan-400'],
+    PENDING_PAYMENT: ['En attente de paiement', 'text-amber-400'], EXPIRED: ['Expiré', 'text-orange-400'],
     PAST_DUE: ['Impayé', 'text-orange-400'], SUSPENDED: ['Suspendu', 'text-red-400'],
     CANCELLED: ['Résilié', 'text-slate-500'],
   };
