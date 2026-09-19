@@ -172,7 +172,7 @@ async function lireEntreprise(companyId) {
  * Appelee par la resolution d'authentification (company_billing_required), ou
  * depuis le cockpit pour un renouvellement anticipe.
  */
-async function ouvrirActivation(contexte, { renouvellement = false } = {}) {
+async function ouvrirActivation(contexte, { renouvellement = false, changement = false } = {}) {
   activation.contexte = contexte || activation.contexte;
   const actif = (activation.contexte && activation.contexte.active) || {};
 
@@ -180,8 +180,12 @@ async function ouvrirActivation(contexte, { renouvellement = false } = {}) {
   if (['VERIFICATION', 'SUCCES'].includes(activation.etat) && !modaleActivation().hidden) return;
 
   activation.erreur = null;
+  activation.checkout = null;
   activation.etat = 'CHARGEMENT';
   activation.renouvellement = renouvellement;
+  // « Changer de formule » (limite atteinte, cockpit) : une formule superieure
+  // s'applique des le paiement ; rien ne change avant.
+  activation.changement = changement;
   afficherModaleActivation();
   rendreActivation();
 
@@ -202,6 +206,13 @@ async function ouvrirActivation(contexte, { renouvellement = false } = {}) {
 
   activation.formule = (memorisee && memorisee.code) || precedente || recommandee || 'business';
   activation.periode = (memorisee && memorisee.periode) || 'MONTHLY';
+  if (changement && precedente) {
+    // Formule actuelle -> la suivante, proposee par defaut.
+    const enLigne = formules().filter((p) => !p.surDevis && p.mensuel).map((p) => p.code);
+    const i = enLigne.indexOf(precedente);
+    activation.formule = i >= 0 && i < enLigne.length - 1 ? enLigne[i + 1] : 'entreprise';
+    activation.periode = 'MONTHLY';
+  }
   traceFacturation('billing status', { etat: billing.etat || null, entreprise: actif.company_id || null });
 
   // Retour sur Timora apres un passage chez JoonaPay, sans adresse de retour
@@ -290,11 +301,18 @@ async function continuerVersPaiement(tentative = 1) {
     if (!r.corps.reutilise) suivreActivation('joonapay_checkout_created', { plan: plan.code });
     ecrireStockage(CLE_PAIEMENT_EN_COURS, { reference: r.corps.reference, depuis: Date.now() });
     ecrireStockage(CLE_FORMULE_CHOISIE, null);
+    // Montant REELLEMENT demande, decide par le serveur : il ne differe du
+    // tarif affiche que pour le test de production controle du compte autorise.
+    activation.checkout = {
+      testProduction: r.corps.is_smoke_test === true,
+      montant: Number(r.corps.montant) || null,
+      montantNormal: Number(r.corps.montant_normal) || null,
+    };
     activation.etat = 'REDIRECTION';
     rendreActivation();
     suivreActivation('payment_redirected', { plan: plan.code });
     traceFacturation('redirect started', { vers: new URL(r.corps.checkout_url).host });
-    setTimeout(() => window.location.assign(r.corps.checkout_url), 400);
+    setTimeout(() => window.location.assign(r.corps.checkout_url), activation.checkout.testProduction ? 3000 : 400);
     return;
   }
 
@@ -312,7 +330,7 @@ async function continuerVersPaiement(tentative = 1) {
     if (typeof openAuthModal === 'function') openAuthModal('company');
     return;
   }
-  if (r.status === 409 && r.corps.code === 'DEJA_ACTIF') {
+  if (r.status === 409 && r.corps.code === 'DEJA_ACTIF' && !activation.changement) {
     activation.etat = 'DEJA_ACTIF';
     activation.erreur = r.corps.message;
     rendreActivation();
@@ -483,6 +501,11 @@ function ecranChoixActivation() {
   } else if (billing.etat === 'CANCELLED') {
     titre = 'Votre abonnement Timora a été résilié.';
     sousTitre = 'Vos données sont conservées. Choisissez une formule pour réactiver votre entreprise.';
+  } else if (activation.changement) {
+    const actuelle = formules().find((p) => p.code === billing.plan);
+    titre = 'Changer de formule';
+    sousTitre = `${actuelle ? `Formule actuelle de <strong>${nomEntreprise}</strong> : ${echapActivation(actuelle.nom)}. ` : ''}`
+      + 'Une formule supérieure s\'applique dès son paiement. Votre abonnement ne change pas avant.';
   } else if (activation.renouvellement) {
     titre = 'Renouveler mon abonnement';
     sousTitre = `La nouvelle période s'ajoute à la fin de l'abonnement en cours de <strong>${nomEntreprise}</strong>.`;
@@ -495,7 +518,8 @@ function ecranChoixActivation() {
       <span class="activation-formule__corps">
         <span class="activation-formule__ligne">
           <strong>${echapActivation(p.nom)}</strong>
-          ${p.code === recommandee ? '<span class="activation-pastille">Recommandé</span>'
+          ${activation.changement && p.code === billing.plan ? '<span class="activation-pastille is-neutre">Formule actuelle</span>'
+            : !activation.changement && p.code === recommandee ? '<span class="activation-pastille">Recommandé</span>'
             : p.badge ? `<span class="activation-pastille is-neutre">${echapActivation(p.badge)}</span>` : ''}
         </span>
         <span class="activation-formule__ligne">
@@ -644,12 +668,20 @@ const ECRANS_ACTIVATION = {
   CHOIX: ecranChoixActivation,
   DEVIS: ecranDevisActivation,
 
-  REDIRECTION: () => `
+  REDIRECTION: () => {
+    const c = activation.checkout || {};
+    return `
     <div class="auth-attente" role="status">
       <span class="auth-roue" aria-hidden="true"></span>
       <h2 id="activation-titre" class="auth-titre" tabindex="-1">Redirection vers le paiement sécurisé…</h2>
       <p class="auth-sous-titre">Vous allez être redirigé vers JoonaPay.</p>
-    </div>`,
+      ${c.testProduction && c.montant ? `
+        <p class="activation-test-production">
+          Test de production contrôlé : <strong>${echapActivation(formaterFcfa(c.montant))}</strong> seront débités.
+          Ce n'est pas le prix de la formule (tarif normal : ${echapActivation(formaterFcfa(c.montantNormal))} / mois).
+        </p>` : ''}
+    </div>`;
+  },
 
   VERIFICATION: () => `
     <div class="auth-attente" role="status">
@@ -673,6 +705,10 @@ const ECRANS_ACTIVATION = {
           <strong>${echapActivation(formaterFcfa(p.amount || 0))}</strong>
         </div>
         ${fin ? `<p class="activation-recap__note">Actif jusqu'au ${echapActivation(dateLisible(fin))}.</p>` : ''}
+        ${p.is_smoke_test ? `<p class="activation-test-production">Test de production contrôlé : ${echapActivation(formaterFcfa(p.amount))} payés.
+          Les prochains paiements suivent le tarif normal (${echapActivation(formaterFcfa(p.normal_amount))} / mois).</p>` : ''}
+        ${p.receipt && p.receipt.number ? `<p class="activation-recap__note">Reçu ${echapActivation(p.receipt.number)} : envoyé par e-mail
+          et disponible dans l'onglet Facturation de votre cockpit.</p>` : ''}
       </div>
       <button type="button" class="auth-bouton auth-bouton--principal" data-activation-action="commencer">
         <span>Configurer mon entreprise</span>

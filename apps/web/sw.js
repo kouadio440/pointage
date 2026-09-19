@@ -30,7 +30,7 @@
  *  change. Un deploiement ordinaire du site n'exige rien ici.
  * ========================================================================== */
 
-const VERSION = 'timora-2026-09-18-2';
+const VERSION = 'timora-2026-09-19-1';
 
 const CACHE_SITE = `${VERSION}-site`;
 const CACHE_CDN = `${VERSION}-cdn`;
@@ -43,6 +43,7 @@ const PRECHARGEMENT = [
   '/demo/demo.js',
   '/billing/activation.js',
   '/billing/catalogue.js',
+  '/billing/cockpit-facturation.js',
   '/avis/avis.js',
   '/styles.css',
   '/manifest.webmanifest',
@@ -64,6 +65,7 @@ const CODE_DU_SITE = new Set([
   '/demo/demo.js',
   '/billing/activation.js',
   '/billing/catalogue.js',
+  '/billing/cockpit-facturation.js',
   '/avis/avis.js',
   '/styles.css',
   '/manifest.webmanifest',

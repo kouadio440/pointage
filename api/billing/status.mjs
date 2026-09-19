@@ -1,19 +1,20 @@
-// GET /api/billing/status?ref=TIMORA-SUB-AAAAMMJJ-XXXXXXXX
+// GET /api/billing/status?ref=TIMORA-SUB-AAAAMMJJ-XXXXXXXX  (www.timora.tech, Vercel)
 // En-tete : Authorization: Bearer <jeton de session Supabase>
 //
-// Etat d'un paiement pour la page de retour. Si le paiement est encore en
-// attente, le serveur relit son etat chez JoonaPay (au plus toutes les 5
-// secondes) : le retour du navigateur n'active jamais rien par lui-meme.
+// Etat d'un paiement pour la page de retour, via le serveur de paiement
+// (relais signe). Si le paiement est encore en attente, le serveur de paiement
+// relit son etat chez JoonaPay : le retour du navigateur n'active jamais rien
+// par lui-meme. Un paiement d'une autre entreprise repond « introuvable ».
 
-import { lireConfig } from '../../server/facturation/config.mjs';
-import { journaliser } from '../../server/facturation/journal.mjs';
 import { repondre, jetonDe, origineAutorisee } from '../../server/facturation/http.mjs';
-import { verifierPaiement } from '../../server/facturation/facturation.mjs';
+import { lireConfigPasserelle, appelerServeurPaiement } from '../../server/passerelle/client.mjs';
+
+const REFERENCE = /^TIMORA-SUB-\d{8}-[0-9A-F]{8}$/;
 
 export async function GET(request) {
-  const conf = lireConfig();
+  const conf = lireConfigPasserelle();
   if (!conf.ok) {
-    journaliser('BILLING_CONFIGURATION_ERROR', { manquantes: conf.manquantes, erreurs: conf.erreurs });
+    console.warn(JSON.stringify({ ts: new Date().toISOString(), service: 'timora-vercel-billing', evenement: 'PASSERELLE_NON_CONFIGUREE', manquantes: conf.manquantes }));
     return repondre(503, { code: 'PAIEMENT_NON_CONFIGURE', message: 'La vérification est momentanément impossible.' });
   }
   if (!origineAutorisee(request, conf)) {
@@ -23,12 +24,17 @@ export async function GET(request) {
   const jeton = jetonDe(request);
   if (!jeton) return repondre(401, { code: 'SESSION_REQUISE', message: 'Connectez-vous pour suivre votre paiement.' });
 
-  try {
-    const reference = new URL(request.url).searchParams.get('ref');
-    const r = await verifierPaiement(conf, { jeton, reference });
-    return repondre(r.status, r.corps);
-  } catch (err) {
-    journaliser('JOONAPAY_PAYMENT_STATUS_CHECK_FAILED', { etape: 'inattendue', erreur: err && err.name });
-    return repondre(500, { code: 'ERREUR_SERVEUR', message: 'La vérification est momentanément impossible.' });
+  const reference = new URL(request.url).searchParams.get('ref') || '';
+  if (!REFERENCE.test(reference)) return repondre(400, { code: 'REFERENCE_INVALIDE', message: 'Référence de paiement invalide.' });
+
+  const r = await appelerServeurPaiement(conf, {
+    methode: 'GET',
+    chemin: `/api/payments/${reference}/status`,
+    jeton,
+  });
+  if (r.status === 401 && r.corps.code === 'SIGNATURE_INTERNE_REFUSEE') {
+    console.warn(JSON.stringify({ ts: new Date().toISOString(), service: 'timora-vercel-billing', evenement: 'SIGNATURE_INTERNE_REFUSEE', route: 'status' }));
+    return repondre(503, { code: 'VERIFICATION_IMPOSSIBLE', message: 'La vérification est momentanément impossible.' });
   }
+  return repondre(r.status, r.corps);
 }

@@ -1,11 +1,10 @@
-// Appels aux fonctions de la base (PostgREST), sans dependance.
+// Appels a Supabase (PostgREST, Auth, Storage), sans dependance.
 //
-// Deux identites seulement :
-//   - l'acheteur, avec SON jeton de session : la base deduit elle-meme son
-//     entreprise et ses droits (auth.uid()), rien n'est cru sur parole ;
-//   - le serveur, avec la cle de service : reserve aux fonctions que le
-//     navigateur ne peut pas appeler (rattacher un checkout, appliquer un etat
-//     confirme par JoonaPay, journal).
+// Le serveur de paiement appelle les fonctions de paiement avec la cle de
+// service, et seulement elles peuvent l'etre (droits de la migration 033).
+// L'identite de l'acheteur n'est jamais crue sur parole : son jeton de session
+// est verifie aupres de Supabase Auth (verifierSession), puis la base relit le
+// compte et deduit elle-meme son entreprise et ses droits.
 
 const DELAI_MS = 10000;
 
@@ -57,6 +56,60 @@ export async function rpc(config, fonction, args, { jeton = null } = {}) {
     };
   }
   return { ok: true, status: reponse.status, data: corps };
+}
+
+/**
+ * Verifie un jeton de session aupres de Supabase Auth : signature, expiration
+ * et existence du compte sont controlees par Supabase lui-meme.
+ * Renvoie { ok: true, utilisateur: { id, email, emailVerifie } }
+ *      ou { ok: false, status, code }.
+ */
+export async function verifierSession(config, jeton) {
+  const { url, cleService } = config.supabase;
+  let reponse;
+  try {
+    reponse = await fetch(`${url}/auth/v1/user`, {
+      headers: { apikey: cleService, Authorization: `Bearer ${jeton}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(DELAI_MS),
+    });
+  } catch {
+    return { ok: false, status: 0, code: 'AUTH_INJOIGNABLE' };
+  }
+  if (reponse.status === 401 || reponse.status === 403) return { ok: false, status: 401, code: 'SESSION_EXPIREE' };
+  if (!reponse.ok) return { ok: false, status: reponse.status, code: 'AUTH_INDISPONIBLE' };
+  const u = await reponse.json().catch(() => null);
+  if (!u || typeof u.id !== 'string') return { ok: false, status: 502, code: 'AUTH_REPONSE_INATTENDUE' };
+  return {
+    ok: true,
+    utilisateur: { id: u.id, email: typeof u.email === 'string' ? u.email : null, emailVerifie: Boolean(u.email_confirmed_at) },
+  };
+}
+
+/**
+ * Depose un fichier dans un bucket PRIVE (cle de service). Remplace un depot
+ * precedent interrompu : le fichier n'est reference en base qu'apres ce depot.
+ */
+export async function deposerFichier(config, bucket, chemin, octets, type) {
+  const { url, cleService } = config.supabase;
+  const cible = `${url}/storage/v1/object/${encodeURIComponent(bucket)}/${chemin.split('/').map(encodeURIComponent).join('/')}`;
+  try {
+    const r = await fetch(cible, {
+      method: 'POST',
+      headers: {
+        apikey: cleService,
+        Authorization: `Bearer ${cleService}`,
+        'Content-Type': type,
+        'x-upsert': 'true',
+        'Cache-Control': 'no-store',
+      },
+      body: octets,
+      signal: AbortSignal.timeout(20000),
+    });
+    if (r.ok) return { ok: true };
+    return { ok: false, status: r.status, code: 'STOCKAGE_REFUSE' };
+  } catch {
+    return { ok: false, status: 0, code: 'STOCKAGE_INJOIGNABLE' };
+  }
 }
 
 /** Copie en base d'un evenement de facturation (au mieux : n'interrompt jamais le parcours). */

@@ -5,10 +5,13 @@
  *   1. le catalogue (apps/web/billing/catalogue.js) est coherent : devise XOF,
  *      montants entiers, annuel = mensuel x (12 - mois offerts), effectifs
  *      croissants, formule Entreprise sur devis ;
- *   2. la migration 031 insere exactement ces valeurs dans platform_plans ;
- *   3. la page d'accueil lit ses prix dans le catalogue (aucun prix en dur) ;
+ *   2. la migration 031 insere exactement ces valeurs dans platform_plans, et
+ *      la migration 033 exactement ces limites (collaborateurs, sites,
+ *      administrateurs) ;
+ *   3. la page d'accueil lit ses prix dans le catalogue (aucun prix en dur),
+ *      et ses cartes annoncent les memes limites de sites et d'administrateurs ;
  *   4. si SUPABASE_URL et SUPABASE_ANON_KEY sont definis, la base en ligne
- *      renvoie les memes tarifs (billing_plans_public).
+ *      renvoie les memes tarifs et limites (billing_plans_public).
  *
  * Usage : node scripts/check-billing-catalogue.mjs
  *         node --env-file=.env scripts/check-billing-catalogue.mjs   (avec la base)
@@ -35,6 +38,9 @@ for (const f of catalogue.formules) {
     }
     if (!(f.maxEmployes > precedent)) erreurs.push(`${f.code} : effectif ${f.maxEmployes} non croissant`);
     precedent = f.maxEmployes;
+    for (const limite of ['maxSites', 'maxAdmins']) {
+      if (!Number.isInteger(f[limite]) || f[limite] < 1) erreurs.push(`${f.code} : ${limite} invalide (${f[limite]})`);
+    }
   } else if (f.mensuel !== null || f.annuel !== null) {
     erreurs.push(`${f.code} : une formule sur devis n'a pas de prix`);
   }
@@ -51,6 +57,15 @@ for (const f of catalogue.formules) {
 }
 if (erreurs.length === nb) ok('migration 031 : tarifs identiques au catalogue');
 
+const migration033 = readFileSync(resolve(RACINE, 'services/supabase_migration_033_paiement_production.sql'), 'utf8');
+const nbLimites = erreurs.length;
+for (const f of catalogue.formules) {
+  const sql = (v) => (v === null ? 'NULL::INTEGER' : String(v));
+  const attendu = `('${f.code}', ${sql(f.maxEmployes)}, ${sql(f.maxSites)}, ${sql(f.maxAdmins)})`;
+  if (!migration033.includes(attendu)) erreurs.push(`migration 033 : limites absentes ou differentes pour ${f.code} (attendu ${attendu})`);
+}
+if (erreurs.length === nbLimites) ok('migration 033 : limites identiques au catalogue');
+
 // 3. Page d'accueil ------------------------------------------------------------
 const app = readFileSync(resolve(RACINE, 'apps/web/app.js'), 'utf8');
 const nb2 = erreurs.length;
@@ -62,6 +77,16 @@ if (index.indexOf('billing/catalogue.js') === -1 || index.indexOf('billing/catal
   erreurs.push('index.html : billing/catalogue.js doit etre charge avant app.js');
 }
 if (erreurs.length === nb2) ok('page d\'accueil : prix lus dans le catalogue, charge avant app.js');
+
+// Les cartes de tarifs annoncent les limites que la base fait respecter.
+const nb3 = erreurs.length;
+const annonce = (n, un, plusieurs) => (n === 1 ? `'1 ${un}'` : `'Jusqu\\'à ${n} ${plusieurs}'`);
+for (const f of catalogue.formules.filter((x) => x.enLigne)) {
+  for (const texte of [annonce(f.maxSites, 'site', 'sites'), annonce(f.maxAdmins, 'administrateur', 'administrateurs')]) {
+    if (!app.includes(texte)) erreurs.push(`app.js : la carte ${f.code} n'annonce pas ${texte}`);
+  }
+}
+if (erreurs.length === nb3) ok('page d\'accueil : limites de sites et d\'administrateurs conformes au catalogue');
 
 // 4. Base en ligne (facultatif) ------------------------------------------------
 const url = process.env.SUPABASE_URL;
@@ -80,7 +105,8 @@ if (url && cle) {
       const plans = await r.json();
       for (const f of catalogue.formules) {
         const p = plans.find((x) => x.code === f.code);
-        if (!p || p.monthly_price !== f.mensuel || p.annual_price !== f.annuel || p.max_employees !== f.maxEmployes) {
+        const limites = p && ('max_sites' in p ? p.max_sites === f.maxSites && p.max_admins === f.maxAdmins : true);
+        if (!p || p.monthly_price !== f.mensuel || p.annual_price !== f.annuel || p.max_employees !== f.maxEmployes || !limites) {
           erreurs.push(`base en ligne : ${f.code} differe du catalogue (${JSON.stringify(p)})`);
         }
       }

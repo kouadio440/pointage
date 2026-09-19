@@ -1,40 +1,39 @@
-// POST /api/webhooks/joonapay
+// POST /api/webhooks/joonapay  (www.timora.tech, Vercel) — ADRESSE HISTORIQUE
 //
-// Notification de JoonaPay. Le corps BRUT est lu avant tout traitement : la
-// signature (x-webhook-signature, HMAC-SHA256 hex prefixe « sha256= ») porte
-// sur ces octets exacts. Une signature absente ou fausse ne modifie rien.
-// Une notification valide ne fait que declencher la relecture de l'etat du
-// paiement chez JoonaPay ; c'est cet etat, et lui seul, qui peut activer un
-// abonnement.
-
-import { lireConfig } from '../../server/facturation/config.mjs';
-import { journaliser } from '../../server/facturation/journal.mjs';
-import { repondre } from '../../server/facturation/http.mjs';
-import { traiterWebhook } from '../../server/facturation/facturation.mjs';
+// Le webhook de production est declare chez JoonaPay a l'adresse du serveur
+// de paiement : https://payments.timora.tech/api/webhooks/joonapay. Cette
+// route ne sert qu'aux paiements crees avant ce changement : elle relaie le
+// corps BRUT et la signature JoonaPay tels quels. Vercel ne verifie rien et
+// ne decide de rien : le serveur de paiement verifie la signature, relit le
+// paiement chez JoonaPay et applique son etat.
 
 const TAILLE_MAX = 64 * 1024;
 
+const reponse = (status, corps) => new Response(JSON.stringify(corps), {
+  status,
+  headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' },
+});
+
 export async function POST(request) {
-  const conf = lireConfig();
-  if (!conf.ok) {
-    journaliser('BILLING_CONFIGURATION_ERROR', { manquantes: conf.manquantes, erreurs: conf.erreurs });
-    return repondre(503, { received: false });
-  }
+  const cible = String(process.env.PAYMENT_SERVER_URL || '').trim().replace(/\/+$/, '');
+  if (!/^https:\/\//.test(cible)) return reponse(503, { received: false });
 
   const corpsBrut = Buffer.from(await request.arrayBuffer());
-  if (corpsBrut.length === 0 || corpsBrut.length > TAILLE_MAX) {
-    journaliser('JOONAPAY_WEBHOOK_INVALID_SIGNATURE', { raison: 'TAILLE', taille: corpsBrut.length });
-    return repondre(400, { received: false });
-  }
+  if (corpsBrut.length === 0 || corpsBrut.length > TAILLE_MAX) return reponse(400, { received: false });
 
+  const signature = request.headers.get('x-webhook-signature');
   try {
-    const r = await traiterWebhook(conf, {
-      corpsBrut,
-      signature: request.headers.get('x-webhook-signature'),
+    const r = await fetch(`${cible}/api/webhooks/joonapay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(signature ? { 'X-Webhook-Signature': signature } : {}) },
+      body: corpsBrut,
+      redirect: 'error',
+      signal: AbortSignal.timeout(25000),
     });
-    return repondre(r.status, r.corps);
-  } catch (err) {
-    journaliser('SUBSCRIPTION_ACTIVATION_FAILED', { etape: 'webhook', erreur: err && err.name });
-    return repondre(500, { received: false });
+    const corps = await r.json().catch(() => ({}));
+    return reponse(r.status, { received: Boolean(corps && corps.received) });
+  } catch {
+    // Serveur de paiement injoignable : JoonaPay renverra la notification.
+    return reponse(503, { received: false });
   }
 }

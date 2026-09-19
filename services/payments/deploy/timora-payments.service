@@ -1,0 +1,50 @@
+[Unit]
+Description=Timora - serveur de paiement (payments.timora.tech)
+Documentation=file:///opt/timora-payments/current/services/payments/LISEZMOI.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=timora-pay
+Group=timora-pay
+WorkingDirectory=/opt/timora-payments/current/services/payments
+# Lu par systemd (root) au demarrage : le fichier reste en 600 root:root.
+EnvironmentFile=/etc/timora-payments/env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node src/serveur.mjs
+Restart=on-failure
+RestartSec=5
+# 78 = configuration invalide : pas de redemarrage en boucle.
+RestartPreventExitStatus=78
+TimeoutStopSec=15
+
+# --- Durcissement ------------------------------------------------------------
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/opt/timora-payments
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+# Appel refuse = erreur EPERM (Node se rabat, ex. io_uring -> epoll), jamais arret brutal.
+SystemCallErrorNumber=EPERM
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

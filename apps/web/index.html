@@ -825,6 +825,10 @@
         <button onclick="switchSection('reports')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition" data-section="reports">
           Rapports PDF
         </button>
+        <button onclick="switchSection('billing')" class="subtab-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition flex items-center gap-1.5" data-section="billing">
+          <i data-lucide="receipt" class="w-3.5 h-3.5"></i>
+          <span>Facturation</span>
+        </button>
       </div>
 
       <!-- SUB-SECTION 1: OVERVIEW -->
@@ -1729,6 +1733,22 @@
               <button onclick="openReportPreviewModal()" class="w-full py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-mono font-bold transition">Aperçu PDF</button>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- FACTURATION (billing/cockpit-facturation.js) : abonnement, limites, paiements, reçus -->
+      <div id="section-billing" class="sub-section hidden space-y-6">
+        <div class="glass-panel p-6 space-y-6">
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+            <div>
+              <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                <i data-lucide="receipt" class="w-5 h-5 text-emerald-400"></i>
+                Facturation
+              </h3>
+              <p class="text-xs text-slate-400">Votre abonnement, l'utilisation de votre formule, vos paiements et vos reçus.</p>
+            </div>
+          </div>
+          <div id="facturation-contenu" aria-live="polite"></div>
         </div>
       </div>
 
@@ -3306,6 +3326,38 @@
     </div>
   </div>
 
+  <!--
+    LIMITE DE FORMULE ATTEINTE (billing/cockpit-facturation.js) : la base a
+    refuse un collaborateur, un site ou un administrateur de trop.
+  -->
+  <div id="modal-limite-formule" class="auth-modale" role="dialog" aria-modal="true" aria-labelledby="limite-formule-titre" hidden>
+    <div class="auth-carte">
+      <div class="auth-barre">
+        <span aria-hidden="true"></span>
+        <img src="/assets/marque/timora-logo-fond-sombre.png" width="466" height="120" alt="Timora" class="auth-logo" />
+        <button type="button" class="auth-icone-bouton" data-limite-action="fermer" aria-label="Fermer">
+          <i data-lucide="x" class="w-5 h-5" aria-hidden="true"></i>
+        </button>
+      </div>
+      <div class="auth-ecran">
+        <div class="auth-tete">
+          <span class="auth-succes limite-formule__icone" aria-hidden="true"><i data-lucide="gauge" class="w-6 h-6"></i></span>
+          <h2 id="limite-formule-titre" class="auth-titre" tabindex="-1">Vous avez atteint la limite de votre formule.</h2>
+          <p id="limite-formule-message" class="auth-sous-titre"></p>
+        </div>
+        <div class="auth-pile">
+          <button type="button" class="auth-bouton auth-bouton--principal" data-limite-action="changer">
+            <span>Changer de formule</span><i data-lucide="arrow-right" class="w-4 h-4" aria-hidden="true"></i>
+          </button>
+          <button type="button" class="auth-bouton auth-bouton--secondaire" data-limite-action="fermer">
+            <span>Plus tard</span>
+          </button>
+        </div>
+        <p class="activation-recap__note">Votre abonnement ne change qu'après le paiement de la nouvelle formule. Aucun collaborateur n'est retiré.</p>
+      </div>
+    </div>
+  </div>
+
   <!-- DEPOT D'UN AVIS (avis/avis.js) -->
   <div id="modal-avis" class="auth-modale" role="dialog" aria-modal="true" aria-labelledby="avis-form-titre" hidden>
     <div class="auth-carte">
@@ -3894,6 +3946,7 @@
   <script src="auth/auth-flow.js"></script>
   <script src="demo/demo.js"></script>
   <script src="billing/activation.js"></script>
+  <script src="billing/cockpit-facturation.js"></script>
   <script src="avis/avis.js"></script>
   <!-- Application installable : n'ajoute rien au premier affichage (enregistrement apres chargement). -->
   <script src="/pwa/install-manager.js"></script>

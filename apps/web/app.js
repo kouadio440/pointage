@@ -918,6 +918,10 @@ function switchSection(sectionName) {
   if (sectionName === 'punch-config' && typeof renderPunchConfig === 'function') {
     renderPunchConfig();
   }
+  // Facturation : relue a chaque ouverture (etat reel du serveur).
+  if (sectionName === 'billing' && typeof chargerFacturation === 'function') {
+    chargerFacturation();
+  }
 }
 
 // Render Dashboard Data & Live Feed
@@ -4747,6 +4751,8 @@ async function saveSite() {
 
   if (error) {
     console.error('[Config] Enregistrement du site :', error);
+    // Site de trop pour la formule : message et « Changer de formule ».
+    if (typeof signalerLimiteFormule === 'function' && signalerLimiteFormule(error)) return;
     return showToast('Enregistrement impossible', traduireErreurEcriture(error, 'ce site'), 'info', 14000);
   }
 
@@ -4763,6 +4769,7 @@ async function toggleSiteActive(siteId) {
   const { error } = await supabaseClient
     .from('geofences').update({ is_active: s.is_active === false }).eq('id', siteId);
 
+  if (error && typeof signalerLimiteFormule === 'function' && signalerLimiteFormule(error)) return;
   if (error) return showToast('Modification impossible', traduireErreurEcriture(error, 'ce site'), 'info', 14000);
   await renderPunchConfig();
 }
@@ -6825,7 +6832,7 @@ async function handleAddEmployeeSubmit(e) {
       if (userErr) throw userErr;
 
       // 2. Créer l'entrée dans public.company_memberships
-      await supabaseClient.from('company_memberships').insert({
+      const { error: adhesionErr } = await supabaseClient.from('company_memberships').insert({
         user_id: newUser.id,
         company_id: state.currentCompanyId,
         role: role,
@@ -6833,6 +6840,7 @@ async function handleAddEmployeeSubmit(e) {
         invitation_code: inviteCode,
         status: 'INVITED'
       });
+      if (adhesionErr) throw adhesionErr;
 
       // 3. Tenter l'envoi automatique d'e-mail d'activation via Supabase Auth
       if (email && !estAdresseTemporaire(email)) {
@@ -6852,6 +6860,7 @@ async function handleAddEmployeeSubmit(e) {
     await loadSupabaseData();
   } catch (err) {
     console.error('Erreur création membre Supabase:', err);
+    if (typeof signalerLimiteFormule === 'function' && signalerLimiteFormule(err)) return;
     showToast('Erreur d\'Enregistrement', err.message || 'Impossible d\'enregistrer le membre.', 'info');
   } finally {
     if (btn) {
@@ -7498,6 +7507,11 @@ async function approveRegistration(membershipId, options = {}) {
     return true;
   } catch (e) {
     console.error('[RH] Approbation impossible :', e);
+    // Collaborateur de trop pour la formule : la demande reste en attente.
+    if (typeof signalerLimiteFormule === 'function' && signalerLimiteFormule(e)) {
+      if (recharger) await loadPendingRegistrations();
+      return 'LIMITE';
+    }
     showToast('Approbation impossible', messageDecisionDemande(e), 'warning', 10000);
     if (recharger) await loadPendingRegistrations();
     return false;
@@ -7578,6 +7592,8 @@ async function approuverPlusieurs(identifiants) {
   let reussies = 0;
   for (const id of identifiants) {
     const ok = await approveRegistration(id, { recharger: false });
+    // Limite de la formule atteinte : les suivantes seraient refusees aussi.
+    if (ok === 'LIMITE') break;
     if (ok) reussies += 1;
   }
 

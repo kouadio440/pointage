@@ -1,24 +1,30 @@
-// POST /api/billing/checkout
+// POST /api/billing/checkout  (www.timora.tech, Vercel)
 //
 // Corps attendu : { "plan": "essentiel" }, et facultativement la periode :
 //                 "period": "MONTHLY" | "ANNUAL", ou "billing_cycle": "monthly" | "annual"
 // En-tete       : Authorization: Bearer <jeton de session Supabase>
 //
-// Le navigateur n'envoie NI montant, NI entreprise, NI devise : la base les
-// deduit de la session et des tarifs. La reponse contient seulement la
-// reference Timora et l'adresse de paiement renvoyee par JoonaPay.
+// Relais SIGNE vers le serveur de paiement (payments.timora.tech), seule
+// passerelle vers JoonaPay. Le navigateur n'envoie NI montant, NI entreprise,
+// NI devise : seuls la formule et la periode sont transmises ; tout autre
+// champ (un « amount » par exemple) est ignore. Vercel ne detient aucune cle
+// JoonaPay ni la cle de service Supabase.
 
-import { lireConfig } from '../../server/facturation/config.mjs';
-import { journaliser } from '../../server/facturation/journal.mjs';
-import { repondre, jetonDe, origineAutorisee, adresseDeRetour } from '../../server/facturation/http.mjs';
-import { demarrerPaiement } from '../../server/facturation/facturation.mjs';
+import { repondre, jetonDe, origineAutorisee } from '../../server/facturation/http.mjs';
+import { lireConfigPasserelle, appelerServeurPaiement } from '../../server/passerelle/client.mjs';
 
 const TAILLE_MAX = 1024;
+const PLAN = /^[a-z]{2,20}$/;
+const CHAMPS_REPONSE = ['reference', 'checkout_url', 'reutilise', 'is_smoke_test', 'montant', 'montant_normal', 'code', 'message'];
+
+function journal(evenement, details) {
+  console.warn(JSON.stringify({ ts: new Date().toISOString(), service: 'timora-vercel-billing', evenement, ...details }));
+}
 
 export async function POST(request) {
-  const conf = lireConfig();
+  const conf = lireConfigPasserelle();
   if (!conf.ok) {
-    journaliser('BILLING_CONFIGURATION_ERROR', { manquantes: conf.manquantes, erreurs: conf.erreurs });
+    journal('PASSERELLE_NON_CONFIGUREE', { manquantes: conf.manquantes, erreurs: conf.erreurs });
     return repondre(503, { code: 'PAIEMENT_NON_CONFIGURE', message: 'Le paiement en ligne n\'est pas encore disponible.' });
   }
   if (!origineAutorisee(request, conf)) {
@@ -40,23 +46,33 @@ export async function POST(request) {
     return repondre(400, { code: 'JSON_INVALIDE', message: 'Requête invalide.' });
   }
 
+  const plan = typeof corps.plan === 'string' ? corps.plan.trim().toLowerCase() : '';
+  if (!PLAN.test(plan)) return repondre(422, { code: 'FORMULE_INDISPONIBLE', message: 'Formule inconnue.' });
+
   // Periode : « period » (MONTHLY / ANNUAL) ou « billing_cycle » (monthly / annual).
   const cycle = typeof corps.billing_cycle === 'string' ? corps.billing_cycle.trim().toLowerCase() : null;
-  const periode = typeof corps.period === 'string' ? corps.period
+  const periode = typeof corps.period === 'string' ? corps.period.trim().toUpperCase()
     : cycle === 'monthly' ? 'MONTHLY'
       : cycle === 'annual' || cycle === 'yearly' ? 'ANNUAL'
-        : cycle ? 'INVALIDE' : null;
+        : cycle ? 'INVALIDE' : 'MONTHLY';
+  if (!['MONTHLY', 'ANNUAL'].includes(periode)) return repondre(422, { code: 'PERIODE_INVALIDE', message: 'Période invalide.' });
 
-  try {
-    const r = await demarrerPaiement(conf, {
-      jeton,
-      plan: typeof corps.plan === 'string' ? corps.plan.trim().toLowerCase() : '',
-      periode,
-      adresseRetour: adresseDeRetour(request, conf),
-    });
-    return repondre(r.status, r.corps);
-  } catch (err) {
-    journaliser('JOONAPAY_PAYMENT_CREATE_FAILED', { etape: 'inattendue', erreur: err && err.name });
-    return repondre(500, { code: 'ERREUR_SERVEUR', message: 'Une erreur est survenue. Aucun montant n\'a été débité.' });
+  const r = await appelerServeurPaiement(conf, {
+    methode: 'POST',
+    chemin: '/api/payments/checkout',
+    corps: { plan, period: periode },
+    jeton,
+  });
+
+  // Signature interne refusee : configuration (secret different des deux
+  // cotes, horloge), jamais la faute du client.
+  if (r.status === 401 && r.corps.code === 'SIGNATURE_INTERNE_REFUSEE') {
+    journal('SIGNATURE_INTERNE_REFUSEE', { route: 'checkout' });
+    return repondre(503, { code: 'PAIEMENT_INDISPONIBLE', message: 'Le paiement en ligne est momentanément indisponible. Aucun montant n\'a été débité.' });
   }
+  if (r.injoignable) journal('SERVEUR_PAIEMENT_INJOIGNABLE', { route: 'checkout' });
+
+  const propre = {};
+  for (const champ of CHAMPS_REPONSE) if (r.corps[champ] !== undefined) propre[champ] = r.corps[champ];
+  return repondre(r.status, propre);
 }

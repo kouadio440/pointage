@@ -1,0 +1,40 @@
+# /etc/caddy/Caddyfile — serveur de paiement Timora
+# (__DOMAINE__ et __EMAIL_ACME__ sont remplaces par installer-serveur.sh)
+#
+# HTTPS automatique (Let's Encrypt) ; le port 80 ne sert qu'au defi ACME et
+# redirige tout le reste vers HTTPS : aucun point financier n'est servi en HTTP.
+# Seules trois routes atteignent le service Node (127.0.0.1:8787, jamais
+# expose directement). Pas de journal d'acces Caddy : les requetes internes
+# portent un jeton de session ; le service journalise, lui, sans le jeton.
+
+{
+	email __EMAIL_ACME__
+}
+
+__DOMAINE__ {
+	request_body {
+		max_size 64KB
+	}
+
+	@service path /health /api/payments/* /api/webhooks/joonapay
+	handle @service {
+		reverse_proxy 127.0.0.1:8787 {
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 35s
+			}
+		}
+	}
+
+	handle {
+		respond 404
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+}

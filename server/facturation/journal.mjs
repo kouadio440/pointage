@@ -26,10 +26,31 @@ export function nettoyer(details) {
   return propre;
 }
 
-/** Ecrit l'evenement dans les journaux du serveur. */
+// Evenements qui demandent une attention humaine : niveau ALERTE, sortie
+// d'erreur (journald les classe en priorite « err »).
+export const ALERTES = new Set([
+  'WEBHOOK_SIGNATURE_INVALID',
+  'AMOUNT_MISMATCH',
+  'CURRENCY_MISMATCH',
+  'UNKNOWN_PAYMENT',
+  'DUPLICATE_PAYMENT',
+  'ACTIVATION_FAILED',
+  'SUPABASE_WRITE_FAILED',
+  'JOONAPAY_UNAVAILABLE',
+  'INTERNAL_SIGNATURE_REJECTED',
+]);
+
+/** Ecrit l'evenement dans les journaux du serveur (une ligne JSON). */
 export function journaliser(evenement, details = {}) {
-  const ligne = { ts: new Date().toISOString(), service: 'timora-billing', evenement, ...nettoyer(details) };
-  const sortie = /FAILED|INVALID|ERROR/.test(evenement) ? console.warn : console.log;
+  const niveau = ALERTES.has(evenement) ? 'ALERTE' : /FAILED|INVALID|ERROR|REFUS/.test(evenement) ? 'AVERTISSEMENT' : 'INFO';
+  const ligne = {
+    ts: new Date().toISOString(),
+    service: process.env.TIMORA_SERVICE_NAME || 'timora-payments',
+    niveau,
+    evenement,
+    ...nettoyer(details),
+  };
+  const sortie = niveau === 'ALERTE' ? console.error : niveau === 'AVERTISSEMENT' ? console.warn : console.log;
   sortie(JSON.stringify(ligne));
 }
 

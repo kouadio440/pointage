@@ -1,8 +1,9 @@
 // Configuration serveur de la facturation.
 //
-// Tout vient des variables d'environnement du serveur (Vercel) : aucune cle
-// n'est ecrite dans le code, aucune n'arrive dans le navigateur. Ce dossier
-// (server/) est hors de api/ : aucun de ses fichiers n'est une route publique.
+// Tout vient des variables d'environnement du SERVEUR DE PAIEMENT
+// (payments.timora.tech) : aucune cle n'est ecrite dans le code, aucune
+// n'arrive dans le navigateur ni sur Vercel. Ce dossier (server/) est hors de
+// api/ : aucun de ses fichiers n'est une route publique.
 
 const REQUISES = [
   'JOONAPAY_CLIENT_KEY',
@@ -12,7 +13,6 @@ const REQUISES = [
   'JOONAPAY_WEBHOOK_URL',
   'JOONAPAY_ENV',
   'SUPABASE_URL',
-  'SUPABASE_ANON_KEY',
   'SUPABASE_SERVICE_ROLE_KEY',
 ];
 
@@ -116,5 +116,89 @@ export function lireConfig(env = process.env) {
       cleService: String(env.SUPABASE_SERVICE_ROLE_KEY || '').trim(),
     },
     appUrl: appUrl.replace(/\/+$/, ''),
+  };
+}
+
+const EMPREINTE = /^[0-9a-f]{64}$/;
+const VRAI = /^(true|1|oui|yes)$/i;
+
+/**
+ * Configuration du serveur de paiement (payments.timora.tech) : celle de la
+ * facturation, plus l'authentification interne, le test de production, la
+ * messagerie et les mentions du recu. Ne renvoie jamais une valeur secrete
+ * dans un message : seulement des NOMS de variables.
+ */
+export function lireConfigServeurPaiement(env = process.env) {
+  const base = lireConfig(env);
+  const manquantes = [...base.manquantes];
+  const erreurs = [...base.erreurs];
+
+  const secretInterne = String(env.INTERNAL_PAYMENT_API_SECRET || '').trim();
+  if (!secretInterne) manquantes.push('INTERNAL_PAYMENT_API_SECRET');
+  else if (secretInterne.length < 32) erreurs.push('INTERNAL_PAYMENT_API_SECRET doit faire au moins 32 caracteres.');
+
+  // Adresses de retour apres paiement : le serveur ne les deduit pas de la
+  // requete (elle vient de Vercel), elles sont configurees.
+  if (!base.appUrl) manquantes.push('TIMORA_APP_URL');
+  else if (base.environnement === 'production' && !base.appUrl.startsWith('https://')) {
+    erreurs.push('TIMORA_APP_URL doit etre en HTTPS en production.');
+  }
+
+  // Test de production unique (montant reduit). Jamais hors production.
+  const testActif = VRAI.test(String(env.PRODUCTION_SMOKE_TEST_ENABLED || '').trim());
+  const testMontant = Number(String(env.PRODUCTION_SMOKE_TEST_AMOUNT || '100').trim());
+  const testMax = Number(String(env.PRODUCTION_SMOKE_TEST_MAX_USES || '1').trim());
+  const testEmpreinte = String(env.PRODUCTION_SMOKE_TEST_ALLOWED_EMAIL_HASH || '').trim().toLowerCase();
+  if (testActif) {
+    if (base.environnement !== 'production') erreurs.push('PRODUCTION_SMOKE_TEST_ENABLED suppose JOONAPAY_ENV=production.');
+    if (!Number.isInteger(testMontant) || testMontant < 100 || testMontant > 999) {
+      erreurs.push('PRODUCTION_SMOKE_TEST_AMOUNT doit etre un entier entre 100 et 999.');
+    }
+    if (testMax !== 1) erreurs.push('PRODUCTION_SMOKE_TEST_MAX_USES doit valoir 1 (usage unique).');
+    if (testEmpreinte && !EMPREINTE.test(testEmpreinte)) {
+      erreurs.push('PRODUCTION_SMOKE_TEST_ALLOWED_EMAIL_HASH doit etre un SHA-256 hexadecimal.');
+    }
+  }
+
+  // Messagerie (facultative) : sans elle, les recus sont crees et les e-mails
+  // restent en attente, envoyes des qu'elle est configuree.
+  const smtpHote = String(env.SMTP_HOST || '').trim();
+  const expediteur = String(env.EMAIL_FROM || '').trim();
+  if (smtpHote && !expediteur) manquantes.push('EMAIL_FROM');
+  if (smtpHote && ['localhost', '127.0.0.1'].includes(smtpHote) && base.environnement === 'production') {
+    erreurs.push('SMTP_HOST ne peut pas etre local en production.');
+  }
+
+  const port = Number(String(env.PORT || '8787').trim());
+  return {
+    ...base,
+    ok: manquantes.length === 0 && erreurs.length === 0,
+    manquantes,
+    erreurs,
+    ecoute: { hote: String(env.HOST || '127.0.0.1').trim(), port: Number.isInteger(port) ? port : 8787 },
+    interne: { secret: secretInterne },
+    testProduction: {
+      active: testActif && base.environnement === 'production',
+      montant: testMontant,
+      maxUtilisations: testMax,
+      empreinteEmail: EMPREINTE.test(testEmpreinte) ? testEmpreinte : null,
+    },
+    courriel: smtpHote ? {
+      hote: smtpHote,
+      port: Number(String(env.SMTP_PORT || '587').trim()) || 587,
+      securise: VRAI.test(String(env.SMTP_SECURE || '').trim()),
+      utilisateur: String(env.SMTP_USER || '').trim(),
+      motDePasse: String(env.SMTP_PASSWORD || ''),
+      expediteur,
+      repondreA: String(env.EMAIL_REPLY_TO || '').trim() || null,
+    } : null,
+    // Mentions de l'editeur sur le recu : affichees seulement si fournies,
+    // jamais inventees.
+    editeur: {
+      nom: String(env.TIMORA_LEGAL_NAME || '').trim() || null,
+      adresse: String(env.TIMORA_LEGAL_ADDRESS || '').trim() || null,
+      identifiants: String(env.TIMORA_LEGAL_IDS || '').trim() || null,
+      contact: String(env.TIMORA_BILLING_CONTACT || '').trim() || null,
+    },
   };
 }

@@ -2238,6 +2238,107 @@ html.activation-ouverte { overflow: hidden; }
 .activation-rappel-total { margin: 0; text-align: center; font-size: 0.8125rem; color: #CBD5E1; }
 .activation-rappel-total strong { color: #F8FAFC; font-variant-numeric: tabular-nums; }
 
+/* Test de production controle : visible seulement du compte autorise, sur
+   indication du serveur (jamais sur la page publique des tarifs). */
+.activation-test-production {
+  margin: 0.5rem 0 0;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.12);
+  color: #FCD34D;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.limite-formule__icone { background: rgba(245, 158, 11, 0.15); color: #FBBF24; }
+
+/* ==================== FACTURATION (cockpit) ==================== */
+.facturation-grille { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 768px) { .facturation-grille { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.facturation-grille + .facturation-carte { margin-top: 1rem; }
+
+.facturation-carte {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 1rem 1.125rem;
+  border-radius: 1rem;
+  border: 1px solid #1E293B;
+  background: #0F172A;
+}
+
+.facturation-carte h4 { margin: 0; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #94A3B8; }
+.facturation-formule { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem; font-size: 1.25rem; font-weight: 800; color: #F8FAFC; }
+.facturation-etat { padding: 0.125rem 0.625rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; }
+.facturation-etat.is-ok { background: rgba(16, 185, 129, 0.15); color: #34D399; }
+.facturation-etat.is-attente { background: rgba(245, 158, 11, 0.12); color: #FBBF24; }
+.facturation-etat.is-alerte { background: rgba(239, 68, 68, 0.15); color: #F87171; }
+.facturation-note { margin: 0; font-size: 0.8125rem; color: #94A3B8; }
+.facturation-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.facturation-actions .auth-bouton { flex: 1 1 11rem; width: auto; }
+
+.facturation-jauge { display: flex; flex-direction: column; gap: 0.375rem; }
+.facturation-jauge__ligne { display: flex; justify-content: space-between; gap: 0.75rem; font-size: 0.8125rem; color: #CBD5E1; }
+.facturation-jauge__ligne strong { color: #F8FAFC; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.facturation-jauge__barre { height: 0.5rem; overflow: hidden; border-radius: 9999px; background: #1E293B; }
+.facturation-jauge__barre span { display: block; height: 100%; border-radius: inherit; background: #10B981; }
+.facturation-jauge.is-pleine .facturation-jauge__barre span { background: #F59E0B; }
+.facturation-jauge small { font-size: 0.75rem; color: #64748B; }
+
+.facturation-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; color: #CBD5E1; }
+.facturation-table th { padding: 0.5rem; border-bottom: 1px solid #1E293B; text-align: left; font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; color: #64748B; }
+.facturation-table td { padding: 0.625rem 0.5rem; border-bottom: 1px solid #1E293B; vertical-align: top; }
+.facturation-cellule small { display: block; font-size: 0.6875rem; color: #64748B; }
+.facturation-cellule small.facturation-test { color: #FBBF24; }
+.facturation-statut { padding: 0.125rem 0.5rem; border-radius: 9999px; background: #1E293B; font-size: 0.6875rem; font-weight: 700; color: #CBD5E1; }
+.facturation-statut.is-completed { background: rgba(16, 185, 129, 0.15); color: #34D399; }
+.facturation-statut.is-failed { background: rgba(239, 68, 68, 0.15); color: #F87171; }
+
+.facturation-recu {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border-radius: 0.625rem;
+  border: 1px solid #334155;
+  background: #111827;
+  color: #34D399;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.facturation-recu:hover { background: #1E293B; }
+.facturation-recu:focus-visible { outline: 2px solid #34D399; outline-offset: 2px; }
+
+.facturation-vide,
+.facturation-chargement {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  text-align: center;
+  font-size: 0.875rem;
+  color: #94A3B8;
+}
+
+/* Telephone : chaque paiement devient une carte, sans defilement horizontal. */
+@media (max-width: 640px) {
+  .facturation-table thead { display: none; }
+  .facturation-table,
+  .facturation-table tbody,
+  .facturation-table tr { display: block; width: 100%; }
+  .facturation-table tr { padding: 0.5rem 0; border-bottom: 1px solid #1E293B; }
+  .facturation-table td { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; padding: 0.25rem 0; border: 0; }
+  .facturation-table td::before { content: attr(data-label); flex-shrink: 0; font-size: 0.75rem; color: #64748B; }
+  .facturation-cellule { min-width: 0; text-align: right; overflow-wrap: anywhere; }
+}
+
 .activation-securite {
   margin: 0;
   display: flex;

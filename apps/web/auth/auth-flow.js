@@ -1264,6 +1264,18 @@ async function executerResolution({ intention = null, silencieux = false, entrep
     case 'no_membership':
     default:
       oublierSessionLocale();
+      // Administrateur de la plateforme sans entreprise : sa console, pas
+      // l'ecran « aucun rattachement ». Les droits sont reverifies par la base
+      // (is_platform_admin) a l'ouverture de la console.
+      if (contexte.platform_admin) {
+        const surConsole = state.activeView === 'saas' || /^#saas\b/.test(window.location.hash || '');
+        if (!silencieux || surConsole) {
+          effacerFlux();
+          fermerAuthentification({ oublier: true });
+          if (typeof switchView === 'function') switchView('saas');
+        }
+        break;
+      }
       if (silencieux) break;
       ouvrirSiFerme();
       flux.etat = ETATS_AUTH.NO_MEMBERSHIP;

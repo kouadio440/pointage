@@ -1,0 +1,5 @@
+# Scripts executes sous Linux (serveur de paiement) : fins de ligne Unix,
+# meme apres une extraction sous Windows (core.autocrlf).
+*.sh text eol=lf
+services/payments/deploy/* text eol=lf
+services/payments/deploy/*.sh text eol=lf

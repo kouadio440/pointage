@@ -1,196 +1,172 @@
-# Facturation Timora (JoonaPay)
+# Facturation Timora (JoonaPay) — exploitation
 
-Fiche d'exploitation : ce qu'il faut configurer, dans quel ordre, et comment
-passer de la sandbox à la production.
+Ce qu'il faut configurer, dans quel ordre, pour encaisser en production, et
+comment valider la chaîne avec un unique paiement contrôlé de 100 XOF.
 
-## Parcours
+## Architecture
+
+```
+Navigateur ──► www.timora.tech (Vercel) ──requête signée (HMAC)──► payments.timora.tech ──► JoonaPay (production)
+                  /api/billing/checkout                               serveur Linux à IPv4 FIXE
+                  /api/billing/status                                  (liste blanche JoonaPay)
+                                                                            │
+JoonaPay ──webhook signé──► payments.timora.tech/api/webhooks/joonapay ─────┴──► Supabase (clé de service)
+```
+
+- **Le navigateur** n'envoie qu'une formule et une période ; il ne voit
+  aucune clé et n'appelle jamais le serveur de paiement.
+- **Vercel** relaie, signé (`INTERNAL_PAYMENT_API_SECRET`) ; il ne détient
+  aucune clé JoonaPay ni la clé de service Supabase.
+- **Le serveur de paiement** (`services/payments/`) est la seule passerelle
+  JoonaPay : création du paiement, relecture de l'état, webhook (HMAC JoonaPay,
+  anti-rejeu), activation, reçu PDF, e-mail, journal. Détail :
+  `services/payments/LISEZMOI.md`.
+
+Règle : **seul un état lu chez JoonaPay par le serveur** (`SUCCESS` + `PAID`,
+montant, devise et référence exacts) active un abonnement — jamais un webhook
+seul, jamais un retour de navigateur.
+
+## Parcours client
 
 ```
 Démonstration (sans compte) → « Activer mon entreprise » → compte → entreprise
-(statut pending_payment, abonnement PENDING_PAYMENT) → formule → récapitulatif
-→ POST /api/billing/checkout → page JoonaPay
-→ retour sur timora.tech → GET /api/billing/status (le serveur relit JoonaPay)
-   ↘ webhook POST /api/webhooks/joonapay (signature vérifiée, puis relecture)
-→ abonnement ACTIVE → premiers pas (zone, code, demandes) → premier pointage
+(pending_payment) → formule → récapitulatif → paiement JoonaPay → retour
+(« Vérification de votre paiement… ») ↔ webhook → abonnement ACTIVE, entreprise
+active → reçu + e-mail de bienvenue → premiers pas → premier pointage.
 ```
 
-Règle : **seul un état lu chez JoonaPay par le serveur** (`GET /payments/{uuid}`)
-active un abonnement. Ni le navigateur, ni un webhook seul.
-
-Tant que l'abonnement n'est pas `ACTIVE`, la base refuse avec le code
-`SUBSCRIPTION_REQUIRED` : pointage, visage, borne QR, zones GPS, horaires,
-adhésions, approbations, congés et heures supplémentaires.
+Webhook et retour navigateur mènent à la même fonction atomique et
+idempotente : le premier qui constate le paiement active, le second ne fait
+rien de plus (un abonnement, un reçu, un e-mail).
 
 ## Où vit quoi
 
 | Élément | Emplacement |
 |---|---|
-| Tarifs (source unique) | `apps/web/billing/catalogue.js` — affiché tel quel, recopié dans `platform_plans` par la migration 031, relu par le serveur de paiement |
-| Mode sandbox / production, testeurs | table `billing_settings` (une ligne) |
-| Paiements | table `billing_payments` (référence `TIMORA-SUB-AAAAMMJJ-XXXXXXXX`) |
-| Journal | table `billing_events` + journaux Vercel (JSON, sans secret) |
-| Routes serveur | `api/billing/checkout.mjs`, `api/billing/status.mjs`, `api/webhooks/joonapay.mjs` |
-| Logique serveur | `server/facturation/` (hors de `api/`, jamais exposé) |
-| Écran d'activation | `apps/web/billing/activation.js` |
-| Avis des utilisateurs | table `reviews` (migration 032), `apps/web/avis/avis.js` |
-| Démonstration | `apps/web/demo/demo.js` |
-| Migrations / retours arrière | `services/supabase_migration_031_facturation*.sql`, `services/supabase_migration_032_avis*.sql` |
+| Tarifs et limites (source unique) | `apps/web/billing/catalogue.js` → `platform_plans` (migrations 031 et 033) ; `node scripts/check-billing-catalogue.mjs` vérifie la concordance |
+| Serveur de paiement | `services/payments/` (routes, reçus, e-mail, tâches, déploiement) |
+| Logique de facturation | `server/facturation/` ; signature interne : `server/passerelle/` |
+| Relais Vercel | `api/billing/checkout.mjs`, `api/billing/status.mjs`, `api/webhooks/joonapay.mjs` (ancienne adresse de webhook, relayée) |
+| Écran d'activation, facturation du cockpit | `apps/web/billing/activation.js`, `apps/web/billing/cockpit-facturation.js` |
+| Paiements, reçus, journal | tables `billing_payments`, `billing_receipts`, `billing_events` (ajout seul) |
+| Test de production | table `billing_smoke_test` (usage unique) |
+| Migrations / retours arrière | `services/supabase_migration_03{1,2,3}_*.sql` et leurs `_retour.sql` |
 
-## Changer un prix
+## Limites par formule (contrôlées par la base)
 
-1. Modifier `apps/web/billing/catalogue.js`.
-2. Porter le même montant dans `platform_plans` (migration).
-3. `node scripts/check-billing-catalogue.mjs` (avec `--env-file=.env` pour
-   comparer aussi la base en ligne) : il échoue si les deux diffèrent.
+| Formule | Collaborateurs | Sites | Administrateurs |
+|---|---|---|---|
+| Essentiel — 15 000 XOF/mois | 10 | 1 | 1 |
+| Business — 35 000 XOF/mois | 30 | 3 | 3 |
+| Pro — 75 000 XOF/mois | 100 | 10 | 10 |
+| Entreprise — sur devis | contrat | contrat | contrat |
 
-Tant qu'un écart existe, le serveur refuse les paiements de la formule
-concernée (« Nos tarifs sont en cours de mise à jour ») plutôt que de facturer
-un autre prix que celui affiché. La console super admin ne peut plus modifier
-les prix des formules du catalogue.
+- **Collaborateurs** : rattachements ACTIFS de rôle employé ou manager. Les
+  demandes en attente ne comptent pas (plafonnées à 2 × la limite, 20 au
+  moins, contre le spam).
+- **Administrateurs** : propriétaire COMPRIS, plus les administrateurs.
+- **Sites** : zones de pointage actives.
+- Au-delà : la base refuse (`PLAN_EMPLOYEE_LIMIT_REACHED`,
+  `PLAN_SITE_LIMIT_REACHED`, `PLAN_ADMIN_LIMIT_REACHED`) ; le cockpit affiche
+  « Vous avez atteint la limite de votre formule. » et « Changer de formule ».
+- Formule supérieure : achetable à tout moment, appliquée au paiement, la
+  période en cours est prolongée. Formule inférieure ou renouvellement : 7 jours
+  avant l'échéance, et refusée si l'usage la dépasse (`PLAN_DOWNGRADE_BLOCKED`).
+  Aucun collaborateur n'est jamais retiré automatiquement.
+- Formule Entreprise : limites posées sur l'abonnement (colonnes `seats`,
+  `max_sites`, `max_admins` de `company_subscriptions`).
+- Expiration : l'abonnement passe `EXPIRED` (tâche du serveur, toutes les
+  15 min), les fonctions payantes se ferment, le propriétaire est dirigé vers le
+  renouvellement. Rien n'est supprimé.
 
-## Variables d'environnement (Vercel, serveur uniquement)
+## Mise en production — dans cet ordre
 
-| Variable | Valeur |
-|---|---|
-| `JOONAPAY_ENV` | `sandbox` (puis `production`) |
-| `JOONAPAY_BASE_URL` | sandbox : `https://api-counter-demo.wejoona.com/api/v1/developer` — production : `https://apis.joonapay.com/api/v1/developer` (adresse affichée par le portail JoonaPay, suivie de `/v1/developer`) |
-| `JOONAPAY_CLIENT_KEY` | clé client de la clé API |
-| `JOONAPAY_PRIVATE_KEY` | clé privée (affichée une seule fois par JoonaPay) |
-| `JOONAPAY_WEBHOOK_SECRET` | secret de signature des webhooks |
-| `JOONAPAY_WEBHOOK_URL` | `https://www.timora.tech/api/webhooks/joonapay` |
-| `JOONAPAY_DEFAULT_COUNTRY` | `CI` (facultatif) |
-| `TIMORA_APP_URL` | `https://www.timora.tech` |
-| `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | projet Supabase |
+1. **Sauvegarde, puis nettoyage des comptes de test** (voir plus bas).
+2. **Serveur** : Ubuntu 24.04 LTS, 1 vCPU, 1–2 Go, **IPv4 fixe**. Copier
+   `services/payments/deploy/` sur le serveur, puis
+   `sudo bash installer-serveur.sh --email-acme <email> --admin <utilisateur> [--ip-admin <IPv4>]`.
+3. **DNS** : enregistrement A `payments.timora.tech` → IPv4 du serveur.
+4. **JoonaPay (portail)** : générer de **nouvelles clés de production** (les
+   précédentes ont été exposées : les révoquer) ; liste blanche = IPv4 du
+   serveur ; webhook = `https://payments.timora.tech/api/webhooks/joonapay`.
+5. **Messagerie** : un fournisseur SMTP (domaine `timora.tech` vérifié : SPF,
+   DKIM). Le même SMTP se règle dans Supabase Auth (fin de la limite de
+   2 e-mails par heure des codes de connexion).
+6. **Serveur** : remplir `/etc/timora-payments/env`
+   (modèle `payments.env.example`), puis depuis le poste :
+   `node services/payments/deploy/deployer.mjs <utilisateur>@<IPv4>` ;
+   vérifier avec `scripts/diagnostic.mjs`.
+7. **Supabase (éditeur SQL)** : appliquer `supabase_migration_033_paiement_production.sql`,
+   puis passer en production : `update public.billing_settings set mode = 'production';`
+8. **Vercel** : `PAYMENT_SERVER_URL=https://payments.timora.tech`,
+   `INTERNAL_PAYMENT_API_SECRET` (même valeur que le serveur),
+   `TIMORA_APP_URL=https://www.timora.tech` ; retirer toute variable
+   `JOONAPAY_*` ou `SUPABASE_SERVICE_ROLE_KEY` de Vercel ; déployer.
+9. **Test unique à 100 XOF** (ci-dessous), puis désactivation.
+10. **JoonaPay** : retirer de la liste blanche les IP temporaires (postes
+    personnels) ; seule l'IP du serveur reste. Retirer les clés JoonaPay du
+    `.env` du poste.
 
-Sans elles, les routes répondent `503 PAIEMENT_NON_CONFIGURE` et le journal
-indique **le nom** des variables manquantes (jamais leur valeur). Après tout
-changement de variable, redéployer sur Vercel.
+## Test de production unique (100 XOF)
 
-Garde-fous : en production, seul l'hôte `apis.joonapay.com` est accepté (un
-paiement sandbox ne peut donc jamais activer un abonnement réel) ; en sandbox,
-seuls les hôtes sandbox connus (`api-counter-demo.wejoona.com`,
-`api.sandbox.wejoona.com`) ou un simulateur local : les clés ne partent vers
-aucun autre serveur ; l'adresse doit se terminer par `/api/v1/developer` ;
-webhook `localhost` ou IP privée refusé ; mode du serveur différent de
-`billing_settings.mode` → aucun paiement ne démarre.
+Ce n'est pas un prix : la page d'accueil, le catalogue et le checkout normal
+restent à 15 000 XOF. Le montant de 100 XOF n'est appliqué que si **toutes**
+les conditions sont vraies : `PRODUCTION_SMOKE_TEST_ENABLED=true` sur le
+serveur ; test activé en base pour l'empreinte SHA-256 du compte (l'adresse
+n'est jamais stockée) ; mode production ; entreprise de ce compte en attente de
+paiement ; Essentiel mensuel ; test jamais consommé. Sinon : tarif normal.
 
-## Ordre de mise en service
+1. Créer le compte et l'entreprise de test sur www.timora.tech (s'arrêter à
+   l'écran « Votre espace Timora est presque prêt. »).
+2. Sur le serveur : `scripts/test-production.mjs activer <adresse du compte>`,
+   puis `PRODUCTION_SMOKE_TEST_ENABLED=true` (et l'empreinte affichée dans
+   `PRODUCTION_SMOKE_TEST_ALLOWED_EMAIL_HASH`), `sudo systemctl restart timora-payments`.
+3. Sur le site : Essentiel, mensuel → la redirection annonce « Test de
+   production contrôlé : 100 FCFA » ; JoonaPay affiche 100 XOF ; payer.
+4. Vérifier : « Bienvenue sur Timora », reçu `TIM-REC-…` (onglet
+   Facturation), e-mail reçu, `scripts/test-production.mjs etat` → consommé.
+5. Remettre `PRODUCTION_SMOKE_TEST_ENABLED=false`, redémarrer,
+   `scripts/test-production.mjs desactiver`.
+6. Avec un autre compte : Essentiel doit demander 15 000 XOF (ne pas payer).
 
-1. Appliquer `services/supabase_migration_031_facturation.sql`, puis
-   `services/supabase_migration_032_avis.sql` (éditeur SQL de Supabase :
-   coller le fichier entier, exécuter). Chacune tourne dans une transaction.
-2. Déployer le code (front + routes `api/`).
-3. Renseigner les variables ci-dessus dans Vercel, puis redéployer.
-4. Sur le portail JoonaPay, déclarer le webhook
-   `https://www.timora.tech/api/webhooks/joonapay`.
-5. Vérifier : `node --env-file=.env scripts/joonapay-sandbox-check.mjs`
-   (puis `--creer` pour un paiement de test de 100 XOF, annulé ensuite).
+Une fois consommé, le test ne se réactive plus (la base le refuse, même en SQL
+direct). Un second paiement de test éventuel serait encaissé, tracé
+(`DUPLICATE_PAYMENT`) et reçu émis, sans nouvelle activation.
 
-## Liste blanche d'adresses IP
+## Sauvegarde et nettoyage des comptes de test
 
-JoonaPay n'accepte les appels que depuis les IP déclarées sur la clé API.
-Les fonctions Vercel sortent par des **adresses variables** : sans IP fixe,
-les appels à JoonaPay depuis `www.timora.tech` seront refusés (HTTP 401,
-message « IP address not authorized », code `IP_NON_AUTORISEE` dans nos
-journaux), et
-l'utilisateur verra « Le paiement en ligne est momentanément indisponible.
-Aucun montant n'a été débité. »
+Sauvegarde (hors Git, avec les fichiers du stockage et un `MANIFEST.json`
+d'empreintes) : `sauvegardes-timora/<date>/`. Nettoyage : supprime les
+entreprises, adhésions, abonnements, pointages, visages, zones, horaires,
+congés, heures supplémentaires, événements d'authentification, fichiers du
+stockage et comptes Auth (API d'administration officielle), **sauf** les
+administrateurs de la plateforme. Il refuse de s'exécuter si la sauvegarde est
+absente ou altérée, ou si un paiement est enregistré.
 
-Solutions (ne jamais déclarer une IP de téléphone, locale ou personnelle) :
+## Reçus et e-mails
 
-- **Vercel Static IPs** (offre payante de Vercel) : déclarer les IP
-  fournies par Vercel sur la clé JoonaPay.
-- **Relais sortant** sur un serveur à IP fixe (VPS) qui ne transmet que vers
-  l'hôte JoonaPay ; déclarer l'IP de ce serveur.
-- Demander à JoonaPay si la liste blanche peut rester vide en sandbox.
+- Reçu « Reçu de paiement Timora » (pas « facture » : les mentions légales ne
+  sont pas toutes disponibles), numéro `TIM-REC-AAAA-NNNNNN` sans trou, émis
+  dans la transaction d'activation ; PDF dans le bucket **privé**
+  `billing-receipts/<entreprise>/<numéro>.pdf` ; téléchargement par lien signé
+  de 60 s, pour le propriétaire et les administrateurs de l'entreprise.
+- Mentions de l'éditeur (`TIMORA_LEGAL_*`) affichées seulement si renseignées.
+- E-mail avec le PDF joint ; un échec n'annule rien : nouvel essai 2, 4, 8…
+  minutes (8 essais), suivi dans `billing_receipts.email_status`.
 
-L'IP `102.207.8.2` déclarée est celle d'un poste de travail, et elle change :
-le 18/09 ce poste sortait par `102.210.17.34`. Une connexion Internet
-d'entreprise ou domestique a rarement une IP fixe ; le script de vérification
-affiche l'IP du moment.
+## Journal et alertes
 
-**IPv6** : si la connexion dispose aussi d'IPv6, Node joint JoonaPay en IPv6 et
-JoonaPay refuse l'appel même quand l'IPv4 est déclarée (constaté le 18/09).
-Le script de vérification et le serveur local (`scripts/serve-web.mjs`)
-forcent donc la sortie en IPv4.
-
-## Clés sandbox et clés de production
-
-Une clé appartient à UN environnement JoonaPay. Le portail JoonaPay ne crée
-que des clés de **production** : son encadré « Environnement » (« Production
-(ACTUEL) ») est informatif. D'après la documentation JoonaPay
-(docs.joonapay.com/fr/introduction, section « Environnements »), les clés
-sandbox sont distinctes : « demandez-les à votre contact Joonapay » (équipe
-intégration : https://cal.com/joonapay-team/intro-call).
-
-Deux adresses sandbox existent : `https://api-counter-demo.wejoona.com/api`
-(affichée par le portail) et `https://api.sandbox.wejoona.com/api` (citée par
-la documentation). Les routes marchand sont sous `/api/v1/developer` (vérifié :
-`/misc` y exige les en-têtes `X-Client-Key` / `X-Private-Key`, toute autre
-route répond 404). `scripts/joonapay-sandbox-check.mjs` essaie les deux et
-indique celle qui reconnaît les clés.
-
-Constaté les 18 et 19/09 : les trois paires de clés créées dans le portail sont
-des clés de production (acceptées par `apis.joonapay.com`, « Invalid API
-credentials » (HTTP 401) sur les deux adresses sandbox).
-
-En sandbox, le résultat d'un paiement dépend du numéro de téléphone du payeur
-(tableau par pays et opérateur : docs.joonapay.com/fr/guides/test-numbers ;
-ex. Orange Côte d'Ivoire `+2250707000200` → SUCCESS).
-
-## Qui peut payer en sandbox
-
-Un paiement sandbox ne coûte rien : ouvert à tous, il permettrait d'utiliser
-Timora sans payer. En mode `sandbox`, seuls les administrateurs de la
-plateforme et les adresses déclarées peuvent lancer un paiement ; les autres
-voient « Le paiement en ligne n'est pas encore ouvert ».
-
-```sql
-update public.billing_settings
-   set testeurs_sandbox = array_append(testeurs_sandbox, 'testeur@exemple.ci');
-```
-
-## Tester la vraie sandbox depuis le poste autorisé
-
-Le poste dont l'IP est déclarée chez JoonaPay peut exécuter les routes
-localement, sans tunnel :
-
-1. Ajouter dans `.env` les variables `JOONAPAY_*` (sandbox) et
-   `TIMORA_APP_URL=` vide ; `JOONAPAY_WEBHOOK_URL` reste l'adresse publique.
-2. `node --env-file=.env scripts/serve-web.mjs 8080`, puis ouvrir
-   `http://localhost:8080`.
-3. En local, les adresses de retour (non HTTPS) ne sont pas envoyées à
-   JoonaPay : après le paiement, JoonaPay reste sur sa page. Revenir sur
-   `http://localhost:8080` : l'écran d'activation vérifie automatiquement le
-   paiement récent auprès du serveur, qui relit JoonaPay.
-4. La console du navigateur et le terminal affichent les traces
-   `[BILLING] …` (développement uniquement) ; l'écran d'activation porte un
-   badge `SANDBOX` et, au retour, un panneau « Diagnostic sandbox ».
-
-## Avis des utilisateurs
-
-- Déposés par des comptes connectés (adresse vérifiée), un avis par compte.
-- Publiés seulement après validation : console plateforme → onglet
-  « ⭐ Avis » → Publier / Refuser.
-- Note moyenne affichée à partir de 3 avis publiés ; mention « Client Timora »
-  posée par le serveur (entreprise réelle en production), jamais saisie.
-
-## Passage en production
-
-1. Clé API **production** chez JoonaPay (après validation KYB), IP fixe déclarée.
-2. Variables : `JOONAPAY_ENV=production`, URL, clés et secret de production.
-3. En base : `update public.billing_settings set mode = 'production';`
-4. Les entreprises créées pendant la sandbox sont des entreprises **de test** :
-   un paiement de production ne les active pas. Pour celles qui n'ont jamais
-   payé : `update public.companies set billing_environment = 'production'
-   where billing_environment = 'sandbox' and status = 'pending_payment';` et
-   `update public.company_subscriptions set environment = 'production'
-   where status = 'PENDING_PAYMENT';`
-5. Formule Entreprise (sur devis) : activation par la console super admin
-   (`platform_set_subscription`).
+- `billing_events` (ajout seul) : `PAYMENT_CREATED`, `JOONAPAY_PAYMENT_CREATED`,
+  `WEBHOOK_VERIFIED`, `PAYMENT_PROVIDER_CONFIRMED`, `SUBSCRIPTION_ACTIVATED`,
+  `SUBSCRIPTION_EXPIRED`, `INVOICE_CREATED`, `INVOICE_EMAIL_SENT` /
+  `INVOICE_EMAIL_FAILED`, `PAYMENT_FAILED`, `SMOKE_TEST_*`, et les alertes
+  `AMOUNT_MISMATCH`, `CURRENCY_MISMATCH`, `UNKNOWN_PAYMENT`,
+  `DUPLICATE_PAYMENT`, `ACTIVATION_FAILED`.
+- Serveur : `journalctl -u timora-payments` (JSON, jamais de secret) ; alertes :
+  `journalctl -u timora-payments -p err`.
 
 ## Retour arrière
 
-`services/supabase_migration_032_avis_retour.sql` puis
-`services/supabase_migration_031_facturation_retour.sql` restaurent l'état
-d'avant, sans supprimer aucune donnée (paiements et avis conservés).
+`supabase_migration_033_paiement_production_retour.sql` rétablit la 031
+(fonctions et droits) sans supprimer aucune donnée ; les protections des
+traces financières restent. Puis 032 et 031 comme avant, si nécessaire.

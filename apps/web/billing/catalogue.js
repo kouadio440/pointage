@@ -2,20 +2,30 @@
  *  TIMORA — CATALOGUE DES FORMULES (source unique des prix)
  * =============================================================================
  *
- *  Ce fichier est LA source de verite des formules et de leurs prix :
+ *  Ce fichier est LA source de verite des formules, de leurs prix et de leurs
+ *  limites :
  *
  *    - la page d'accueil et l'ecran d'activation l'affichent immediatement,
  *      sans appel reseau (script charge avant app.js) ;
  *    - le serveur de paiement (server/facturation/catalogue.mjs) l'importe et
  *      refuse tout paiement dont le montant en base ne lui correspond pas ;
- *    - la migration 031 en tire les tarifs inseres dans platform_plans, que la
- *      base utilise pour calculer le montant facture.
+ *    - les migrations 031 (tarifs) et 033 (limites) en tirent les valeurs
+ *      inserees dans platform_plans, que la base utilise pour calculer le
+ *      montant facture et refuser un collaborateur, un site ou un
+ *      administrateur de trop.
  *
  *  Le navigateur n'est JAMAIS la source du montant facture : il n'envoie que
  *  le code de la formule ; le serveur recalcule le montant a partir de ce code.
  *
- *  Changer un prix : modifier ce fichier, puis appliquer le meme montant dans
- *  platform_plans (migration). `node scripts/check-billing-catalogue.mjs`
+ *  LIMITES (regle unique, controlee par la base) :
+ *    - maxEmployes  : collaborateurs ACTIFS de role employe ou manager ;
+ *                     les demandes en attente ne comptent pas ;
+ *    - maxSites     : sites (zones de pointage) ACTIFS ;
+ *    - maxAdmins    : proprietaire COMPRIS, plus les administrateurs.
+ *  null = defini par contrat (formule Entreprise).
+ *
+ *  Changer un prix ou une limite : modifier ce fichier, puis appliquer la meme
+ *  valeur dans platform_plans (migration). `node scripts/check-billing-catalogue.mjs`
  *  verifie que les deux concordent.
  *
  *  Fonctionne dans le navigateur (window.CATALOGUE_TIMORA) et dans Node
@@ -30,14 +40,16 @@
     racine.CATALOGUE_TIMORA = catalogue;
   }
 })(typeof self !== 'undefined' ? self : this, function () {
-  const formule = (code, nom, mensuel, annuel, maxEmployes) => Object.freeze({
+  const formule = (code, nom, mensuel, annuel, maxEmployes, maxSites, maxAdmins) => Object.freeze({
     code,
     nom,
     // Montants en francs CFA (XOF), entiers : le XOF n'a pas de decimales.
     mensuel,
     annuel,
-    // Effectif maximal couvert ; null = sans limite (formule sur devis).
+    // Limites (voir l'en-tete) ; null = definies par contrat (sur devis).
     maxEmployes,
+    maxSites,
+    maxAdmins,
     // Souscription en ligne possible (sinon : sur devis, activation manuelle).
     enLigne: mensuel !== null,
   });
@@ -47,10 +59,10 @@
     // L'annuel vaut 10 mois : « 2 mois offerts ».
     moisOffertsAnnuel: 2,
     formules: Object.freeze([
-      formule('essentiel', 'Essentiel', 15000, 150000, 10),
-      formule('business', 'Business', 35000, 350000, 30),
-      formule('pro', 'Pro', 75000, 750000, 100),
-      formule('entreprise', 'Entreprise', null, null, null),
+      formule('essentiel', 'Essentiel', 15000, 150000, 10, 1, 1),
+      formule('business', 'Business', 35000, 350000, 30, 3, 3),
+      formule('pro', 'Pro', 75000, 750000, 100, 10, 10),
+      formule('entreprise', 'Entreprise', null, null, null, null, null),
     ]),
   });
 });
