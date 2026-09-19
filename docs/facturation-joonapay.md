@@ -53,7 +53,7 @@ les prix des formules du catalogue.
 | Variable | Valeur |
 |---|---|
 | `JOONAPAY_ENV` | `sandbox` (puis `production`) |
-| `JOONAPAY_BASE_URL` | sandbox : `https://api.sandbox.wejoona.com/api/v1/developer` — production : `https://apis.joonapay.com/api/v1/developer` |
+| `JOONAPAY_BASE_URL` | sandbox : `https://api-counter-demo.wejoona.com/api/v1/developer` — production : `https://apis.joonapay.com/api/v1/developer` (adresse affichée par le portail JoonaPay, suivie de `/v1/developer`) |
 | `JOONAPAY_CLIENT_KEY` | clé client de la clé API |
 | `JOONAPAY_PRIVATE_KEY` | clé privée (affichée une seule fois par JoonaPay) |
 | `JOONAPAY_WEBHOOK_SECRET` | secret de signature des webhooks |
@@ -66,8 +66,12 @@ Sans elles, les routes répondent `503 PAIEMENT_NON_CONFIGURE` et le journal
 indique **le nom** des variables manquantes (jamais leur valeur). Après tout
 changement de variable, redéployer sur Vercel.
 
-Garde-fous : sandbox pointant vers l'URL de production refusé ; webhook
-`localhost` ou IP privée refusé ; mode du serveur différent de
+Garde-fous : en production, seul l'hôte `apis.joonapay.com` est accepté (un
+paiement sandbox ne peut donc jamais activer un abonnement réel) ; en sandbox,
+seuls les hôtes sandbox connus (`api-counter-demo.wejoona.com`,
+`api.sandbox.wejoona.com`) ou un simulateur local : les clés ne partent vers
+aucun autre serveur ; l'adresse doit se terminer par `/api/v1/developer` ;
+webhook `localhost` ou IP privée refusé ; mode du serveur différent de
 `billing_settings.mode` → aucun paiement ne démarre.
 
 ## Ordre de mise en service
@@ -86,7 +90,9 @@ Garde-fous : sandbox pointant vers l'URL de production refusé ; webhook
 
 JoonaPay n'accepte les appels que depuis les IP déclarées sur la clé API.
 Les fonctions Vercel sortent par des **adresses variables** : sans IP fixe,
-les appels à JoonaPay depuis `www.timora.tech` seront refusés (403), et
+les appels à JoonaPay depuis `www.timora.tech` seront refusés (HTTP 401,
+message « IP address not authorized », code `IP_NON_AUTORISEE` dans nos
+journaux), et
 l'utilisateur verra « Le paiement en ligne est momentanément indisponible.
 Aucun montant n'a été débité. »
 
@@ -98,8 +104,39 @@ Solutions (ne jamais déclarer une IP de téléphone, locale ou personnelle) :
   l'hôte JoonaPay ; déclarer l'IP de ce serveur.
 - Demander à JoonaPay si la liste blanche peut rester vide en sandbox.
 
-L'IP `102.207.8.2` déclarée aujourd'hui est celle d'un poste de travail : elle
-sert aux tests manuels depuis ce poste, pas au site en ligne.
+L'IP `102.207.8.2` déclarée est celle d'un poste de travail, et elle change :
+le 18/09 ce poste sortait par `102.210.17.34`. Une connexion Internet
+d'entreprise ou domestique a rarement une IP fixe ; le script de vérification
+affiche l'IP du moment.
+
+**IPv6** : si la connexion dispose aussi d'IPv6, Node joint JoonaPay en IPv6 et
+JoonaPay refuse l'appel même quand l'IPv4 est déclarée (constaté le 18/09).
+Le script de vérification et le serveur local (`scripts/serve-web.mjs`)
+forcent donc la sortie en IPv4.
+
+## Clés sandbox et clés de production
+
+Une clé appartient à UN environnement JoonaPay. Le portail JoonaPay ne crée
+que des clés de **production** : son encadré « Environnement » (« Production
+(ACTUEL) ») est informatif. D'après la documentation JoonaPay
+(docs.joonapay.com/fr/introduction, section « Environnements »), les clés
+sandbox sont distinctes : « demandez-les à votre contact Joonapay » (équipe
+intégration : https://cal.com/joonapay-team/intro-call).
+
+Deux adresses sandbox existent : `https://api-counter-demo.wejoona.com/api`
+(affichée par le portail) et `https://api.sandbox.wejoona.com/api` (citée par
+la documentation). Les routes marchand sont sous `/api/v1/developer` (vérifié :
+`/misc` y exige les en-têtes `X-Client-Key` / `X-Private-Key`, toute autre
+route répond 404). `scripts/joonapay-sandbox-check.mjs` essaie les deux et
+indique celle qui reconnaît les clés.
+
+Constaté les 18 et 19/09 : les trois paires de clés créées dans le portail sont
+des clés de production (acceptées par `apis.joonapay.com`, « Invalid API
+credentials » (HTTP 401) sur les deux adresses sandbox).
+
+En sandbox, le résultat d'un paiement dépend du numéro de téléphone du payeur
+(tableau par pays et opérateur : docs.joonapay.com/fr/guides/test-numbers ;
+ex. Orange Côte d'Ivoire `+2250707000200` → SUCCESS).
 
 ## Qui peut payer en sandbox
 

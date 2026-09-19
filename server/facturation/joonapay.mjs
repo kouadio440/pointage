@@ -19,11 +19,17 @@ const DELAI_MS = 15000;
 const DUREE_CACHE_PAYS_MS = 60 * 60 * 1000;
 let cachePays = { expire: 0, base: '', pays: [] };
 
-/** Classe une reponse non conforme en un code stable pour Timora. */
-function classer(status) {
+/**
+ * Classe une reponse non conforme en un code stable pour Timora.
+ *
+ * Constate sur l'API reelle (2026-09-18) : JoonaPay repond 401 dans les deux
+ * cas « cles inconnues de cet environnement » (« Invalid API credentials ») et
+ * « cles valides, adresse IP hors liste blanche » (« IP address not
+ * authorized »). Seul le message les distingue.
+ */
+function classer(status, message) {
+  if (status === 401 && /ip address not authori[sz]ed/i.test(message || '')) return 'IP_NON_AUTORISEE';
   if (status === 401) return 'AUTHENTIFICATION';
-  // 403 : cle valide mais requete refusee — en pratique, l'adresse IP du
-  // serveur n'est pas dans la liste blanche de la cle.
   if (status === 403) return 'ACCES_REFUSE';
   if (status === 404) return 'INTROUVABLE';
   if (status === 400 || status === 422) return 'REQUETE_REFUSEE';
@@ -72,7 +78,7 @@ async function appeler(config, methode, chemin, corps) {
     return {
       ok: false,
       status: reponse.status,
-      code: reponse.ok ? 'REPONSE_INATTENDUE' : classer(reponse.status),
+      code: reponse.ok ? 'REPONSE_INATTENDUE' : classer(reponse.status, json && json.message),
       codeFournisseur: json && json.errors ? json.errors.code || null : null,
       message: json && typeof json.message === 'string' ? json.message.slice(0, 200) : null,
       champs,
@@ -83,7 +89,7 @@ async function appeler(config, methode, chemin, corps) {
 }
 
 const normaliser = (s) => String(s || '')
-  .normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .toLowerCase().replace(/[^a-z]/g, '');
 
 /**

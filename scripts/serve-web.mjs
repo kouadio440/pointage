@@ -16,6 +16,7 @@
  */
 
 import { createServer } from 'node:http';
+import dns from 'node:dns';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -23,6 +24,11 @@ import { dirname } from 'node:path';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'apps', 'web');
 const API = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'api');
+
+// Routes api/ en local : JoonaPay filtre les appels par adresse IPv4. Sur une
+// connexion qui a aussi l'IPv6, Node la preferait et JoonaPay refusait
+// l'appel (« IP address not authorized ») : IPv4 en priorite.
+dns.setDefaultResultOrder('ipv4first');
 const PORT = Number(process.argv[2] ?? 8080);
 
 const MIME = {

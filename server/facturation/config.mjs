@@ -16,8 +16,14 @@ const REQUISES = [
   'SUPABASE_SERVICE_ROLE_KEY',
 ];
 
-// Hotes documentes par JoonaPay (docs.joonapay.com, « Donnees de reference »).
+// Hotes JoonaPay connus. Production : docs.joonapay.com et portail JoonaPay.
+// Sandbox : adresse affichee par le portail JoonaPay (« Environnement :
+// Sandbox », 18/09/2026), puis celle de la documentation publique. Les cles ne
+// partent vers aucun autre hote distant.
 const HOTE_PRODUCTION_JOONAPAY = 'apis.joonapay.com';
+export const HOTES_SANDBOX_JOONAPAY = ['api-counter-demo.wejoona.com', 'api.sandbox.wejoona.com'];
+// Le portail affiche « https://…/api » ; les routes marchand sont sous /api/v1/developer.
+const CHEMIN_API_JOONAPAY = '/api/v1/developer';
 
 const LOCAL = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\]|0\.0\.0\.0)$/;
 const PRIVE = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.)/;
@@ -54,9 +60,17 @@ export function lireConfig(env = process.env) {
     }
     if (joonaEnv === 'sandbox' && base.hostname === HOTE_PRODUCTION_JOONAPAY) {
       erreurs.push('JOONAPAY_ENV=sandbox mais JOONAPAY_BASE_URL pointe vers la production JoonaPay.');
+    } else if (joonaEnv === 'sandbox' && !local && !HOTES_SANDBOX_JOONAPAY.includes(base.hostname)) {
+      erreurs.push(`JOONAPAY_BASE_URL ne pointe vers aucun hote sandbox JoonaPay connu (${HOTES_SANDBOX_JOONAPAY.join(', ')}).`);
     }
-    if (joonaEnv === 'production' && (base.hostname.includes('sandbox') || local)) {
-      erreurs.push('JOONAPAY_ENV=production mais JOONAPAY_BASE_URL pointe vers un environnement de test.');
+    // Seul l'hote de production peut activer un abonnement de production : un
+    // paiement sandbox ne doit jamais y passer, quel que soit le nom de l'hote.
+    if (joonaEnv === 'production' && base.hostname !== HOTE_PRODUCTION_JOONAPAY) {
+      erreurs.push(`JOONAPAY_ENV=production mais JOONAPAY_BASE_URL ne pointe pas vers ${HOTE_PRODUCTION_JOONAPAY}.`);
+    }
+    if (!local && base.pathname.replace(/\/+$/, '') !== CHEMIN_API_JOONAPAY) {
+      const exemple = joonaEnv === 'production' ? HOTE_PRODUCTION_JOONAPAY : HOTES_SANDBOX_JOONAPAY[0];
+      erreurs.push(`JOONAPAY_BASE_URL doit se terminer par ${CHEMIN_API_JOONAPAY} (ex. https://${exemple}${CHEMIN_API_JOONAPAY}).`);
     }
   }
 
