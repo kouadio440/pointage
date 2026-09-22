@@ -424,6 +424,58 @@
         </div>
       </div>
 
+      <!-- ==================== SECTION : PREUVE PRODUIT ====================
+        Remplace l'ancienne section d'avis. Aucun temoignage, aucune note,
+        aucun chiffre d'entreprise : uniquement ce que le produit verifie
+        reellement, dans l'ordre ou il le verifie.
+      -->
+      <section id="preuve" class="preuve" aria-labelledby="preuve-titre">
+        <div class="preuve__entete">
+          <span class="preuve__surtitre">Comment ça marche</span>
+          <h2 id="preuve-titre" class="preuve__titre">
+            Un pointage <span class="preuve__accent">vérifié de bout en bout</span>
+          </h2>
+          <p class="preuve__resume">
+            Chaque pointage franchit quatre contrôles avant d'apparaître côté RH.
+          </p>
+        </div>
+
+        <div class="preuve__chaine" aria-label="Étapes d'un pointage vérifié">
+          <span class="preuve__maillon"><i data-lucide="scan-face" aria-hidden="true"></i>Contrôle facial</span>
+          <span class="preuve__fleche" aria-hidden="true"><i data-lucide="arrow-right"></i></span>
+          <span class="preuve__maillon"><i data-lucide="map-pin" aria-hidden="true"></i>Position</span>
+          <span class="preuve__fleche" aria-hidden="true"><i data-lucide="arrow-right"></i></span>
+          <span class="preuve__maillon"><i data-lucide="shield-check" aria-hidden="true"></i>Zone autorisée</span>
+          <span class="preuve__fleche" aria-hidden="true"><i data-lucide="arrow-right"></i></span>
+          <span class="preuve__maillon"><i data-lucide="clock" aria-hidden="true"></i>Horaire</span>
+          <span class="preuve__fleche" aria-hidden="true"><i data-lucide="arrow-right"></i></span>
+          <span class="preuve__maillon"><i data-lucide="layout-dashboard" aria-hidden="true"></i>Cockpit RH</span>
+        </div>
+
+        <div class="preuve__blocs">
+          <article class="preuve-bloc">
+            <span class="preuve-bloc__icone" aria-hidden="true"><i data-lucide="scan-face"></i></span>
+            <h3 class="preuve-bloc__titre">Identité contrôlée</h3>
+            <p class="preuve-bloc__texte">Timora vérifie que l'employé présente bien son visage au moment du pointage.</p>
+          </article>
+          <article class="preuve-bloc">
+            <span class="preuve-bloc__icone" aria-hidden="true"><i data-lucide="map-pin"></i></span>
+            <h3 class="preuve-bloc__titre">Position vérifiée</h3>
+            <p class="preuve-bloc__texte">Timora contrôle que l'employé se trouve dans la zone définie par l'entreprise.</p>
+          </article>
+          <article class="preuve-bloc">
+            <span class="preuve-bloc__icone" aria-hidden="true"><i data-lucide="clock"></i></span>
+            <h3 class="preuve-bloc__titre">Horaire calculé automatiquement</h3>
+            <p class="preuve-bloc__texte">À l'heure, retard ou absence selon les règles configurées.</p>
+          </article>
+          <article class="preuve-bloc">
+            <span class="preuve-bloc__icone" aria-hidden="true"><i data-lucide="layout-dashboard"></i></span>
+            <h3 class="preuve-bloc__titre">Information disponible côté RH</h3>
+            <p class="preuve-bloc__texte">Le résultat apparaît immédiatement dans le cockpit RH.</p>
+          </article>
+        </div>
+      </section>
+
       <!-- SECTION: FONCTIONNALITÉS CLÉS -->
       <div class="space-y-8 pt-6">
         <div class="text-center max-w-3xl mx-auto space-y-2">
@@ -476,26 +528,16 @@
         </div>
       </div>
 
-      <!-- ==================== SECTION : AVIS (avis/avis.js) ==================== -->
       <!--
-        Uniquement de vrais avis : deposes par des comptes connectes et publies
-        apres verification par l'equipe Timora. Aucun avis, aucune note et aucun
-        nom n'est ecrit ici.
+        SECTION AVIS : RETIREE DE LA PAGE D'ACCUEIL (phase de lancement).
+        Timora n'a pas encore assez de vrais avis clients, et nous refusons
+        d'afficher des temoignages, notes ou logos inventes. La section
+        « Un pointage verifie de bout en bout » ci-dessus la remplace.
+
+        Rien n'est supprime cote backend : les tables, la migration 032 et la
+        moderation dans la console SaaS restent en place, pour pouvoir
+        reactiver les avis plus tard (voir avis/avis.js).
       -->
-      <section id="avis" class="avis" aria-labelledby="avis-titre">
-        <div class="avis__entete">
-          <span class="avis__surtitre">AVIS DES UTILISATEURS</span>
-          <h2 id="avis-titre" class="avis__titre">Ce que les utilisateurs pensent de <span class="avis__accent">Timora</span></h2>
-          <p id="avis-resume" class="avis__resume" aria-live="polite"></p>
-        </div>
-        <div id="avis-liste" class="avis__liste" role="list"></div>
-        <div class="avis__actions">
-          <button type="button" class="avis__cta" data-avis-action="donner">
-            <i data-lucide="message-square-plus" class="w-4 h-4" aria-hidden="true"></i>
-            Donner mon avis
-          </button>
-        </div>
-      </section>
 
       <!-- ==================== SECTION : ABONNEMENTS ==================== -->
       <!--
@@ -3358,19 +3400,11 @@
     </div>
   </div>
 
-  <!-- DEPOT D'UN AVIS (avis/avis.js) -->
-  <div id="modal-avis" class="auth-modale" role="dialog" aria-modal="true" aria-labelledby="avis-form-titre" hidden>
-    <div class="auth-carte">
-      <div class="auth-barre">
-        <span aria-hidden="true"></span>
-        <img src="/assets/marque/timora-logo-fond-sombre.png" width="466" height="120" alt="Timora" class="auth-logo" />
-        <button type="button" class="auth-icone-bouton" data-avis-action="fermer" aria-label="Fermer">
-          <i data-lucide="x" class="w-5 h-5" aria-hidden="true"></i>
-        </button>
-      </div>
-      <div id="avis-ecran" class="auth-ecran" aria-live="polite"></div>
-    </div>
-  </div>
+  <!--
+    DEPOT PUBLIC D'UN AVIS : FORMULAIRE RETIRE (phase de lancement).
+    La soumission publique est desactivee ; la moderation dans la console
+    SaaS et les fonctions Supabase restent intactes.
+  -->
   <!-- MODAL AJOUT D'ÉCHÉANCE CALENDRIER -->
   <div id="modal-add-event" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
     <div class="glass-panel-elevated p-6 max-w-md w-full relative space-y-5 border border-amber-500/40 shadow-2xl rounded-2xl">

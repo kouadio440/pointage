@@ -2874,3 +2874,280 @@ html.avis-ouvert { overflow: hidden; }
   .avis-carte, .avis__cta, .avis-note__etoiles label { transition: none; }
   .avis-carte:hover { transform: none; }
 }
+
+/* =============================================================================
+ *  DEMONSTRATION — ETAPE CAMERA (demo/demo.js)
+ * -----------------------------------------------------------------------------
+ *  Le flux video reste local au navigateur : rien n'est capture ni televerse.
+ *  La surcouche est purement decorative ; le cadre suit la position renvoyee
+ *  par le detecteur, jamais une identite.
+ * ========================================================================== */
+
+.demo-cadre {
+  position: relative;
+  width: 100%;
+  max-width: 19rem;
+  margin: 0 auto;
+  aspect-ratio: 3 / 4;
+  border-radius: 1.25rem;
+  overflow: hidden;
+  background: #0b0d13;
+  border: 1px solid #1E293B;
+  --boite-gauche: 25%;
+  --boite-haut: 20%;
+  --boite-largeur: 50%;
+  --boite-hauteur: 55%;
+}
+
+.demo-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;          /* jamais deformee, quel que soit le capteur */
+  transform: scaleX(-1);      /* effet miroir : le visiteur se reconnait */
+  display: block;
+  background: #0b0d13;
+}
+
+.demo-avatar-simule {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle at 50% 35%, rgba(245, 158, 11, 0.16), transparent 62%);
+}
+.demo-avatar-simule svg { width: 5.5rem; height: 5.5rem; color: rgba(245, 158, 11, 0.55); }
+
+.demo-reticule { position: absolute; inset: 0; pointer-events: none; }
+
+.demo-coin {
+  position: absolute;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 2px solid rgba(245, 158, 11, 0.75);
+  transition: border-color 0.3s ease;
+}
+.demo-coin--hg { top: 0.875rem; left: 0.875rem; border-right: 0; border-bottom: 0; border-top-left-radius: 0.5rem; }
+.demo-coin--hd { top: 0.875rem; right: 0.875rem; border-left: 0; border-bottom: 0; border-top-right-radius: 0.5rem; }
+.demo-coin--bg { bottom: 0.875rem; left: 0.875rem; border-right: 0; border-top: 0; border-bottom-left-radius: 0.5rem; }
+.demo-coin--bd { bottom: 0.875rem; right: 0.875rem; border-left: 0; border-top: 0; border-bottom-right-radius: 0.5rem; }
+
+.demo-cadre[data-phase="detecte"] .demo-coin,
+.demo-cadre[data-phase="analyse"] .demo-coin,
+.demo-cadre[data-phase="valide"] .demo-coin { border-color: rgba(16, 185, 129, 0.85); }
+
+.demo-scan {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, rgba(245, 158, 11, 0.85), transparent);
+  opacity: 0;
+}
+.demo-cadre[data-phase="recherche"] .demo-scan,
+.demo-cadre[data-phase="analyse"] .demo-scan { opacity: 1; animation: demo-balayage 2.1s ease-in-out infinite; }
+.demo-cadre[data-phase="analyse"] .demo-scan { background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.9), transparent); }
+
+@keyframes demo-balayage {
+  0%   { top: 16%; }
+  50%  { top: 78%; }
+  100% { top: 16%; }
+}
+
+/* Cadre suivant le visage : affiche seulement quand un visage est vu. */
+.demo-boite {
+  position: absolute;
+  left: var(--boite-gauche);
+  top: var(--boite-haut);
+  width: var(--boite-largeur);
+  height: var(--boite-hauteur);
+  border: 2px solid rgba(16, 185, 129, 0.9);
+  border-radius: 0.875rem;
+  opacity: 0;
+  transition: opacity 0.25s ease, left 0.18s linear, top 0.18s linear, width 0.18s linear, height 0.18s linear;
+  pointer-events: none;
+}
+.demo-cadre.a-visage .demo-boite { opacity: 1; }
+
+.demo-point {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.95);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+}
+.demo-point--1 { top: -3px; left: -3px; }
+.demo-point--2 { top: -3px; right: -3px; }
+.demo-point--3 { bottom: -3px; left: -3px; }
+.demo-point--4 { bottom: -3px; right: -3px; }
+
+.demo-face-statut {
+  margin: 0.875rem 0 0;
+  text-align: center;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: #FBBF24;
+  min-height: 1.4rem;
+}
+.demo-face-statut[data-etat="ok"] { color: #34D399; }
+
+.demo-progres {
+  margin: 0.5rem auto 0;
+  max-width: 19rem;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.22);
+  overflow: hidden;
+}
+.demo-progres > span {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #F59E0B, #10B981);
+  transition: width 0.45s ease;
+}
+
+.demo-camera-refus {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 1.25rem 1rem;
+  text-align: center;
+  border-radius: 1.25rem;
+  border: 1px solid #1E293B;
+  background: #0b0d13;
+}
+.demo-camera-refus svg { width: 2rem; height: 2rem; color: #FBBF24; }
+.demo-camera-refus p { margin: 0; font-size: 0.875rem; color: #94A3B8; }
+.demo-camera-refus strong { display: block; font-size: 0.9375rem; color: #F8FAFC; margin-bottom: 0.25rem; }
+
+/* Aucun visage trouve : on aide, puis on laisse poursuivre. Jamais d'impasse. */
+.demo-camera-aide {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.875rem;
+  text-align: center;
+}
+.demo-camera-aide p { margin: 0; font-size: 0.8125rem; color: #94A3B8; }
+
+/* Fiche resultat du pointage simule */
+.demo-fiche {
+  margin-top: 0.875rem;
+  padding: 0.875rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.08);
+}
+.demo-fiche__titre { margin: 0 0 0.625rem; font-size: 0.9375rem; font-weight: 800; color: #34D399; }
+.demo-fiche__liste { margin: 0; display: grid; gap: 0.375rem; }
+.demo-fiche__liste > div { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.8125rem; }
+.demo-fiche__liste dt { margin: 0; color: #94A3B8; }
+.demo-fiche__liste dd { margin: 0; color: #F8FAFC; font-weight: 600; text-align: right; }
+
+@media (min-width: 768px) {
+  .demo-cadre { max-width: 17rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demo-scan { animation: none; opacity: 0.35; }
+  .demo-boite, .demo-progres > span, .demo-coin { transition: none; }
+}
+
+/* =============================================================================
+ *  SECTION « UN POINTAGE VERIFIE DE BOUT EN BOUT »
+ * -----------------------------------------------------------------------------
+ *  Remplace l'ancienne section d'avis : preuve produit, sans chiffre invente
+ *  ni temoignage fictif.
+ * ========================================================================== */
+
+.preuve { display: grid; gap: 2rem; }
+
+.preuve__entete { text-align: center; max-width: 48rem; margin: 0 auto; display: grid; gap: 0.5rem; }
+
+.preuve__surtitre {
+  font-size: 0.6875rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-gold);
+}
+.preuve__titre { margin: 0; font-size: 1.875rem; font-weight: 800; color: var(--color-offwhite); line-height: 1.2; }
+.preuve__accent { background: linear-gradient(90deg, #FBBF24, #34D399); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.preuve__resume { margin: 0; font-size: 0.875rem; color: var(--color-muted); }
+
+/* Chaine visuelle : controle facial -> position -> zone -> horaire -> RH */
+.preuve__chaine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.875rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid var(--border-accent);
+  background: rgba(245, 158, 11, 0.06);
+}
+.preuve__maillon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--color-offwhite);
+  white-space: nowrap;
+}
+.preuve__maillon svg { width: 1rem; height: 1rem; color: var(--color-gold); }
+.preuve__fleche { color: var(--color-muted); opacity: 0.6; }
+.preuve__fleche svg { width: 0.875rem; height: 0.875rem; }
+
+.preuve__blocs { display: grid; gap: 1rem; grid-template-columns: 1fr; }
+
+.preuve-bloc {
+  display: grid;
+  gap: 0.5rem;
+  padding: 1.125rem;
+  border-radius: 1rem;
+  border: 1px solid var(--border-accent);
+  background: rgba(17, 24, 39, 0.55);
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.preuve-bloc:hover { border-color: var(--color-gold); transform: translateY(-2px); }
+
+.preuve-bloc__icone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.75rem;
+  background: rgba(245, 158, 11, 0.14);
+  color: var(--color-gold);
+}
+.preuve-bloc__icone svg { width: 1.25rem; height: 1.25rem; }
+.preuve-bloc:nth-child(4) .preuve-bloc__icone { background: rgba(16, 185, 129, 0.14); color: var(--color-green); }
+
+.preuve-bloc__titre {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-offwhite);
+}
+.preuve-bloc__texte { margin: 0; font-size: 0.875rem; line-height: 1.55; color: var(--color-muted); }
+
+@media (min-width: 640px) {
+  .preuve__blocs { grid-template-columns: repeat(2, 1fr); }
+  .preuve__titre { font-size: 2.25rem; }
+}
+@media (min-width: 1024px) {
+  .preuve__blocs { grid-template-columns: repeat(4, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .preuve-bloc { transition: none; }
+  .preuve-bloc:hover { transform: none; }
+}

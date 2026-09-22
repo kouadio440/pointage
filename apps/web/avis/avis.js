@@ -15,6 +15,21 @@
  *   - Tout texte venant de la base est echappe avant affichage.
  * ========================================================================== */
 
+/**
+ * AVIS PUBLICS DESACTIVES — phase de lancement (22/09/2026).
+ *
+ * Timora n'a pas encore assez de vrais avis clients : plutot que d'afficher
+ * des temoignages inventes, la section a ete retiree de la page d'accueil et
+ * le depot public est ferme.
+ *
+ * RIEN N'EST SUPPRIME : les tables, la migration 032 et les fonctions
+ * Supabase (reviews_public, my_review, submit_review) restent en place, la
+ * moderation dans la console SaaS continue de fonctionner. Remettre ce
+ * drapeau a `true` et restaurer la section dans index.html suffit a
+ * reactiver la fonctionnalite.
+ */
+const AVIS_PUBLICS_ACTIFS = false;
+
 const CLE_AVIS_APRES_CONNEXION = 'timora_avis_apres_connexion';
 
 const avisPublics = {
@@ -57,6 +72,7 @@ function dateAvis(iso) {
 // -----------------------------------------------------------------------------
 
 async function chargerAvis() {
+  if (!AVIS_PUBLICS_ACTIFS) return;      // aucun appel reseau tant que c'est ferme
   if (typeof supabaseClient === 'undefined' || !supabaseClient) {
     avisPublics.erreur = true;
     rendreAvis();
@@ -130,6 +146,7 @@ function rendreAvis() {
 // -----------------------------------------------------------------------------
 
 function donnerMonAvis() {
+  if (!AVIS_PUBLICS_ACTIFS) return;
   suivreAvis('review_cta_clicked', { connecte: !!(typeof state !== 'undefined' && state.isAuthenticated) });
   if (typeof state === 'undefined' || !state.isAuthenticated) {
     // L'avis est depose par un compte identifie : connexion d'abord, puis le
@@ -143,6 +160,11 @@ function donnerMonAvis() {
 
 /** Appelee apres chaque resolution d'authentification reussie. */
 function reprendreAvisApresConnexion() {
+  if (!AVIS_PUBLICS_ACTIFS) {
+    // Une demande laissee avant la fermeture ne doit pas rouvrir le formulaire.
+    try { sessionStorage.removeItem(CLE_AVIS_APRES_CONNEXION); } catch { /* ignore */ }
+    return;
+  }
   let demande = null;
   try { demande = sessionStorage.getItem(CLE_AVIS_APRES_CONNEXION); } catch (err) { demande = null; }
   if (!demande || typeof state === 'undefined' || !state.isAuthenticated) return;
@@ -155,6 +177,7 @@ function modaleAvis() {
 }
 
 async function ouvrirFormulaireAvis() {
+  if (!AVIS_PUBLICS_ACTIFS) return;
   const m = modaleAvis();
   if (!m) return;
   if (m.hidden) formulaireAvis.focusAvant = document.activeElement;
@@ -264,6 +287,9 @@ function rendreFormulaireAvis() {
 }
 
 async function envoyerAvis(formulaire) {
+  // Verrou de securite : meme si un formulaire etait recree dans la page,
+  // aucune soumission publique ne part tant que le drapeau est a false.
+  if (!AVIS_PUBLICS_ACTIFS) return;
   if (formulaireAvis.envoi) return;
   const donnees = new FormData(formulaire);
   const note = Number(donnees.get('note'));
