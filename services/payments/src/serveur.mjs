@@ -105,6 +105,7 @@ export function creerServeurPaiement(config, { recus = null, maintenant = () => 
     if (!s.utilisateur.emailVerifie) {
       return { status: 403, corps: { code: 'EMAIL_NON_VERIFIE', message: 'Confirmez votre adresse e-mail pour continuer.' } };
     }
+    journaliser('INTERNAL_REQUEST_VERIFIED', { ...trace, user_id: s.utilisateur.id });
     return { utilisateur: s.utilisateur };
   }
 
@@ -212,7 +213,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const { serveur, recus } = creerServeurPaiement(config);
     const taches = creerTaches(config, recus);
     serveur.listen(config.ecoute.port, config.ecoute.hote, () => {
-      journaliser('SERVEUR_DEMARRE', {
+      journaliser('PAYMENT_SERVER_STARTED', {
         version: VERSION,
         environment: config.environnement,
         ecoute: `${config.ecoute.hote}:${config.ecoute.port}`,
@@ -222,7 +223,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       taches.demarrer();
     });
     const arreter = (signal) => {
-      journaliser('SERVEUR_ARRET', { signal });
+      journaliser('PAYMENT_SERVER_STOPPING', { signal });
       taches.arreter();
       serveur.close(() => process.exit(0));
       setTimeout(() => process.exit(0), 10000).unref();

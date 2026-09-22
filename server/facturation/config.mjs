@@ -169,13 +169,13 @@ export function lireConfigServeurPaiement(env = process.env) {
     erreurs.push('SMTP_HOST ne peut pas etre local en production.');
   }
 
-  const port = Number(String(env.PORT || '8787').trim());
+  const port = Number(String(env.PORT || '3000').trim());
   return {
     ...base,
     ok: manquantes.length === 0 && erreurs.length === 0,
     manquantes,
     erreurs,
-    ecoute: { hote: String(env.HOST || '127.0.0.1').trim(), port: Number.isInteger(port) ? port : 8787 },
+    ecoute: { hote: String(env.HOST || '127.0.0.1').trim(), port: Number.isInteger(port) ? port : 3000 },
     interne: { secret: secretInterne },
     testProduction: {
       active: testActif && base.environnement === 'production',

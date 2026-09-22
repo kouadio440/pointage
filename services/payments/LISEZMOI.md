@@ -71,14 +71,18 @@ sudo bash -c 'cd /opt/timora-payments/current/services/payments && node --env-fi
 sudo bash -c 'cd /opt/timora-payments/current/services/payments && node --env-file=/etc/timora-payments/env scripts/test-production.mjs desactiver'
 ```
 
-## Installation (Ubuntu 24.04 LTS, 1 vCPU, 1–2 Go de RAM, IPv4 fixe)
+## Installation (serveur AWS Lightsail, IPv4 fixe **15.236.1.218**)
 
-1. Copier `deploy/` sur le serveur, puis :
-   `sudo bash installer-serveur.sh --email-acme vous@exemple.com --admin <utilisateur> [--ip-admin <IPv4>]`
-2. DNS : enregistrement **A** `payments.timora.tech` → IPv4 du serveur.
-3. Remplir `/etc/timora-payments/env` (modèle : `deploy/payments.env.example`).
-4. Depuis le poste : `node services/payments/deploy/deployer.mjs <utilisateur>@<IPv4>`.
-5. Vérifier : `scripts/diagnostic.mjs` (voir ci-dessus pour la commande).
+1. Copier `deploy/` sur le serveur, puis **inspecter avant de modifier** :
+   `bash inspecter-serveur.sh` (lecture seule : distribution, occupants de
+   80/443, pare-feu, Node, ressources, IP de sortie).
+2. `sudo bash installer-serveur.sh --email-acme vous@exemple.com --admin <utilisateur> [--ip-admin <IPv4>] [--liberer-web]`
+   (`--liberer-web` si une pile web préinstallée occupe déjà 80/443).
+3. DNS : enregistrement **A** `payments.timora.tech` → **15.236.1.218**.
+4. Remplir `/etc/timora-payments/env` (modèle : `deploy/payments.env.example`).
+5. Depuis le poste : `node services/payments/deploy/deployer.mjs <utilisateur>@15.236.1.218`.
+6. Vérifier : `scripts/diagnostic.mjs` sur le serveur (voir ci-dessus), puis
+   `node scripts/verifier-serveur-paiement.mjs` depuis le poste.
 
 ## Exploitation
 

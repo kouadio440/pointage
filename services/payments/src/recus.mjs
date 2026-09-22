@@ -27,7 +27,7 @@ export function creerTraitementRecus(config, { deposer = deposerFichier, transpo
         const chemin = `${recu.company_id}/${recu.number}.pdf`;
         const depot = await deposer(config, BUCKET_RECUS, chemin, pdf, 'application/pdf');
         if (!depot.ok) {
-          journaliser('PAYMENT_RECEIPT_UPLOAD_FAILED', { ...trace, code: depot.code, http_status: depot.status ?? null });
+          journaliser('RECEIPT_UPLOAD_FAILED', { ...trace, code: depot.code, http_status: depot.status ?? null });
           return;
         }
         const note = await rpc(config, 'billing_receipt_set_pdf', {
@@ -37,14 +37,14 @@ export function creerTraitementRecus(config, { deposer = deposerFichier, transpo
           journaliser('SUPABASE_WRITE_FAILED', { ...trace, etape: 'recu_pdf', code: note.erreur.code });
           return;
         }
-        journaliser('PAYMENT_RECEIPT_STORED', { ...trace, octets: pdf.length });
+        journaliser('RECEIPT_STORED', { ...trace, octets: pdf.length });
       }
 
       if (!['PENDING', 'FAILED'].includes(recu.email_status)) return;
       if (!envoi) {
         // Sans messagerie configuree, l'e-mail attend (aucun essai compte).
         if (!messagerieSignalee) {
-          journaliser('PAYMENT_EMAIL_PENDING', { raison: 'MESSAGERIE_NON_CONFIGUREE' });
+          journaliser('EMAIL_PENDING', { raison: 'MESSAGERIE_NON_CONFIGUREE' });
           messagerieSignalee = true;
         }
         return;
@@ -55,12 +55,12 @@ export function creerTraitementRecus(config, { deposer = deposerFichier, transpo
         p_receipt: recu.id, p_ok: r.ok, p_error: r.ok ? null : r.code,
       });
       if (!note.ok) journaliser('SUPABASE_WRITE_FAILED', { ...trace, etape: 'recu_email', code: note.erreur.code });
-      journaliser(r.ok ? 'PAYMENT_EMAIL_SENT' : 'PAYMENT_EMAIL_FAILED', {
+      journaliser(r.ok ? 'EMAIL_SENT' : 'EMAIL_FAILED', {
         ...trace, code: r.ok ? null : r.code, premier: Boolean(recu.first_activation),
         statut: note.ok && note.data ? note.data.email_status : null,
       });
     } catch (err) {
-      journaliser('PAYMENT_RECEIPT_FAILED', { ...trace, erreur: err && err.name });
+      journaliser('RECEIPT_FAILED', { ...trace, erreur: err && err.name });
     } finally {
       enCours.delete(recu.id);
     }

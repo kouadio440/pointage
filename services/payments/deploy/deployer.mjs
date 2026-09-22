@@ -2,7 +2,11 @@
 // Deploie le serveur de paiement depuis votre poste (Windows, macOS ou Linux) :
 //
 //   node services/payments/deploy/deployer.mjs <utilisateur>@<IPv4 du serveur>
+//   node services/payments/deploy/deployer.mjs <utilisateur>@<IPv4> --cle ~/.ssh/cle.pem
 //   node services/payments/deploy/deployer.mjs --simulation      (archive seule, contenu affiche)
+//
+// --cle (ou la variable SSH_IDENTITY) designe la cle privee SSH. Le chemin
+// seul est transmis a ssh/scp : la cle n'est ni lue, ni copiee, ni affichee.
 //
 // Assemble UNIQUEMENT les fichiers necessaires (aucun .env, aucune cle),
 // les envoie par scp, puis lance cote serveur installer-version.sh :
@@ -15,12 +19,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const simulation = process.argv.includes('--simulation');
-const cible = process.argv.slice(2).find((a) => !a.startsWith('--')) || '';
+const args = process.argv.slice(2);
+const simulation = args.includes('--simulation');
+const iCle = args.indexOf('--cle');
+const cle = (iCle >= 0 && args[iCle + 1]) ? args[iCle + 1] : (process.env.SSH_IDENTITY || '');
+const cible = args.filter((a, i) => !a.startsWith('--') && i !== iCle + 1)[0] || '';
 if (!simulation && !/^[a-z_][a-z0-9_-]*@[A-Za-z0-9.:-]+$/.test(cible)) {
-  console.error('Usage : node services/payments/deploy/deployer.mjs utilisateur@IPv4   (ou --simulation)');
+  console.error('Usage : node services/payments/deploy/deployer.mjs utilisateur@IPv4 [--cle <chemin>]   (ou --simulation)');
   process.exit(1);
 }
+if (cle && !existsSync(cle)) {
+  console.error(`Cle SSH introuvable : ${cle}`);
+  process.exit(1);
+}
+const IDENTITE = cle ? ['-i', cle] : [];
 
 const RACINE = fileURLToPath(new URL('../../../', import.meta.url));
 const FICHIERS = [
@@ -60,8 +72,8 @@ try {
   if (simulation) {
     console.log(`  ${contenu.join('\n  ')}`);
   } else {
-    execFileSync('scp', [join(tmpdir(), nom), `${cible}:/tmp/${nom}`], { stdio: 'inherit' });
-    execFileSync('ssh', ['-t', cible, `sudo /opt/timora-payments/bin/installer-version.sh /tmp/${nom}; code=$?; rm -f /tmp/${nom}; exit $code`], { stdio: 'inherit' });
+    execFileSync('scp', [...IDENTITE, join(tmpdir(), nom), `${cible}:/tmp/${nom}`], { stdio: 'inherit' });
+    execFileSync('ssh', [...IDENTITE, '-t', cible, `sudo /opt/timora-payments/bin/installer-version.sh /tmp/${nom}; code=$?; rm -f /tmp/${nom}; exit $code`], { stdio: 'inherit' });
     console.log('Deploiement termine.');
   }
 } catch (e) {

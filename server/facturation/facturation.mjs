@@ -203,6 +203,11 @@ export async function demarrerPaiement(config, { utilisateur, plan, periode }) {
     reference: p.reference, plan: p.plan, period: p.period, amount: p.amount, normal_amount: p.normal_amount,
     smoke_test: Boolean(p.is_smoke_test),
   });
+  // Intention de paiement creee en base, avant tout appel a JoonaPay.
+  journaliser('PAYMENT_INTENT_CREATED', {
+    reference: p.reference, payment_id: p.payment_id, company_id: p.company_id, amount: p.amount,
+    normal_amount: p.normal_amount, smoke_test: Boolean(p.is_smoke_test),
+  });
 
   const pays = await paysDePaiement(config, p.company_country);
   if (!pays.ok) return echecCreation(config, p.reference, pays);
@@ -234,7 +239,9 @@ export async function demarrerPaiement(config, { utilisateur, plan, periode }) {
     allow_partial_payment: false,
   };
 
-  traceDev('JoonaPay request started', { reference: p.reference, amount: corps.amount, currency: corps.currency, retour_https: retourHttps });
+  journaliser('JOONAPAY_REQUEST_STARTED', {
+    reference: p.reference, amount: corps.amount, currency: corps.currency, pays: pays.code, retour_https: retourHttps,
+  });
   const cree = await creerPaiement(config, corps);
   if (!cree.ok) return echecCreation(config, p.reference, cree);
 
@@ -286,7 +293,7 @@ export async function synchroniser(config, uuid, source) {
   const lu = await lirePaiement(config, uuid);
   if (!lu.ok) {
     journaliser(['INJOIGNABLE', 'DELAI_DEPASSE', 'ERREUR_FOURNISSEUR', 'IP_NON_AUTORISEE', 'AUTHENTIFICATION'].includes(lu.code)
-      ? 'JOONAPAY_UNAVAILABLE' : 'JOONAPAY_PAYMENT_STATUS_CHECK_FAILED', {
+      ? 'JOONAPAY_UNAVAILABLE' : 'PROVIDER_PAYMENT_CHECK_FAILED', {
       source, environment: config.environnement, code: lu.code, http_status: lu.status, request_id: lu.requestId,
     });
     return { ok: false, code: lu.code };
@@ -294,10 +301,10 @@ export async function synchroniser(config, uuid, source) {
 
   const d = lu.data || {};
   if (String(d.uuid || '') !== uuid) {
-    journaliser('JOONAPAY_PAYMENT_STATUS_CHECK_FAILED', { source, code: 'REPONSE_INCOHERENTE' });
+    journaliser('PROVIDER_PAYMENT_CHECK_FAILED', { source, code: 'REPONSE_INCOHERENTE' });
     return { ok: false, code: 'REPONSE_INCOHERENTE' };
   }
-  journaliser('JOONAPAY_PAYMENT_VERIFIED', {
+  journaliser('PROVIDER_PAYMENT_VERIFIED', {
     source, reference: d.merchant_transaction_id || null, provider_status: d.status || null, payment_status: d.payment_status || null,
   });
 
@@ -326,11 +333,14 @@ export async function synchroniser(config, uuid, source) {
     const alerte = ALERTES_ACTIVATION.has(r.code) ? r.code : r.code === 'PAIEMENT_INCONNU' ? 'UNKNOWN_PAYMENT' : 'ACTIVATION_FAILED';
     journaliser(alerte, { ...trace, code: r.code });
   } else if (r.status === 'COMPLETED' && r.deja_traite === false) {
+    journaliser('PAYMENT_COMPLETED', {
+      ...trace, amount: nombre(d.amount), currency: d.currency || null, payment_method: moyenDePaiement(d),
+    });
     journaliser('SUBSCRIPTION_ACTIVATED', {
       ...trace, plan: r.subscription && r.subscription.plan, fin: r.subscription && r.subscription.fin,
       smoke_test: Boolean(r.is_smoke_test),
     });
-    if (r.receipt_number) journaliser('PAYMENT_RECEIPT_CREATED', { ...trace, receipt: r.receipt_number });
+    if (r.receipt_number) journaliser('RECEIPT_CREATED', { ...trace, receipt: r.receipt_number });
   } else if (['FAILED', 'CANCELLED', 'EXPIRED'].includes(r.status)) {
     journaliser('PAYMENT_FAILED', { ...trace, status: r.status, provider_status: d.status });
   }
@@ -408,7 +418,7 @@ export async function verifierPaiement(config, { utilisateur, reference }) {
 // -----------------------------------------------------------------------------
 
 export async function traiterWebhook(config, { corpsBrut, signature }) {
-  journaliser('JOONAPAY_WEBHOOK_RECEIVED', { environment: config.environnement, taille: corpsBrut.length });
+  journaliser('WEBHOOK_RECEIVED', { environment: config.environnement, taille: corpsBrut.length });
 
   if (!signatureValide(corpsBrut, signature, config.joonapay.secretWebhook)) {
     // Rien n'est modifie, rien n'est ecrit en base : un robot pourrait sinon
@@ -423,7 +433,7 @@ export async function traiterWebhook(config, { corpsBrut, signature }) {
   try {
     evenement = JSON.parse(corpsBrut.toString('utf8'));
   } catch {
-    journaliser('JOONAPAY_WEBHOOK_UNKNOWN_EVENT', { raison: 'JSON_INVALIDE' });
+    journaliser('WEBHOOK_UNKNOWN_EVENT', { raison: 'JSON_INVALIDE' });
     return { status: 400, corps: { received: false } };
   }
 
@@ -442,22 +452,22 @@ export async function traiterWebhook(config, { corpsBrut, signature }) {
     return { status: 503, corps: { received: false } };
   }
   if (enregistre.data && enregistre.data.deja_traite) {
-    journaliser('JOONAPAY_WEBHOOK_DUPLICATE', { event: type, reference, tentatives: enregistre.data.tentatives });
+    journaliser('WEBHOOK_DUPLICATE', { event: type, reference, tentatives: enregistre.data.tentatives });
     return { status: 200, corps: { received: true, duplicate: true } };
   }
   const clore = (resultat) => rpc(config, 'billing_webhook_mark_processed', { p_sha256: cle, p_result: resultat });
 
-  journaliser('JOONAPAY_WEBHOOK_VERIFIED', { environment: config.environnement, event: type, reference });
+  journaliser('WEBHOOK_SIGNATURE_VALID', { environment: config.environnement, event: type, reference });
   await consignerEnBase(config, 'WEBHOOK_VERIFIED', { reference, details: { event: type } });
 
   if (!EVENEMENTS_PAIEMENT.has(type)) {
     // Evenement documente mais sans objet pour Timora (payout.*), ou inconnu.
-    journaliser('JOONAPAY_WEBHOOK_UNKNOWN_EVENT', { event: type });
+    journaliser('WEBHOOK_UNKNOWN_EVENT', { event: type });
     await clore('IGNORE');
     return { status: 200, corps: { received: true, ignored: true } };
   }
   if (!uuid) {
-    journaliser('JOONAPAY_WEBHOOK_UNKNOWN_EVENT', { event: type, raison: 'UUID_ABSENT' });
+    journaliser('WEBHOOK_UNKNOWN_EVENT', { event: type, raison: 'UUID_ABSENT' });
     await clore('IGNORE');
     return { status: 200, corps: { received: true, ignored: true } };
   }

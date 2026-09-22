@@ -79,23 +79,42 @@ rien de plus (un abonnement, un reçu, un e-mail).
   15 min), les fonctions payantes se ferment, le propriétaire est dirigé vers le
   renouvellement. Rien n'est supprimé.
 
+## Le serveur de production
+
+| | |
+|---|---|
+| Hébergeur | AWS Lightsail (région `eu-west-3`, Paris) |
+| IPv4 fixe | **15.236.1.218** — c'est elle qui est déclarée chez JoonaPay |
+| Nom | `payments.timora.tech` (enregistrement A → 15.236.1.218) |
+| Pare-feu Lightsail | 22 (SSH, restreint à l'IP d'administration), 80, 443 |
+| Ports ouverts sur Internet | 80 et 443 seulement ; Node écoute sur `127.0.0.1:3000` |
+
+L'image de départ n'est **pas** un Ubuntu vierge : lancer d'abord
+`bash inspecter-serveur.sh` (lecture seule) et adapter. L'installateur détecte
+la distribution et ce qui occupe déjà 80/443.
+
 ## Mise en production — dans cet ordre
 
 1. **Sauvegarde, puis nettoyage des comptes de test** (voir plus bas).
-2. **Serveur** : Ubuntu 24.04 LTS, 1 vCPU, 1–2 Go, **IPv4 fixe**. Copier
-   `services/payments/deploy/` sur le serveur, puis
-   `sudo bash installer-serveur.sh --email-acme <email> --admin <utilisateur> [--ip-admin <IPv4>]`.
-3. **DNS** : enregistrement A `payments.timora.tech` → IPv4 du serveur.
+2. **Serveur** : copier `services/payments/deploy/` sur le serveur, lancer
+   `bash inspecter-serveur.sh` (ne modifie rien), puis
+   `sudo bash installer-serveur.sh --email-acme <email> --admin <utilisateur> [--ip-admin <IPv4>] [--liberer-web]`.
+   `--liberer-web` arrête la pile web préinstallée (Apache/Nginx/Bitnami) qui
+   occupe 80/443 ; sans elle, l'installateur s'arrête et le dit.
+3. **DNS** : enregistrement A `payments.timora.tech` → **15.236.1.218**. Si le
+   domaine a un joker `*.timora.tech` vers Vercel, l'enregistrement A du
+   sous-domaine doit exister explicitement pour le supplanter.
 4. **JoonaPay (portail)** : générer de **nouvelles clés de production** (les
-   précédentes ont été exposées : les révoquer) ; liste blanche = IPv4 du
-   serveur ; webhook = `https://payments.timora.tech/api/webhooks/joonapay`.
+   précédentes ont été exposées : les révoquer) ; liste blanche =
+   **15.236.1.218** ; webhook = `https://payments.timora.tech/api/webhooks/joonapay`.
 5. **Messagerie** : un fournisseur SMTP (domaine `timora.tech` vérifié : SPF,
    DKIM). Le même SMTP se règle dans Supabase Auth (fin de la limite de
    2 e-mails par heure des codes de connexion).
 6. **Serveur** : remplir `/etc/timora-payments/env`
    (modèle `payments.env.example`), puis depuis le poste :
-   `node services/payments/deploy/deployer.mjs <utilisateur>@<IPv4>` ;
-   vérifier avec `scripts/diagnostic.mjs`.
+   `node services/payments/deploy/deployer.mjs <utilisateur>@15.236.1.218` ;
+   vérifier avec `scripts/diagnostic.mjs`, puis depuis le poste
+   `node scripts/verifier-serveur-paiement.mjs` (aucun paiement créé).
 7. **Supabase (éditeur SQL)** : appliquer `supabase_migration_033_paiement_production.sql`,
    puis passer en production : `update public.billing_settings set mode = 'production';`
 8. **Vercel** : `PAYMENT_SERVER_URL=https://payments.timora.tech`,

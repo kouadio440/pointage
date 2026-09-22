@@ -13,7 +13,7 @@ WorkingDirectory=/opt/timora-payments/current/services/payments
 EnvironmentFile=/etc/timora-payments/env
 Environment=NODE_ENV=production
 ExecStart=/usr/bin/node src/serveur.mjs
-Restart=on-failure
+Restart=always
 RestartSec=5
 # 78 = configuration invalide : pas de redemarrage en boucle.
 RestartPreventExitStatus=78

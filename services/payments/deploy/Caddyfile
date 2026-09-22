@@ -3,7 +3,7 @@
 #
 # HTTPS automatique (Let's Encrypt) ; le port 80 ne sert qu'au defi ACME et
 # redirige tout le reste vers HTTPS : aucun point financier n'est servi en HTTP.
-# Seules trois routes atteignent le service Node (127.0.0.1:8787, jamais
+# Seules trois routes atteignent le service Node (127.0.0.1:3000, jamais
 # expose directement). Pas de journal d'acces Caddy : les requetes internes
 # portent un jeton de session ; le service journalise, lui, sans le jeton.
 
@@ -18,7 +18,7 @@ __DOMAINE__ {
 
 	@service path /health /api/payments/* /api/webhooks/joonapay
 	handle @service {
-		reverse_proxy 127.0.0.1:8787 {
+		reverse_proxy 127.0.0.1:3000 {
 			transport http {
 				dial_timeout 5s
 				response_header_timeout 35s

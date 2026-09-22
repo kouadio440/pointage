@@ -27,13 +27,22 @@ cd "$CIBLE/services/payments"
 npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 node --test "test/*.test.mjs"
 
-PRECEDENTE="$(readlink -f "$BASE/current" 2>/dev/null || true)"
+# Version precedente : uniquement un lien deja en place qui pointe vers une
+# VRAIE version. Sans cela, readlink -f renvoie le chemin du lien lui-meme et
+# le retour arriere fabrique un lien circulaire (current -> current).
+PRECEDENTE=""
+if [ -L "$BASE/current" ]; then
+  P="$(readlink -f "$BASE/current" 2>/dev/null || true)"
+  case "$P" in
+    "$BASE"/releases/*) [ -d "$P" ] && PRECEDENTE="$P" ;;
+  esac
+fi
 ln -sfn "$CIBLE" "$BASE/current.nouveau"
 mv -Tf "$BASE/current.nouveau" "$BASE/current"
 systemctl restart timora-payments
 
 for _ in $(seq 1 20); do
-  if curl -fsS http://127.0.0.1:8787/health >/dev/null 2>&1; then
+  if curl -fsS http://127.0.0.1:3000/health >/dev/null 2>&1; then
     echo "Version $VERSION en service."
     ls -1dt "$BASE"/releases/* | tail -n +6 | xargs -r rm -rf
     exit 0
