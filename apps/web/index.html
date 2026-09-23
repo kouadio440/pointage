@@ -346,6 +346,16 @@
           </div>
 
           <div class="accueil-liens">
+            <!--
+              « Se connecter » doit rester visible AVEC « Activer mon entreprise ».
+              Un client qui a deja paye ne doit jamais avoir pour seule porte
+              d'entree un bouton d'activation : il n'existait jusqu'ici que dans
+              la barre de navigation, repliee dans le menu sur telephone.
+            -->
+            <button type="button" class="accueil-lien accueil-lien--fort" onclick="openAuthModal('login')">
+              <i data-lucide="log-in" class="w-4 h-4" aria-hidden="true"></i>
+              J'ai déjà un compte — Se connecter
+            </button>
             <button type="button" class="accueil-lien" onclick="voirTarifs('accueil')">Voir les tarifs</button>
             <button type="button" data-pwa-install="hero" class="pwa-installer pwa-installer--hero" hidden>
               <i data-lucide="download" class="pwa-installer__icone" aria-hidden="true"></i><span>Installer l'application</span>
