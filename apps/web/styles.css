@@ -3032,6 +3032,9 @@ html.avis-ouvert { overflow: hidden; }
   margin-top: 0.875rem;
   text-align: center;
 }
+/* « display » d'une classe l'emporte sur l'attribut hidden du navigateur :
+   sans cette regle, le conseil resterait visible en permanence. */
+.demo-camera-aide[hidden] { display: none; }
 .demo-camera-aide p { margin: 0; font-size: 0.8125rem; color: #94A3B8; }
 
 /* Fiche resultat du pointage simule */

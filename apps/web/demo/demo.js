@@ -69,6 +69,40 @@ const EMPLOYE_DEMO = 'Marie K.';
 const DEMO_FACE_LIB = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/dist/face-api.min.js';
 const DEMO_FACE_MODEL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/model';
 
+/* -----------------------------------------------------------------------------
+ *  REGLAGES DE VITESSE
+ * -----------------------------------------------------------------------------
+ *  La demo doit valider un visage en moins d'une seconde sur un telephone
+ *  d'entree de gamme. Trois leviers, dans l'ordre d'importance :
+ *
+ *   1. l'image analysee est reduite a 256 px de large — le rendu affiche,
+ *      lui, garde la definition de la camera ;
+ *   2. le detecteur travaille en 160 px (multiple de 32 impose par le modele),
+ *      ce qui divise le calcul par ~4 face a 320 ;
+ *   3. le moteur est precharge et prechauffe pendant que le visiteur lit la
+ *      page, donc pret avant meme l'ouverture de la camera.
+ *
+ *  La validation demande DEUX detections consecutives : cela suffit a ecarter
+ *  un faux positif isole sans imposer d'immobilite.
+ * -------------------------------------------------------------------------- */
+const ANALYSE_LARGEUR = 256;        // largeur de l'image reellement analysee
+const ANALYSE_ENTREE = 160;         // inputSize de depart (multiple de 32)
+const ANALYSE_ENTREE_LENTE = 128;   // repli automatique sur appareil lent
+const ANALYSE_LENT_MS = 320;        // au-dela, l'appareil est juge lent
+const ANALYSE_SEUIL = 0.45;         // confiance minimale
+const CONFIANCE_IMMEDIATE = 0.7;    // au-dessus, une seule image suffit
+const INTERVALLE_DETECTION = 90;    // ~11 analyses/seconde au maximum
+const DETECTIONS_REQUISES = 2;      // sinon, deux images consecutives
+const DELAI_INDICE_MS = 3000;       // au-dela, on aide au cadrage
+const DELAI_MOTEUR_MAX_MS = 6000;   // au-dela, on se passe du detecteur
+const TAILLE_MIN_VISAGE = 0.16;     // le visage doit occuper >= 16 % de la largeur
+const ECART_CENTRE_MAX = 0.32;      // et rester a peu pres centre
+
+// Rythme des retours visuels APRES detection. Volontairement court : une
+// animation ne doit jamais faire attendre une logique deja terminee.
+// 660 ms au total, soit trois etats juste assez longs pour etre lus.
+const RYTHME = { detecte: 160, analyse: 200, valide: 300 };
+
 const demo = {
   ecran: 'intro',       // intro -> camera -> pointage -> cockpit -> fin
   scenario: 'a_lheure',
@@ -85,10 +119,52 @@ const demo = {
     boucle: null,
     detecteurPret: false,
     chargement: false,
+    promesse: null,     // chargement en cours, partage entre prechargement et clic
     boite: null,        // position du visage pour la surcouche, jamais transmise
     vuDepuis: 0,
+    consecutives: 0,    // detections positives d'affilee
+    indice: false,      // conseil de cadrage affiche
+    toile: null,        // <canvas> hors ecran pour l'analyse reduite
+    entree: ANALYSE_ENTREE,
+    entreeAjustee: false,
   },
 };
+
+/* -----------------------------------------------------------------------------
+ *  MESURES DE DIAGNOSTIC (local uniquement)
+ * -----------------------------------------------------------------------------
+ *  Durees en millisecondes, gardees en memoire et lisibles dans la console via
+ *  window.__timoraDemoPerf. Aucune image, aucune donnee faciale, aucun envoi :
+ *  ce sont quatre nombres, et ils disparaissent au rechargement.
+ *  L'affichage n'a lieu qu'en developpement (localhost ou ?demoperf=1).
+ * -------------------------------------------------------------------------- */
+const perf = {
+  // Depuis le chargement de la page : combien de temps le moteur met a etre
+  // pret (telechargement + initialisation + prechauffage).
+  detector_ready_ms: null,
+  // Depuis l'ouverture de la camera : c'est ce que le visiteur ressent.
+  camera_ready_ms: null,
+  first_face_detected_ms: null,
+  face_validated_ms: null,
+  _page: performance.now(),
+  _camera: 0,
+};
+window.__timoraDemoPerf = perf;
+
+function perfDiagnostic() {
+  try {
+    return /^(localhost|127\.0\.0\.1)$/.test(location.hostname)
+      || new URLSearchParams(location.search).has('demoperf');
+  } catch { return false; }
+}
+
+function marquer(cle) {
+  if (perf[cle] !== null) return;
+  const origine = cle === 'detector_ready_ms' ? perf._page : perf._camera;
+  if (!origine) return;
+  perf[cle] = Math.round(performance.now() - origine);
+  if (perfDiagnostic()) console.info(`[demo] ${cle} = ${perf[cle]} ms`);
+}
 
 function suivreDemo(nom, donnees = {}) {
   // Suivi marketing uniquement : un nom d'etape et le scenario choisi.
@@ -135,40 +211,107 @@ function arreterCameraDemo() {
   demo.face.boite = null;
 }
 
-/** Charge la bibliotheque puis le SEUL detecteur de visage. */
-async function chargerDetecteurDemo() {
-  if (demo.face.detecteurPret) return true;
-  if (demo.face.chargement) return false;
-  demo.face.chargement = true;
-  try {
-    if (typeof faceapi === 'undefined') {
-      // chargerScriptUnique vient de app.js ; repli autonome si absent.
-      if (typeof chargerScriptUnique === 'function') {
-        await chargerScriptUnique(DEMO_FACE_LIB);
-      } else {
-        await new Promise((ok, ko) => {
-          const s = document.createElement('script');
-          s.src = DEMO_FACE_LIB;
-          s.crossOrigin = 'anonymous';
-          s.onload = ok;
-          s.onerror = () => ko(new Error('chargement'));
-          document.head.appendChild(s);
-        });
-      }
-    }
-    // Detection seule. Le modele de reconnaissance n'est PAS charge.
-    if (!faceapi.nets.tinyFaceDetector.isLoaded) {
-      await faceapi.nets.tinyFaceDetector.loadFromUri(DEMO_FACE_MODEL);
-    }
-    demo.face.detecteurPret = true;
-    return true;
-  } catch {
-    // Reseau lent ou CDN bloque : la demo continue sans detection automatique.
-    demo.face.detecteurPret = false;
-    return false;
-  } finally {
-    demo.face.chargement = false;
+/**
+ * Options du detecteur. La definition d'entree s'adapte : si la premiere
+ * analyse depasse ANALYSE_LENT_MS, l'appareil est lent et on redescend a 128,
+ * ce qui divise encore le calcul par ~1,5 sans changer l'experience.
+ */
+function optionsDemo() {
+  return new faceapi.TinyFaceDetectorOptions({
+    inputSize: demo.face.entree || ANALYSE_ENTREE,
+    scoreThreshold: ANALYSE_SEUIL,
+  });
+}
+
+/** Petite toile hors ecran ou l'image est reduite avant analyse. */
+function toileAnalyse(video) {
+  if (!demo.face.toile) {
+    demo.face.toile = document.createElement('canvas');
   }
+  const t = demo.face.toile;
+  const ratio = video.videoHeight / video.videoWidth || 4 / 3;
+  const l = Math.min(ANALYSE_LARGEUR, video.videoWidth || ANALYSE_LARGEUR);
+  const h = Math.round(l * ratio);
+  if (t.width !== l || t.height !== h) { t.width = l; t.height = h; }
+  // L'image reduite vit le temps d'une analyse, dans la memoire de l'onglet.
+  // Elle n'est ni lue, ni exportee, ni conservee : le contexte est ecrase a
+  // l'image suivante et la toile disparait a la fermeture de la page.
+  t.getContext('2d', { willReadFrequently: true }).drawImage(video, 0, 0, l, h);
+  return t;
+}
+
+/**
+ * Charge la bibliotheque, le SEUL detecteur de visage, puis le PRECHAUFFE.
+ *
+ * Le prechauffage (une analyse a vide) compile les noyaux de calcul : sans
+ * lui, la toute premiere detection reelle paie 300 a 800 ms de mise en route,
+ * exactement au moment ou le visiteur regarde l'ecran.
+ *
+ * Appelable plusieurs fois sans risque : la promesse est partagee entre le
+ * prechargement discret et l'ouverture de la camera.
+ */
+function chargerDetecteurDemo() {
+  if (demo.face.detecteurPret) return Promise.resolve(true);
+  if (demo.face.promesse) return demo.face.promesse;
+
+  demo.face.chargement = true;
+  demo.face.promesse = (async () => {
+    try {
+      if (typeof faceapi === 'undefined') {
+        // chargerScriptUnique vient de app.js ; repli autonome si absent.
+        if (typeof chargerScriptUnique === 'function') {
+          await chargerScriptUnique(DEMO_FACE_LIB);
+        } else {
+          await new Promise((ok, ko) => {
+            const s = document.createElement('script');
+            s.src = DEMO_FACE_LIB;
+            s.crossOrigin = 'anonymous';
+            s.onload = ok;
+            s.onerror = () => ko(new Error('chargement'));
+            document.head.appendChild(s);
+          });
+        }
+      }
+      // Detection seule. Le modele de reconnaissance n'est PAS charge.
+      if (!faceapi.nets.tinyFaceDetector.isLoaded) {
+        await faceapi.nets.tinyFaceDetector.loadFromUri(DEMO_FACE_MODEL);
+      }
+      // Prechauffage sur une image vide : aucun visage, aucune donnee.
+      try {
+        const t = document.createElement('canvas');
+        t.width = ANALYSE_LARGEUR;
+        t.height = Math.round(ANALYSE_LARGEUR * 4 / 3);
+        await faceapi.detectSingleFace(t, optionsDemo());
+      } catch { /* le prechauffage est un bonus, jamais un blocage */ }
+
+      demo.face.detecteurPret = true;
+      marquer('detector_ready_ms');
+      return true;
+    } catch {
+      // Reseau lent ou CDN bloque : la demo continue sans detection automatique.
+      demo.face.detecteurPret = false;
+      demo.face.promesse = null;   // une nouvelle tentative reste possible
+      return false;
+    } finally {
+      demo.face.chargement = false;
+    }
+  })();
+  return demo.face.promesse;
+}
+
+/**
+ * Prechargement discret, apres le chargement principal de la page.
+ *
+ * Volontairement inhibe quand le visiteur a active l'economiseur de donnees
+ * ou se trouve en 2G : sur une connexion mobile limitee, telecharger un
+ * modele que la personne n'utilisera peut-etre jamais serait indelicat.
+ */
+function prechargerDetecteurDemo() {
+  const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (c && (c.saveData || /(^|-)2g$/.test(c.effectiveType || ''))) return;
+  const lancer = () => { chargerDetecteurDemo().catch(() => {}); };
+  if ('requestIdleCallback' in window) requestIdleCallback(lancer, { timeout: 4000 });
+  else setTimeout(lancer, 2500);
 }
 
 /**
@@ -179,52 +322,89 @@ async function chargerDetecteurDemo() {
 function boucleDetectionDemo() {
   const video = document.getElementById('demo-video');
   if (!video || !demo.face.stream || demo.ecran !== 'camera') return;
+  // Une fois la phase « detecte » atteinte, la logique est jouee : inutile de
+  // continuer a solliciter le processeur pendant les retours visuels.
+  if (!['recherche', 'aide'].includes(demo.face.phase)) return;
 
   const suivant = (ms) => { demo.face.boucle = setTimeout(boucleDetectionDemo, ms); };
 
-  if (!demo.face.detecteurPret || video.readyState < 2) {
-    suivant(300);
+  if (!demo.face.detecteurPret || video.readyState < 2 || !video.videoWidth) {
+    suivant(60);
     return;
   }
 
+  const debut = performance.now();
   faceapi
-    .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.4 }))
+    .detectSingleFace(toileAnalyse(video), optionsDemo())
     .then((resultat) => {
       if (demo.ecran !== 'camera' || !demo.face.stream) return;
-      if (resultat && resultat.box) {
+      const t = demo.face.toile;
+      const bonne = resultat && resultat.box && cadrageSuffisant(resultat.box, t.width, t.height);
+
+      // Appareil lent : on redescend d'un cran pour les analyses suivantes.
+      const duree = performance.now() - debut;
+      if (!demo.face.entreeAjustee && duree > ANALYSE_LENT_MS) {
+        demo.face.entreeAjustee = true;
+        demo.face.entree = ANALYSE_ENTREE_LENTE;
+        if (perfDiagnostic()) console.info(`[demo] appareil lent (${Math.round(duree)} ms) : entree ramenee a ${ANALYSE_ENTREE_LENTE}`);
+      }
+
+      if (bonne) {
         const b = resultat.box;
         demo.face.boite = {
-          gauche: (b.x / video.videoWidth) * 100,
-          haut: (b.y / video.videoHeight) * 100,
-          largeur: (b.width / video.videoWidth) * 100,
-          hauteur: (b.height / video.videoHeight) * 100,
+          gauche: (b.x / t.width) * 100,
+          haut: (b.y / t.height) * 100,
+          largeur: (b.width / t.width) * 100,
+          hauteur: (b.height / t.height) * 100,
         };
-        if (demo.face.phase === 'recherche' || demo.face.phase === 'aide') {
+        demo.face.consecutives += 1;
+        if (demo.face.consecutives === 1) marquer('first_face_detected_ms');
+
+        // Un visage franc, bien cadre, ne merite pas une seconde image : on
+        // valide tout de suite. Le doute (score moyen) demande confirmation.
+        const franc = (resultat.score || resultat.classScore || 0) >= CONFIANCE_IMMEDIATE;
+        if (franc || demo.face.consecutives >= DETECTIONS_REQUISES) {
           demo.face.vuDepuis = Date.now();
+          majSurcoucheDemo();
           passerPhaseFaciale('detecte');
+          return;                       // la boucle s'arrete ici
         }
       } else {
+        demo.face.consecutives = 0;
         demo.face.boite = null;
-        if (demo.face.phase === 'detecte' && Date.now() - demo.face.vuDepuis > 1200) {
-          passerPhaseFaciale('recherche');
-        }
       }
       majSurcoucheDemo();
-      suivant(250);
+      // Cadence plafonnee, mais jamais plus lente que le detecteur lui-meme :
+      // sur un appareil rapide on reste a ~11 analyses/s, sur un appareil lent
+      // on enchaine sans accumuler de retard.
+      suivant(Math.max(0, INTERVALLE_DETECTION - duree));
     })
-    .catch(() => suivant(500));
+    .catch(() => suivant(300));
 }
 
-/** Enchaine les phases de l'etape faciale et declenche la suite. */
+/** Le visage est-il assez grand et assez centre pour un pointage credible ? */
+function cadrageSuffisant(boite, largeur, hauteur) {
+  if (boite.width / largeur < TAILLE_MIN_VISAGE) return false;
+  const cx = (boite.x + boite.width / 2) / largeur;
+  const cy = (boite.y + boite.height / 2) / hauteur;
+  return Math.abs(cx - 0.5) <= ECART_CENTRE_MAX && Math.abs(cy - 0.5) <= ECART_CENTRE_MAX + 0.08;
+}
+
+/**
+ * Enchaine les phases de l'etape faciale et declenche la suite.
+ *
+ * Les retours visuels sont volontairement brefs (voir RYTHME) : la detection
+ * est deja terminee quand ils s'affichent, ils ne doivent donc jamais donner
+ * l'impression d'un calcul en cours.
+ */
 function passerPhaseFaciale(phase) {
   const avant = demo.face.phase;
   demo.face.phase = phase;
 
-  // « refus » et « aide » changent la STRUCTURE de l'ecran (bloc de repli,
-  // bouton de secours) : il faut le reconstruire. Les autres phases ne font
-  // que changer un texte et une barre — on evite alors de tout redessiner,
-  // ce qui couperait l'image de la camera a chaque etape.
-  const structurelles = ['refus', 'aide', 'simulation'];
+  // Seuls « refus » et « simulation » changent la STRUCTURE de l'ecran. Les
+  // autres phases ne modifient qu'un texte, une barre et un cadre : on evite
+  // de redessiner, ce qui couperait l'image de la camera a chaque etape.
+  const structurelles = ['refus', 'simulation'];
   if (structurelles.includes(phase) || structurelles.includes(avant)) {
     rendreDemo();
   } else {
@@ -234,19 +414,36 @@ function passerPhaseFaciale(phase) {
   if (phase === 'detecte') {
     plusTardDemo(() => {
       if (demo.ecran === 'camera' && demo.face.phase === 'detecte') passerPhaseFaciale('analyse');
-    }, 900);
+    }, RYTHME.detecte);
   } else if (phase === 'analyse') {
     plusTardDemo(() => {
       if (demo.ecran === 'camera' && demo.face.phase === 'analyse') passerPhaseFaciale('valide');
-    }, 1400);
+    }, RYTHME.analyse);
   } else if (phase === 'valide') {
+    marquer('face_validated_ms');
     suivreDemo('demo_face_step_validated', { scenario: demo.scenario, mode: demo.face.stream ? 'camera' : 'simulation' });
+    if (perfDiagnostic()) {
+      console.info('[demo] mesures', {
+        camera_ready_ms: perf.camera_ready_ms,
+        detector_ready_ms: perf.detector_ready_ms,
+        first_face_detected_ms: perf.first_face_detected_ms,
+        face_validated_ms: perf.face_validated_ms,
+      });
+    }
     // La camera n'a plus rien a faire : on la coupe avant meme la suite.
     plusTardDemo(() => {
       arreterCameraDemo();
       lancerPointageDemo();
-    }, 1100);
+    }, RYTHME.valide);
   }
+}
+
+/** Affiche le conseil de cadrage sans rien reconstruire (l'image reste nette). */
+function afficherIndiceDemo(actif) {
+  if (demo.face.indice === actif) return;
+  demo.face.indice = actif;
+  const bloc = document.getElementById('demo-camera-aide');
+  if (bloc) bloc.hidden = !actif;
 }
 
 /** Demande la camera. Un refus n'interrompt pas la demonstration. */
@@ -254,6 +451,12 @@ async function ouvrirCameraDemo() {
   demo.ecran = 'camera';
   demo.face.phase = 'ouverture';
   demo.face.boite = null;
+  demo.face.consecutives = 0;
+  demo.face.indice = false;
+  perf._camera = performance.now();
+  perf.camera_ready_ms = null;
+  perf.first_face_detected_ms = null;
+  perf.face_validated_ms = null;
   rendreDemo();
 
   if (!demo.dejaDemarree) {
@@ -271,8 +474,16 @@ async function ouvrirCameraDemo() {
   const detecteur = chargerDetecteurDemo();
 
   try {
+    // Definition volontairement modeste : nette a l'ecran dans un cadre de
+    // ~300 px, et bien plus rapide a decoder qu'un flux HD sur un telephone
+    // d'entree de gamme. L'analyse, elle, se fera sur une image encore reduite.
     demo.face.stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: { ideal: 960 }, height: { ideal: 1280 } },
+      video: {
+        facingMode: 'user',
+        width: { ideal: 640 },
+        height: { ideal: 480 },
+        frameRate: { ideal: 24, max: 30 },
+      },
       audio: false,
     });
   } catch (e) {
@@ -296,23 +507,41 @@ async function ouvrirCameraDemo() {
     video.srcObject = demo.face.stream;
     try { await video.play(); } catch { /* lecture differee par le navigateur */ }
   }
+  marquer('camera_ready_ms');
 
-  await detecteur;
-  if (!demo.face.detecteurPret) {
+  // La boucle demarre TOUT DE SUITE : si le modele finit de se charger entre
+  // deux tours, elle le verra. Attendre ici ferait perdre les premieres
+  // images, souvent les meilleures (le visiteur regarde l'objectif).
+  boucleDetectionDemo();
+
+  // Le conseil de cadrage est programme AVANT toute attente. Un CDN qui ne
+  // repond pas sans jamais echouer (portail captif, pare-feu qui absorbe la
+  // requete) laissait autrement le visiteur bloque indefiniment : la promesse
+  // de chargement restait en suspens et plus aucun minuteur n'etait pose.
+  plusTardDemo(() => {
+    if (demo.ecran === 'camera' && demo.face.phase === 'recherche') {
+      // La boucle en cours accepte deja la phase « aide » : la relancer ici
+      // en ferait tourner deux en parallele, dont une non annulable.
+      demo.face.phase = 'aide';
+      afficherIndiceDemo(true);
+      majSurcoucheDemo();
+    }
+  }, DELAI_INDICE_MS);
+
+  // Le chargement est borne : au-dela, on deroule sans detection plutot que
+  // d'attendre un moteur qui n'arrivera peut-etre jamais.
+  const pret = await Promise.race([
+    detecteur,
+    new Promise((ok) => { demo.minuteurs.push(setTimeout(() => ok(false), DELAI_MOTEUR_MAX_MS)); }),
+  ]);
+
+  if (!pret || !demo.face.detecteurPret) {
     // Sans detecteur, on deroule quand meme : le visiteur se voit, la
     // progression est simulee. Jamais de fausse affirmation d'identite.
     plusTardDemo(() => {
-      if (demo.ecran === 'camera' && demo.face.phase === 'recherche') passerPhaseFaciale('detecte');
-    }, 1600);
-    return;
+      if (demo.ecran === 'camera' && ['recherche', 'aide'].includes(demo.face.phase)) passerPhaseFaciale('detecte');
+    }, 600);
   }
-  boucleDetectionDemo();
-
-  // Filet anti-impasse : contre-jour, visage hors cadre, camera masquee… La
-  // demonstration ne doit jamais rester bloquee sur « Recherche du visage ».
-  plusTardDemo(() => {
-    if (demo.ecran === 'camera' && demo.face.phase === 'recherche') passerPhaseFaciale('aide');
-  }, 9000);
 }
 
 /** Repli sans camera : avatar fictif, meme deroule. */
@@ -322,7 +551,7 @@ function continuerEnSimulationDemo() {
   rendreDemo();
   plusTardDemo(() => {
     if (demo.ecran === 'camera') passerPhaseFaciale('analyse');
-  }, 1200);
+  }, 600);
 }
 
 // -----------------------------------------------------------------------------
@@ -421,12 +650,12 @@ const echapDemo = (s) => (typeof escapeHtml === 'function' ? escapeHtml(String(s
 
 const TEXTES_FACIAUX = {
   ouverture: 'Autorisez la caméra pour commencer…',
-  recherche: 'Recherche du visage…',
+  recherche: 'Positionnez votre visage dans le cadre',
   detecte: 'Visage détecté ✓',
-  analyse: 'Analyse en cours…',
-  valide: 'Étape faciale validée ✓',
+  analyse: 'Analyse…',
+  valide: 'Contrôle facial validé ✓',
   simulation: 'Simulation — aucun visage réel analysé',
-  aide: 'Aucun visage détecté pour l\'instant',
+  aide: 'Positionnez votre visage dans le cadre',
 };
 
 const ETAT_PHASE = {
@@ -459,9 +688,11 @@ function majSurcoucheDemo() {
   }
   const barre = document.getElementById('demo-face-progres');
   if (barre) {
-    const avancement = { ouverture: 5, recherche: 20, aide: 20, detecte: 55, analyse: 80, valide: 100, simulation: 55 };
+    const avancement = { ouverture: 8, recherche: 25, aide: 25, detecte: 60, analyse: 85, valide: 100, simulation: 60 };
     barre.style.width = `${avancement[demo.face.phase] || 0}%`;
   }
+  const aide = document.getElementById('demo-camera-aide');
+  if (aide) aide.hidden = demo.face.phase !== 'aide';
 }
 
 function ligneEtapeDemo(numero, enCours, fait, ko) {
@@ -582,14 +813,14 @@ function ecranCameraDemo() {
       </p>
       <div class="demo-progres" aria-hidden="true"><span id="demo-face-progres"></span></div>`}
 
-    ${demo.face.phase === 'aide' ? `
-      <div class="demo-camera-aide">
-        <p>Rapprochez-vous, vérifiez l'éclairage et regardez l'objectif — ou poursuivez la démonstration.</p>
-        <button type="button" class="auth-bouton auth-bouton--principal" data-demo-action="poursuivre">
-          <span>Poursuivre la démonstration</span>
+    ${refus ? '' : `
+      <div id="demo-camera-aide" class="demo-camera-aide" ${demo.face.indice ? '' : 'hidden'}>
+        <p>Rapprochez légèrement votre visage et regardez la caméra.</p>
+        <button type="button" class="auth-bouton auth-bouton--secondaire" data-demo-action="poursuivre">
+          <span>Continuer la démonstration</span>
           <i data-lucide="arrow-right" class="w-4 h-4" aria-hidden="true"></i>
         </button>
-      </div>` : ''}
+      </div>`}
 
     <p class="demo-note">
       <i data-lucide="shield-check" aria-hidden="true"></i>
@@ -641,7 +872,7 @@ function ecranPointageDemo() {
       <ol class="demo-etapes">
         <li class="demo-etape is-ok">
           <span class="demo-etape__puce"><i data-lucide="check" aria-hidden="true"></i></span>
-          <span class="demo-etape__texte"><strong>Étape faciale validée</strong></span>
+          <span class="demo-etape__texte"><strong>Contrôle facial validé</strong></span>
         </li>
         ${lignes}
       </ol>
@@ -817,6 +1048,12 @@ function initialiserDemo() {
   });
   window.addEventListener('pagehide', arreterCameraDemo);
   window.addEventListener('beforeunload', arreterCameraDemo);
+
+  // Prechargement du detecteur APRES le chargement principal, pendant un
+  // temps mort : le moteur est alors pret avant meme le premier clic, sans
+  // retarder ni le premier affichage ni les ressources de la page.
+  if (document.readyState === 'complete') prechargerDetecteurDemo();
+  else window.addEventListener('load', prechargerDetecteurDemo, { once: true });
 }
 
 if (document.readyState === 'loading') {
