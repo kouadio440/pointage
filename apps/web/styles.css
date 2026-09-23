@@ -2876,11 +2876,11 @@ html.avis-ouvert { overflow: hidden; }
 }
 
 /* =============================================================================
- *  DEMONSTRATION — ETAPE CAMERA (demo/demo.js)
+ *  DEMONSTRATION — ETAPE FACIALE SIMULEE (demo/demo.js)
  * -----------------------------------------------------------------------------
- *  Le flux video reste local au navigateur : rien n'est capture ni televerse.
- *  La surcouche est purement decorative ; le cadre suit la position renvoyee
- *  par le detecteur, jamais une identite.
+ *  Aucune camera, aucune video, aucun modele : un avatar SVG et une surcouche
+ *  decorative. Le cadre de detection apparait a l'etape « detecte », comme le
+ *  ferait un vrai controle, mais rien n'est analyse.
  * ========================================================================== */
 
 .demo-cadre {
@@ -2893,19 +2893,6 @@ html.avis-ouvert { overflow: hidden; }
   overflow: hidden;
   background: #0b0d13;
   border: 1px solid #1E293B;
-  --boite-gauche: 25%;
-  --boite-haut: 20%;
-  --boite-largeur: 50%;
-  --boite-hauteur: 55%;
-}
-
-.demo-video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;          /* jamais deformee, quel que soit le capteur */
-  transform: scaleX(-1);      /* effet miroir : le visiteur se reconnait */
-  display: block;
-  background: #0b0d13;
 }
 
 .demo-avatar-simule {
@@ -2914,9 +2901,8 @@ html.avis-ouvert { overflow: hidden; }
   justify-content: center;
   width: 100%;
   height: 100%;
-  background: radial-gradient(circle at 50% 35%, rgba(245, 158, 11, 0.16), transparent 62%);
 }
-.demo-avatar-simule svg { width: 5.5rem; height: 5.5rem; color: rgba(245, 158, 11, 0.55); }
+.demo-avatar-svg { width: 100%; height: 100%; display: block; }
 
 .demo-reticule { position: absolute; inset: 0; pointer-events: none; }
 
@@ -2925,7 +2911,7 @@ html.avis-ouvert { overflow: hidden; }
   width: 1.75rem;
   height: 1.75rem;
   border: 2px solid rgba(245, 158, 11, 0.75);
-  transition: border-color 0.3s ease;
+  transition: border-color 0.25s ease;
 }
 .demo-coin--hg { top: 0.875rem; left: 0.875rem; border-right: 0; border-bottom: 0; border-top-left-radius: 0.5rem; }
 .demo-coin--hd { top: 0.875rem; right: 0.875rem; border-left: 0; border-bottom: 0; border-top-right-radius: 0.5rem; }
@@ -2944,9 +2930,10 @@ html.avis-ouvert { overflow: hidden; }
   border-radius: 2px;
   background: linear-gradient(90deg, transparent, rgba(245, 158, 11, 0.85), transparent);
   opacity: 0;
+  top: 16%;
 }
 .demo-cadre[data-phase="recherche"] .demo-scan,
-.demo-cadre[data-phase="analyse"] .demo-scan { opacity: 1; animation: demo-balayage 2.1s ease-in-out infinite; }
+.demo-cadre[data-phase="analyse"] .demo-scan { opacity: 1; animation: demo-balayage 1.1s ease-in-out infinite; }
 .demo-cadre[data-phase="analyse"] .demo-scan { background: linear-gradient(90deg, transparent, rgba(16, 185, 129, 0.9), transparent); }
 
 @keyframes demo-balayage {
@@ -2955,20 +2942,24 @@ html.avis-ouvert { overflow: hidden; }
   100% { top: 16%; }
 }
 
-/* Cadre suivant le visage : affiche seulement quand un visage est vu. */
+/* Cadre de detection : cale sur le visage de l'avatar, revele des que la
+   simulation annonce « Visage detecte ». */
 .demo-boite {
   position: absolute;
-  left: var(--boite-gauche);
-  top: var(--boite-haut);
-  width: var(--boite-largeur);
-  height: var(--boite-hauteur);
+  left: 27%;
+  top: 14%;
+  width: 46%;
+  height: 44%;
   border: 2px solid rgba(16, 185, 129, 0.9);
   border-radius: 0.875rem;
   opacity: 0;
-  transition: opacity 0.25s ease, left 0.18s linear, top 0.18s linear, width 0.18s linear, height 0.18s linear;
+  transform: scale(1.08);
+  transition: opacity 0.22s ease, transform 0.22s ease;
   pointer-events: none;
 }
-.demo-cadre.a-visage .demo-boite { opacity: 1; }
+.demo-cadre[data-phase="detecte"] .demo-boite,
+.demo-cadre[data-phase="analyse"] .demo-boite,
+.demo-cadre[data-phase="valide"] .demo-boite { opacity: 1; transform: scale(1); }
 
 .demo-point {
   position: absolute;
@@ -3007,35 +2998,8 @@ html.avis-ouvert { overflow: hidden; }
   width: 0;
   border-radius: 999px;
   background: linear-gradient(90deg, #F59E0B, #10B981);
-  transition: width 0.45s ease;
+  transition: width 0.28s ease;
 }
-
-.demo-camera-refus {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.875rem;
-  padding: 1.25rem 1rem;
-  text-align: center;
-  border-radius: 1.25rem;
-  border: 1px solid #1E293B;
-  background: #0b0d13;
-}
-.demo-camera-refus svg { width: 2rem; height: 2rem; color: #FBBF24; }
-.demo-camera-refus p { margin: 0; font-size: 0.875rem; color: #94A3B8; }
-.demo-camera-refus strong { display: block; font-size: 0.9375rem; color: #F8FAFC; margin-bottom: 0.25rem; }
-
-/* Aucun visage trouve : on aide, puis on laisse poursuivre. Jamais d'impasse. */
-.demo-camera-aide {
-  display: grid;
-  gap: 0.75rem;
-  margin-top: 0.875rem;
-  text-align: center;
-}
-/* « display » d'une classe l'emporte sur l'attribut hidden du navigateur :
-   sans cette regle, le conseil resterait visible en permanence. */
-.demo-camera-aide[hidden] { display: none; }
-.demo-camera-aide p { margin: 0; font-size: 0.8125rem; color: #94A3B8; }
 
 /* Fiche resultat du pointage simule */
 .demo-fiche {
@@ -3058,7 +3022,9 @@ html.avis-ouvert { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .demo-scan { animation: none; opacity: 0.35; }
   .demo-boite, .demo-progres > span, .demo-coin { transition: none; }
+  .demo-boite { transform: none; }
 }
+
 
 /* =============================================================================
  *  SECTION « UN POINTAGE VERIFIE DE BOUT EN BOUT »
