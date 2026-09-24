@@ -1805,19 +1805,21 @@
             </div>
           </div>
 
-          <!-- Code Entreprise Banner & Sharing Shortcuts -->
+          <!-- Code Entreprise : les quatre actions etaient dans une rangee
+               `flex` sans `flex-wrap` et sortaient de la carte sur telephone.
+               Elles passent en grille adaptative (.code-entreprise__actions). -->
           <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-4">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold">
+            <div class="flex items-center gap-3 min-w-0">
+              <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold shrink-0">
                 <i data-lucide="qr-code" class="w-5 h-5"></i>
               </div>
-              <div>
+              <div class="min-w-0">
                 <div class="text-xs text-slate-400 font-mono">Code Entreprise Public pour Auto-inscription :</div>
-                <div id="dash-company-code-display" class="text-base font-extrabold font-mono text-amber-300 tracking-wider">—</div>
+                <div id="dash-company-code-display" class="code-entreprise__code font-extrabold font-mono text-amber-300 tracking-wider">—</div>
               </div>
             </div>
 
-            <div class="flex items-center gap-2">
+            <div class="code-entreprise__actions">
               <button onclick="copyCompanyCode()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition flex items-center gap-1">
                 <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copier Code
               </button>
@@ -1835,10 +1837,12 @@
 
           <!-- Demandes d'accès : une carte par demande (voir renderPendingRegistrationsGrid).
                Un tableau à sept colonnes débordait sur téléphone. -->
-          <div class="flex items-center gap-2 px-1">
-            <input type="checkbox" id="select-all-pending-chk" onchange="toggleSelectAllPending(this)"
-                   class="w-4 h-4 rounded bg-slate-950 border-slate-700 text-emerald-500" />
-            <label for="select-all-pending-chk" class="text-[11px] text-slate-400 font-semibold">Tout sélectionner</label>
+          <div class="demandes-barre">
+            <label for="select-all-pending-chk">
+              <input type="checkbox" id="select-all-pending-chk" onchange="toggleSelectAllPending(this)" />
+              <span>Tout sélectionner</span>
+            </label>
+            <span id="rh-pending-count-text" class="demandes-barre__compte"></span>
           </div>
           <div id="rh-pending-requests-list" class="space-y-2.5">
             <!-- Injecté par app.js -->

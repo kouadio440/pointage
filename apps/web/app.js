@@ -7384,6 +7384,12 @@ function renderPendingRegistrationsGrid() {
   const badgeEl = document.getElementById('rh-pending-count-badge');
   if (badgeEl) badgeEl.innerText = erreur ? '!' : count;
 
+  // Compteur a cote de « Tout selectionner » : on sait combien on traite.
+  const compteEl = document.getElementById('rh-pending-count-text');
+  if (compteEl) {
+    compteEl.textContent = erreur ? '' : (count === 0 ? '' : count + (count > 1 ? ' demandes' : ' demande'));
+  }
+
   // Bannière du registre des employés
   const staffBanner = document.getElementById('staff-pending-banner');
   const staffCountText = document.getElementById('staff-pending-count-text');
@@ -7420,50 +7426,54 @@ function renderPendingRegistrationsGrid() {
     return;
   }
 
-  // Cartes : lisibles du telephone a l'ordinateur, sans tableau qui deborde.
+  /*
+   * UNE DEMANDE = UNE CARTE, pensee d'abord pour le telephone.
+   *
+   * L'identite est la premiere chose lue : elle occupe sa propre ligne, sans
+   * rien pour la comprimer. Le statut, la date et les actions suivent, chacun
+   * etiquete. La mise en forme vit dans styles.css (.demande-*) plutot que
+   * dans une accumulation de classes utilitaires, pour que la version bureau
+   * s'obtienne par UNE regle a 768 px au lieu d'etre defaite a la main.
+   */
   liste.innerHTML = demandes.map((d) => {
-    const nom = d.full_name || d.email || 'Nouveau collaborateur';
+    const nom = d.full_name || d.email || 'Utilisateur';
     const initiales = nom.trim().slice(0, 2).toUpperCase();
-    const date = d.created_at
-      ? new Date(d.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
-      : '';
+    const quand = d.created_at ? new Date(d.created_at) : null;
+    const date = quand
+      ? quand.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) +
+        ' · ' + quand.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+      : 'date inconnue';
     const invitation = d.status === 'INVITED';
+    const statut = invitation ? 'Invitation' : 'En attente';
 
     return `
-      <div class="p-4 rounded-xl border border-slate-800 bg-slate-900/60 space-y-3">
-        <div class="flex items-start gap-3">
+      <article class="demande-carte">
+        <div class="demande-identite">
           <input type="checkbox" value="${escapeHtml(d.id)}" onchange="toggleSelectPendingItem('${escapeHtml(d.id)}', this.checked)"
                  aria-label="Sélectionner la demande de ${escapeHtml(nom)}"
-                 class="pending-item-chk mt-1 w-4 h-4 rounded bg-slate-950 border-slate-700 text-emerald-500 shrink-0" />
-          <div class="w-9 h-9 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center font-extrabold text-xs shrink-0">
-            ${escapeHtml(initiales)}
+                 class="pending-item-chk demande-case" />
+          <span class="demande-avatar" aria-hidden="true">${escapeHtml(initiales)}</span>
+          <div class="demande-qui">
+            <p class="demande-nom">${escapeHtml(nom)}</p>
+            <p class="demande-email">${escapeHtml(d.email || '')}</p>
+            ${d.job_title ? `<p class="demande-poste">${escapeHtml(d.job_title)}</p>` : ''}
           </div>
-          <div class="min-w-0 flex-1">
-            <p class="font-bold text-white text-sm truncate">${escapeHtml(nom)}</p>
-            <p class="text-[11px] text-slate-400 font-mono break-all">${escapeHtml(d.email || '')}</p>
-            ${d.job_title ? `<p class="text-[11px] text-slate-500">${escapeHtml(d.job_title)}</p>` : ''}
-          </div>
-          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${invitation
-            ? 'bg-cyan-500/10 border border-cyan-500/30 text-cyan-300'
-            : 'bg-amber-500/10 border border-amber-500/30 text-amber-300'}">
-            ${invitation ? 'Invitation' : 'En attente'}
-          </span>
         </div>
 
-        <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800/80">
-          <p class="text-[11px] text-slate-500">Demande du ${escapeHtml(date)}</p>
-          <div class="flex items-center gap-2">
-            <button type="button" onclick="rejectRegistration('${escapeHtml(d.id)}')"
-                    class="min-h-[44px] px-4 rounded-xl bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-500/40 text-xs font-bold transition">
-              Refuser
-            </button>
-            <button type="button" onclick="approveRegistration('${escapeHtml(d.id)}')"
-                    class="min-h-[44px] px-4 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-black text-xs font-extrabold transition">
-              Accepter
-            </button>
+        <dl class="demande-infos">
+          <div><dt>Demande</dt><dd>${escapeHtml(date)}</dd></div>
+          <div><dt>Statut</dt>
+            <dd><span class="demande-statut ${invitation ? 'is-invitation' : 'is-attente'}">${statut}</span></dd>
           </div>
+        </dl>
+
+        <div class="demande-actions">
+          <button type="button" onclick="approveRegistration('${escapeHtml(d.id)}')"
+                  class="demande-bouton demande-bouton--accepter">Accepter</button>
+          <button type="button" onclick="rejectRegistration('${escapeHtml(d.id)}')"
+                  class="demande-bouton demande-bouton--refuser">Refuser</button>
         </div>
-      </div>`;
+      </article>`;
   }).join('');
 
   if (window.lucide) window.lucide.createIcons();
