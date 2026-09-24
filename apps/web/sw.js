@@ -30,7 +30,7 @@
  *  change. Un deploiement ordinaire du site n'exige rien ici.
  * ========================================================================== */
 
-const VERSION = 'timora-2026-09-23-3';
+const VERSION = 'timora-2026-09-23-4';
 
 const CACHE_SITE = `${VERSION}-site`;
 const CACHE_CDN = `${VERSION}-cdn`;

@@ -459,6 +459,25 @@ function enteteActivation(titre, sousTitre, icone = null) {
     </div>`;
 }
 
+/**
+ * Rappelle SOUS QUEL COMPTE on se trouve, et permet d'en changer.
+ *
+ * Sans cela, quelqu'un qui clique « Se connecter » avec une session oubliee
+ * — celle d'une entreprise pas encore activee — atterrit sur les tarifs sans
+ * comprendre pourquoi, et croit qu'on lui redemande de payer. C'est
+ * exactement la confusion remontee : le parcours etait juste, l'ecran muet.
+ */
+function bandeauCompteActivation() {
+  const email = (typeof state !== 'undefined' && state.currentUser && state.currentUser.email) || '';
+  if (!email) return '';
+  return `
+    <p class="activation-compte">
+      <i data-lucide="user-round" class="w-4 h-4" aria-hidden="true"></i>
+      <span>Connecté en tant que <strong>${echapActivation(email)}</strong></span>
+      <button type="button" data-activation-action="autre-compte">Utiliser un autre compte</button>
+    </p>`;
+}
+
 function blocErreurActivation() {
   if (!activation.erreur) return '';
   return `
@@ -545,6 +564,7 @@ function ecranChoixActivation() {
   return `
     ${enteteActivation(titre, sousTitre)}
     <p class="activation-entreprise">${badgeSandbox()}<span>${nomEntreprise}</span></p>
+    ${bandeauCompteActivation()}
 
     ${enCours && !expire ? `
       <p class="activation-info">
@@ -966,6 +986,14 @@ function initialiserActivation() {
         if (enCours && enCours.reference) verifierPaiement(enCours.reference);
       } else if (action === 'commencer') commencerAvecEntreprise();
       else if (action === 'deconnexion') seDeconnecterActivation();
+      else if (action === 'autre-compte') {
+        // On repart du choix Entreprise / Employe : « Se connecter » doit
+        // toujours pouvoir ramener a ce point de depart, meme depuis l'ecran
+        // d'activation d'une entreprise qui n'est pas la bonne.
+        seDeconnecterActivation().then(() => {
+          if (typeof openAuthModal === 'function') openAuthModal('login');
+        });
+      }
       else if (action === 'connexion') {
         fermerActivation();
         if (typeof openAuthModal === 'function') openAuthModal('company');
