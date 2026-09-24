@@ -232,15 +232,23 @@
         <button id="btn-view-hero" onclick="switchView('hero')" class="nav-view-btn px-3 py-1 rounded-full text-xs font-semibold text-slate-300 hover:text-white transition">
           Accueil Vitrine
         </button>
-        <button id="btn-view-saas" onclick="switchView('saas')" class="nav-view-btn px-3 py-1 rounded-full text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 transition flex items-center gap-1.5" title="Tableau de Bord Propriétaire SaaS (Plateforme)">
+        <!--
+          ESPACES INTERNES : masques par defaut.
+          Un visiteur non connecte ne doit voir aucun lien vers le cockpit RH,
+          l'espace employe ou la console plateforme. Ils sont reveles apres
+          authentification, selon le role (updateUiAfterLogin dans app.js), et
+          les routes restent protegees cote serveur independamment de cet
+          affichage.
+        -->
+        <button id="btn-view-saas" onclick="switchView('saas')" hidden class="hidden nav-view-btn px-3 py-1 rounded-full text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 transition flex items-center gap-1.5" title="Tableau de Bord Propriétaire SaaS (Plateforme)">
           <i data-lucide="line-chart" class="w-3.5 h-3.5"></i>
           Dashboard SaaS
         </button>
-        <button id="btn-view-dashboard" onclick="switchView('dashboard')" class="nav-view-btn px-3 py-1 rounded-full text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 transition flex items-center gap-1.5" title="Cockpit Client RH (Réservé aux CEO & RH)">
+        <button id="btn-view-dashboard" onclick="switchView('dashboard')" hidden class="hidden nav-view-btn px-3 py-1 rounded-full text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 transition flex items-center gap-1.5" title="Cockpit Client RH (Réservé aux CEO & RH)">
           <i data-lucide="building-2" class="w-3.5 h-3.5 text-amber-400"></i>
           Cockpit Client RH
         </button>
-        <button id="btn-view-employee" onclick="switchView('employee')" class="nav-view-btn px-3 py-1 rounded-full text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 transition flex items-center gap-1.5" title="Espace Employé & Pointage Mobile">
+        <button id="btn-view-employee" onclick="switchView('employee')" hidden class="hidden nav-view-btn px-3 py-1 rounded-full text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 transition flex items-center gap-1.5" title="Espace Employé & Pointage Mobile">
           <i data-lucide="user-check" class="w-3.5 h-3.5"></i>
           Espace Employé
         </button>
@@ -267,22 +275,37 @@
 
     <!-- MOBILE BURGER MENU DROPDOWN -->
     <div id="mobile-menu" class="hidden md:hidden mt-2 glass-panel p-4 space-y-3 border border-slate-800/80 shadow-2xl rounded-2xl animate-in fade-in slide-in-from-top-2 duration-200 relative z-50 bg-slate-900/95 backdrop-blur-xl">
-      <div class="text-[10px] font-mono font-semibold text-slate-500 uppercase tracking-wider px-2">Vues Principales</div>
       <div class="space-y-1">
         <button onclick="switchView('hero')" class="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-slate-800/80 flex items-center justify-between">
-          <span>Accueil Vitrine</span>
+          <span>Accueil</span>
           <i data-lucide="home" class="w-4 h-4 text-slate-400"></i>
         </button>
-        <button onclick="switchView('saas')" class="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 flex items-center justify-between">
-          <span>Mon Dashboard SaaS (Plateforme)</span>
+        <button onclick="closeMobileMenu(); openPunchModal();" class="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-slate-800/80 flex items-center justify-between">
+          <span>Démonstration</span>
+          <i data-lucide="play-circle" class="w-4 h-4 text-slate-400"></i>
+        </button>
+        <button onclick="closeMobileMenu(); voirTarifs('menu-mobile');" class="w-full text-left px-3 py-2 rounded-xl text-xs font-semibold text-slate-200 hover:bg-slate-800/80 flex items-center justify-between">
+          <span>Tarifs</span>
+          <i data-lucide="tag" class="w-4 h-4 text-slate-400"></i>
+        </button>
+      </div>
+
+      <!--
+        ESPACES INTERNES : masques par defaut, reveles apres authentification
+        selon le role. Un visiteur du site public n'y voit aucun lien.
+      -->
+      <div id="mobile-nav-espaces" hidden class="hidden space-y-1 border-t border-slate-800 pt-3">
+        <div class="text-[10px] font-mono font-semibold text-slate-500 uppercase tracking-wider px-2 pb-1">Mes espaces</div>
+        <button id="mobile-nav-saas" onclick="switchView('saas')" hidden class="hidden w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 flex items-center justify-between">
+          <span>Console plateforme</span>
           <i data-lucide="line-chart" class="w-4 h-4 text-amber-400"></i>
         </button>
-        <button onclick="switchView('dashboard')" class="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 flex items-center justify-between">
-          <span>Cockpit Client RH (CEO / RH)</span>
+        <button id="mobile-nav-dashboard" onclick="switchView('dashboard')" hidden class="hidden w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 flex items-center justify-between">
+          <span>Cockpit RH</span>
           <i data-lucide="building-2" class="w-4 h-4 text-amber-400"></i>
         </button>
-        <button onclick="switchView('employee')" class="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between">
-          <span>Espace Employé (Pointage)</span>
+        <button id="mobile-nav-employee" onclick="switchView('employee')" hidden class="hidden w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between">
+          <span>Espace employé</span>
           <i data-lucide="user-check" class="w-4 h-4 text-emerald-400"></i>
         </button>
       </div>

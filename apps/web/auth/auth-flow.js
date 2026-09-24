@@ -204,6 +204,16 @@ function fluxServeur(intention) {
  * Le code OTP n'est JAMAIS transmis. L'adresse est reduite par le serveur a
  * une empreinte et a son domaine.
  */
+/**
+ * Nom d'evenement prefixe « EMPLOYEE_ » quand le parcours en cours est celui
+ * d'un employe : le meme ecran sert aux deux publics, et sans cette distinction
+ * on ne saurait pas, en lisant le journal, quel parcours a echoue.
+ */
+function evenementParcours(base) {
+  const employe = [INTENTIONS_AUTH.ADHESION_EMPLOYE, INTENTIONS_AUTH.CONNEXION_EMPLOYE].includes(flux.intention);
+  return employe ? 'EMPLOYEE_' + base : base;
+}
+
 function journaliserAuth(evenement, { email = flux.email, codeErreur = null } = {}) {
   if (!supabaseClient) return;
   try {
@@ -800,6 +810,7 @@ async function verifierCodeEntreprise(formulaire) {
       afficherErreur('COMPANY_SUSPENDED');
       return;
     }
+    journaliserAuth('EMPLOYEE_COMPANY_CODE_VALIDATED');
     // Abonnement pas encore actif : le collaborateur l'apprend ici, avant de
     // s'identifier (le serveur refuserait de toute facon son adhesion).
     if (data.accepts_members === false) {
@@ -847,6 +858,7 @@ async function envoyerCodeOtp({ renvoi = false, formulaire = null } = {}) {
 
   suivreAuth('otp_requested', { intention: flux.intention, renvoi });
   journaliserAuth('OTP_REQUESTED');
+  journaliserAuth(evenementParcours('OTP_REQUEST_STARTED'));
 
   try {
     // `shouldCreateUser: true` quel que soit le parcours : refuser d'envoyer un
@@ -860,6 +872,7 @@ async function envoyerCodeOtp({ renvoi = false, formulaire = null } = {}) {
 
     // L'ecran de saisie ne s'affiche QUE si Supabase a accepte l'envoi.
     journaliserAuth('OTP_SENT');
+    journaliserAuth(evenementParcours('OTP_REQUEST_SUCCESS'));
     const maintenant = Date.now();
     if (renvoi) {
       flux.otpEnvoyeA = maintenant;
@@ -879,8 +892,10 @@ async function envoyerCodeOtp({ renvoi = false, formulaire = null } = {}) {
     const categorie = classerErreurAuth(err, { envoi: true });
     // Quota du projet epuise : distingue dans le journal, c'est le signal qu'il
     // faut un serveur d'envoi (SMTP) dedie.
+    const codeJournal = categorie === 'EMAIL_QUOTA_EXCEEDED' ? 'project_email_quota' : (err ? String(err.code || err.status || '') : null);
     journaliserAuth(['SEND_RATE_LIMITED', 'EMAIL_QUOTA_EXCEEDED'].includes(categorie) ? 'OTP_RATE_LIMITED' : 'OTP_SEND_FAILED',
-      { codeErreur: categorie === 'EMAIL_QUOTA_EXCEEDED' ? 'project_email_quota' : (err ? String(err.code || err.status || '') : null) });
+      { codeErreur: codeJournal });
+    journaliserAuth(evenementParcours('OTP_REQUEST_FAILED'), { codeErreur: codeJournal });
 
     if (categorie === 'SEND_RATE_LIMITED') {
       // Supabase refuse un nouvel envoi : un code valide est donc deja parti.
@@ -927,6 +942,7 @@ async function verifierCodeOtp(code) {
     if (!data || !data.session) throw new Error('Session absente après vérification.');
 
     journaliserAuth('OTP_VERIFIED');
+    journaliserAuth(evenementParcours('OTP_VERIFIED'));
     suivreAuth('otp_verified', { intention: flux.intention });
     if (typeof showToast === 'function') showToast('Email vérifié ✓', 'Ouverture de votre espace…', 'success', 3000);
 
@@ -1128,8 +1144,12 @@ async function executerResolution({ intention = null, silencieux = false, entrep
   // le serveur reponde « en attente du RH » plutot que « aucune entreprise ».
   if (intention === INTENTIONS_AUTH.ADHESION_EMPLOYE && flux.entreprise && flux.entreprise.code) {
     try {
-      const { error } = await supabaseClient.rpc('join_company', { p_code: flux.entreprise.code });
+      const { data, error } = await supabaseClient.rpc('join_company', { p_code: flux.entreprise.code });
       if (error) throw error;
+      // Le serveur indique s'il a cree la demande ou retrouve une demande
+      // deja en attente : on ne fabrique pas de doublon.
+      const deja = data && (data.already_pending === true || data.status === 'PENDING_APPROVAL' && data.created === false);
+      journaliserAuth(deja ? 'EMPLOYEE_JOIN_REQUEST_ALREADY_EXISTS' : 'EMPLOYEE_JOIN_REQUEST_CREATED');
     } catch (err) {
       const categorie = classerErreurAuth(err);
       if (!silencieux) {
@@ -1312,6 +1332,13 @@ function appliquerIdentite(contexte) {
   };
   state.isPlatformAdmin = !!contexte.platform_admin;
   state.userMemberships = contexte.memberships || [];
+
+  // Les entrees « mes espaces » suivent le contexte resolu par le serveur.
+  // Tant qu'aucune destination n'est accordee, rien n'apparait dans le menu.
+  if (typeof majEspacesVisibles === 'function') {
+    const donneAcces = ['company_dashboard', 'employee_dashboard'].includes(contexte.destination);
+    majEspacesVisibles(donneAcces ? contexte.role : null, { plateforme: state.isPlatformAdmin });
+  }
 }
 
 /**

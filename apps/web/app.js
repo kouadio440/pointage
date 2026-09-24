@@ -6071,18 +6071,9 @@ function updateUiAfterLogin(emailVal, role) {
   }
   if (mobileRegisterBtn) mobileRegisterBtn.classList.add('hidden');
 
-  // Ajustement visuel des boutons de la barre de navigation selon le Rôle
-  const dashBtn = document.getElementById('btn-view-dashboard');
-  const empBtn = document.getElementById('btn-view-employee');
-
-  if (isEmp) {
-    if (dashBtn) dashBtn.classList.add('hidden');
-    if (empBtn) empBtn.classList.remove('hidden');
-  } else {
-    // OWNER / ADMIN / MANAGER
-    if (dashBtn) dashBtn.classList.remove('hidden');
-    if (empBtn) empBtn.classList.add('hidden');
-  }
+  // Entrees « mes espaces » de la barre de navigation et du menu mobile,
+  // selon le role. La console plateforme reste reservee a ses administrateurs.
+  majEspacesVisibles(role, { plateforme: !!(state && state.isPlatformAdmin) });
 }
 
 async function handleLogout() {
@@ -6102,6 +6093,35 @@ async function handleLogout() {
   switchView('hero');
 }
 
+/**
+ * Affiche les entrees « mes espaces » correspondant au role, et masque les
+ * autres. Appelee avec `null` quand personne n'est connecte.
+ *
+ * Ce n'est qu'un confort de navigation : la securite vient des gardes serveur
+ * (session, adhesion, role, abonnement), pas de la visibilite d'un bouton.
+ */
+function majEspacesVisibles(role, { plateforme = false } = {}) {
+  const r = role ? roleCanonique(role) : null;
+  const entreprise = !!r && estRoleEntreprise(r);
+  const employe = !!r && !entreprise;
+
+  const basculer = (id, visible) => {
+    const e = document.getElementById(id);
+    if (!e) return;
+    e.hidden = !visible;
+    e.classList.toggle('hidden', !visible);
+  };
+
+  basculer('btn-view-dashboard', entreprise);
+  basculer('btn-view-employee', employe || entreprise);
+  basculer('btn-view-saas', plateforme);
+
+  basculer('mobile-nav-dashboard', entreprise);
+  basculer('mobile-nav-employee', employe || entreprise);
+  basculer('mobile-nav-saas', plateforme);
+  basculer('mobile-nav-espaces', entreprise || employe || plateforme);
+}
+
 /** Remet l'etat et la barre de navigation dans leur forme « personne n'est connecte ». */
 function reinitialiserInterfaceDeconnectee() {
   state.isAuthenticated = false;
@@ -6115,11 +6135,10 @@ function reinitialiserInterfaceDeconnectee() {
   const mobileLoginBtn = document.getElementById('mobile-nav-login-btn');
   const mobileRegisterBtn = document.getElementById('mobile-nav-register-btn');
 
-  const dashBtn = document.getElementById('btn-view-dashboard');
-  const empBtn = document.getElementById('btn-view-employee');
-
-  if (dashBtn) dashBtn.classList.remove('hidden');
-  if (empBtn) empBtn.classList.remove('hidden');
+  // Site public : aucun lien vers un espace interne. Les routes restent
+  // protegees cote serveur, mais elles n'ont rien a faire dans le menu d'un
+  // visiteur qui n'est pas identifie.
+  majEspacesVisibles(null);
 
   if (loginBtn) {
     loginBtn.innerText = 'Se Connecter';

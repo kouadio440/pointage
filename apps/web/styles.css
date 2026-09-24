@@ -3134,3 +3134,76 @@ html.avis-ouvert { overflow: hidden; }
   .preuve-bloc { transition: none; }
   .preuve-bloc:hover { transform: none; }
 }
+
+/* =============================================================================
+ *  COCKPIT RH ET DASHBOARD EMPLOYE — CONFORT TACTILE ET DEFILEMENT
+ * -----------------------------------------------------------------------------
+ *  `min-h-tap` etait utilisee 35 fois dans le balisage mais n'avait JAMAIS ete
+ *  definie, ni en CSS ni dans la configuration Tailwind : l'intention des 44 px
+ *  existait, la regle manquait. D'ou des boutons de 29 a 32 px sur telephone.
+ *
+ *  Les regles ci-dessous ne s'appliquent qu'en dessous de 768 px : la version
+ *  bureau, qui convient deja, n'est pas touchee.
+ * ========================================================================== */
+
+/* La classe manquante. Definie a toutes les tailles : elle exprime une
+   intention d'accessibilite, pas une adaptation mobile. */
+.min-h-tap { min-height: 44px; }
+
+@media (max-width: 767px) {
+  /* Toute commande d'un espace interne atteint la cible tactile recommandee.
+     `min-height` ne fait qu'agrandir : aucune mise en page n'est cassee. */
+  #view-dashboard button,
+  #view-dashboard select,
+  #view-dashboard input:not([type="checkbox"]):not([type="radio"]),
+  #view-employee button,
+  #view-employee select,
+  #view-employee input:not([type="checkbox"]):not([type="radio"]) {
+    min-height: 44px;
+  }
+
+  /* Les barres d'onglets defilent horizontalement : on confirme le defilement
+     interne, on lisse l'inertie et on masque la barre, sans jamais laisser la
+     PAGE defiler. */
+  #view-dashboard .subtab-btn,
+  #view-employee .emp-subtab-btn,
+  #view-saas .saas-subtab-btn {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+  }
+
+  /* Conteneurs de tableaux : defilement interne, jamais global. */
+  #view-dashboard .overflow-x-auto,
+  #view-employee .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  /* Rien ne doit pouvoir elargir la page. */
+  #view-dashboard, #view-employee { overflow-x: hidden; }
+  #view-dashboard img, #view-employee img,
+  #view-dashboard canvas, #view-employee canvas,
+  #view-dashboard svg, #view-employee svg { max-width: 100%; }
+
+  /* Formulaires : pleine largeur, clavier adapte, pas de zoom iOS.
+     16px est le seuil en dessous duquel Safari agrandit la page a la saisie. */
+  #view-dashboard input, #view-dashboard select, #view-dashboard textarea,
+  #view-employee input, #view-employee select, #view-employee textarea {
+    width: 100%;
+    max-width: 100%;
+    font-size: max(16px, 1em);
+  }
+}
+
+/* Modales : jamais coupees, ni en hauteur ni en largeur. */
+@media (max-width: 767px) {
+  .glass-panel-elevated,
+  [id^="modal-"] > div {
+    max-width: calc(100vw - 1.5rem);
+    max-height: calc(100dvh - 2rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
